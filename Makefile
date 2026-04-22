@@ -122,6 +122,9 @@ build:
 	@mkdir -p $(BUILD_DIR)
 	go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY) $(CMD)
 	@echo "Built $(BUILD_DIR)/$(BINARY)"
+	@mkdir -p $(HOME)/.local/bin
+	@install -m 0755 $(BUILD_DIR)/$(BINARY) $(HOME)/.local/bin/$(BINARY)
+	@echo "Installed $(HOME)/.local/bin/$(BINARY)"
 
 # test: Run all Go tests in the project.
 #

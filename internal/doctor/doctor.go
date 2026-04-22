@@ -1,3 +1,6 @@
+// Package doctor produces a read-only health summary of a profile by planning
+// each of its projects and reporting pending changes or drift. It never writes
+// to disk; all mutation happens through internal/sync.
 package doctor
 
 import (
@@ -8,6 +11,9 @@ import (
 	llmsync "github.com/addamsson/agentfiles/internal/sync"
 )
 
+// CheckProfile runs a sync plan for every project owned by the profile and
+// returns a human-readable summary. Projects with no pending changes are
+// reported as "clean".
 func CheckProfile(p *profile.Loaded) (string, error) {
 	var out strings.Builder
 	fmt.Fprintf(&out, "Profile: %s\n", p.Manifest.Name)

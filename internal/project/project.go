@@ -1,3 +1,6 @@
+// Package project models the per-project manifest stored inside a profile. A
+// project manifest records where a target repository lives, which agents are
+// enabled, and which assets are selected for rendering.
 package project
 
 import (

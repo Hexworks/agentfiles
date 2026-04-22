@@ -1,3 +1,6 @@
+// Package sync reconciles the render plan with the target repository. It
+// classifies every managed path as create/update/drift/delete_candidate and
+// performs the writes plus managed-state snapshot on apply.
 package sync
 
 import (
@@ -14,7 +17,12 @@ import (
 	"github.com/addamsson/agentfiles/internal/render"
 )
 
+// StatePath is the repo-relative location of the managed-state snapshot
+// written after each successful apply.
 const StatePath = ".agentfiles/state.json"
+
+// GeneratorVersion is stamped into the managed state so future format changes
+// can be detected and migrated.
 const GeneratorVersion = "0.1.0"
 
 // ManagedState is the persisted memory of the last successful apply.
@@ -29,12 +37,22 @@ type ManagedState struct {
 	ManagedFiles     map[string]string `json:"managed_files"`
 }
 
+// ChangeKind classifies a single entry in a sync preview.
 type ChangeKind string
 
+// Possible ChangeKind values. Each corresponds to a different reconciliation
+// decision between the render plan and the current repository state.
 const (
+	// ChangeCreate means the file is absent and will be written.
 	ChangeCreate ChangeKind = "create"
+	// ChangeUpdate means the file exists with different content and will be
+	// overwritten.
 	ChangeUpdate ChangeKind = "update"
-	ChangeDrift  ChangeKind = "drift"
+	// ChangeDrift means a previously managed file was modified locally; apply
+	// would overwrite those edits.
+	ChangeDrift ChangeKind = "drift"
+	// ChangeDelete marks a recognized managed file that is no longer part of
+	// the desired plan and may be removed on apply.
 	ChangeDelete ChangeKind = "delete_candidate"
 )
 

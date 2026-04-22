@@ -1,3 +1,6 @@
+// Package app is the thin application layer that the CLI and TUI call into.
+// It orchestrates the domain packages (registry, profile, asset, project,
+// render, sync) but contains no business logic of its own.
 package app
 
 import (
@@ -26,6 +29,8 @@ type Service struct {
 	Registry *registry.Store
 }
 
+// New builds a Service backed by the registry store at registryPath. An empty
+// path selects the default registry location.
 func New(registryPath string) *Service {
 	return &Service{Registry: registry.NewStore(registryPath)}
 }

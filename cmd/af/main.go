@@ -1,7 +1,23 @@
+// Command af is the agentfiles CLI. It parses the --registry flag and drops
+// the user into the TUI defined in internal/tui, which is the only interface
+// agentfiles exposes.
 package main
 
-import "github.com/addamsson/agentfiles/internal/appcmd"
+import (
+	"flag"
+	"fmt"
+	"os"
+
+	"github.com/addamsson/agentfiles/internal/app"
+	"github.com/addamsson/agentfiles/internal/registry"
+	"github.com/addamsson/agentfiles/internal/tui"
+)
 
 func main() {
-	appcmd.Execute()
+	registryPath := flag.String("registry", registry.DefaultPath(), "path to profile registry")
+	flag.Parse()
+	if err := tui.Run(app.New(*registryPath)); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 }

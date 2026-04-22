@@ -1,3 +1,5 @@
+// Package registry persists the global list of known profiles and resolves
+// user-facing references (id, name, or path) to a concrete profile folder.
 package registry
 
 import (
@@ -12,6 +14,7 @@ import (
 	"github.com/addamsson/agentfiles/internal/fsutil"
 )
 
+// Version is the current registry file schema version written by Save.
 const Version = 1
 
 // ProfileRef is the lightweight, global metadata stored in ~/.llmprofiles.json.

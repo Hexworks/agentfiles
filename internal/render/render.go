@@ -1,3 +1,7 @@
+// Package render turns a profile plus a project manifest into the concrete set
+// of files that should exist in the target repository. It is read-only: it
+// loads asset content, applies per-type render rules, and returns a plan. The
+// actual filesystem writes live in internal/sync.
 package render
 
 import (

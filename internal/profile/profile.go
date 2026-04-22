@@ -1,3 +1,6 @@
+// Package profile represents a profile folder on disk: its manifest, the
+// assets it contains, and the projects it owns. It is the authoritative source
+// of truth that render and sync consume.
 package profile
 
 import (
@@ -13,6 +16,8 @@ import (
 	"github.com/addamsson/agentfiles/internal/project"
 )
 
+// Version is the current profile manifest schema version written to
+// profile.json by Init.
 const Version = 1
 
 // Manifest is the top-level metadata stored in profile.json.

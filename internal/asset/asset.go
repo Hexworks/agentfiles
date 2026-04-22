@@ -1,3 +1,7 @@
+// Package asset models the reusable content units (skills, agent docs,
+// settings, MCP configs, rules, hooks) that a profile can contain. It owns the
+// on-disk manifest format and the scaffolding logic used when a new asset is
+// created.
 package asset
 
 import (
@@ -10,17 +14,28 @@ import (
 	"github.com/addamsson/agentfiles/internal/fsutil"
 )
 
+// Type identifies the category of an asset and selects the render rules that
+// apply to it.
 type Type string
 
+// Supported asset types. Each value maps to a distinct render behavior in
+// internal/render; new types require matching logic there.
 const (
 	// TypeSkill stores reusable skill directories that render differently per
 	// agent. Some agents want a directory, Cursor wants a single markdown file.
-	TypeSkill     Type = "skill"
+	TypeSkill Type = "skill"
+	// TypeAgentsDoc is a project-level AGENTS.md document used by Codex.
 	TypeAgentsDoc Type = "agents_doc"
-	TypeSettings  Type = "settings"
-	TypeMCP       Type = "mcp"
-	TypeRule      Type = "rule"
-	TypeHook      Type = "hook"
+	// TypeSettings holds per-agent configuration files (claude-code.json,
+	// codex.toml, etc.) that render into each agent's well-known config path.
+	TypeSettings Type = "settings"
+	// TypeMCP holds Model Context Protocol server configuration.
+	TypeMCP Type = "mcp"
+	// TypeRule holds agent rule files projected via generic projections.
+	TypeRule Type = "rule"
+	// TypeHook holds shell hooks that the agent harness invokes around tool
+	// calls or lifecycle events.
+	TypeHook Type = "hook"
 )
 
 // Projection describes a generic source-to-target mapping for an asset file.

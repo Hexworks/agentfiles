@@ -1,3 +1,6 @@
+// Package fsutil gathers the small filesystem and hashing helpers shared by the
+// rest of the codebase. It keeps path handling, JSON I/O, and content hashing
+// consistent so higher layers do not have to repeat the same boilerplate.
 package fsutil
 
 import (
@@ -11,6 +14,8 @@ import (
 	"strings"
 )
 
+// ExpandHome resolves a leading "~" or "~/" in path against the current user's
+// home directory. Paths without a tilde prefix are returned unchanged.
 func ExpandHome(path string) string {
 	if path == "~" {
 		home, _ := os.UserHomeDir()
@@ -23,15 +28,21 @@ func ExpandHome(path string) string {
 	return path
 }
 
+// EnsureDir creates the directory at path (and any missing parents) with 0755
+// permissions, returning nil if it already exists.
 func EnsureDir(path string) error {
 	return os.MkdirAll(path, 0o755)
 }
 
+// Exists reports whether anything exists at path. Any stat error is treated as
+// "does not exist", which is good enough for the existence checks in this
+// project.
 func Exists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
 }
 
+// ReadJSON reads the file at path and decodes its contents into v.
 func ReadJSON(path string, v any) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -40,6 +51,8 @@ func ReadJSON(path string, v any) error {
 	return json.Unmarshal(data, v)
 }
 
+// WriteJSON marshals v as pretty-printed JSON with a trailing newline and
+// writes it to path, creating parent directories as needed.
 func WriteJSON(path string, v any) error {
 	if err := EnsureDir(filepath.Dir(path)); err != nil {
 		return err
@@ -52,6 +65,8 @@ func WriteJSON(path string, v any) error {
 	return os.WriteFile(path, data, 0o644)
 }
 
+// WriteFile writes data to path with the given mode, creating parent
+// directories as needed.
 func WriteFile(path string, data []byte, mode fs.FileMode) error {
 	if err := EnsureDir(filepath.Dir(path)); err != nil {
 		return err
@@ -59,11 +74,13 @@ func WriteFile(path string, data []byte, mode fs.FileMode) error {
 	return os.WriteFile(path, data, mode)
 }
 
+// HashBytes returns the hex-encoded SHA-256 digest of data.
 func HashBytes(data []byte) string {
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
 }
 
+// HashFile returns the hex-encoded SHA-256 digest of the file at path.
 func HashFile(path string) (string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -72,6 +89,9 @@ func HashFile(path string) (string, error) {
 	return HashBytes(data), nil
 }
 
+// Rel returns target as a forward-slash relative path against base. If the
+// relative path cannot be computed, target is returned unchanged so callers
+// always get a usable string.
 func Rel(base, target string) string {
 	rel, err := filepath.Rel(base, target)
 	if err != nil {
@@ -80,6 +100,9 @@ func Rel(base, target string) string {
 	return filepath.ToSlash(rel)
 }
 
+// CleanAbs expands "~" and resolves path to an absolute form. It returns an
+// error for the empty string so callers cannot silently operate on the current
+// working directory.
 func CleanAbs(path string) (string, error) {
 	path = ExpandHome(path)
 	if path == "" {
