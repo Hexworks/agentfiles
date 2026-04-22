@@ -7,13 +7,23 @@ import (
 	"fmt"
 
 	"github.com/addamsson/agentfiles/internal/app"
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/huh"
 )
 
 // errBack is used to unwind one menu level. Huh returns ErrUserAborted when the
-// user hits ctrl+c or esc; we keep that as "go back" semantics because it is
-// already the natural mental model in forms.
+// user hits a Quit key; we bind ctrl+c and esc to Quit (see runForm) so either
+// one surfaces as "go back" in the menu stack.
 var errBack = errors.New("back")
+
+// runForm wraps huh.NewForm so every prompt in the TUI treats Esc as abort, not
+// just ctrl+c. Huh's default keymap only binds ctrl+c to Quit; users expect Esc
+// to back out of a menu, so we widen the binding here once for all callers.
+func runForm(groups ...*huh.Group) error {
+	km := huh.NewDefaultKeyMap()
+	km.Quit = key.NewBinding(key.WithKeys("ctrl+c", "esc"))
+	return huh.NewForm(groups...).WithKeyMap(km).Run()
+}
 
 // Run opens the top-level menu. It is the default af entrypoint and loops until
 // the user picks Quit or aborts from the top level.
@@ -32,18 +42,19 @@ func Run(service *app.Service) error {
 // category submenus.
 func mainMenu(service *app.Service) error {
 	var choice string
-	err := huh.NewSelect[string]().
-		Title("agentfiles").
-		Description("Choose a category").
-		Options(
-			huh.NewOption("Profile  — manage profiles", "profile"),
-			huh.NewOption("Asset    — scaffold reusable content", "asset"),
-			huh.NewOption("Project  — plan and apply into a repo", "project"),
-			huh.NewOption("Doctor   — health-check a profile", "doctor"),
-			huh.NewOption("Quit", "quit"),
-		).
-		Value(&choice).
-		Run()
+	err := runForm(huh.NewGroup(
+		huh.NewSelect[string]().
+			Title("agentfiles").
+			Description("Choose a category").
+			Options(
+				huh.NewOption("Profile  — manage profiles", "profile"),
+				huh.NewOption("Asset    — scaffold reusable content", "asset"),
+				huh.NewOption("Project  — plan and apply into a repo", "project"),
+				huh.NewOption("Doctor   — health-check a profile", "doctor"),
+				huh.NewOption("Quit", "quit"),
+			).
+			Value(&choice),
+	))
 	if err != nil {
 		return err
 	}
@@ -91,16 +102,17 @@ func reportAction(err error) error {
 func profileMenu(service *app.Service) error {
 	for {
 		var action string
-		err := huh.NewSelect[string]().
-			Title("Profile").
-			Options(
-				huh.NewOption("Create   — scaffold and register a new profile", "create"),
-				huh.NewOption("Register — adopt an existing profile folder", "register"),
-				huh.NewOption("List     — show every registered profile", "list"),
-				huh.NewOption("Back", "back"),
-			).
-			Value(&action).
-			Run()
+		err := runForm(huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Profile").
+				Options(
+					huh.NewOption("Create   — scaffold and register a new profile", "create"),
+					huh.NewOption("Register — adopt an existing profile folder", "register"),
+					huh.NewOption("List     — show every registered profile", "list"),
+					huh.NewOption("Back", "back"),
+				).
+				Value(&action),
+		))
 		if err != nil {
 			return err
 		}
@@ -122,14 +134,15 @@ func profileMenu(service *app.Service) error {
 func assetMenu(service *app.Service) error {
 	for {
 		var action string
-		err := huh.NewSelect[string]().
-			Title("Asset").
-			Options(
-				huh.NewOption("Init — scaffold a new asset in a profile", "init"),
-				huh.NewOption("Back", "back"),
-			).
-			Value(&action).
-			Run()
+		err := runForm(huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Asset").
+				Options(
+					huh.NewOption("Init — scaffold a new asset in a profile", "init"),
+					huh.NewOption("Back", "back"),
+				).
+				Value(&action),
+		))
 		if err != nil {
 			return err
 		}
@@ -146,16 +159,17 @@ func assetMenu(service *app.Service) error {
 func projectMenu(service *app.Service) error {
 	for {
 		var action string
-		err := huh.NewSelect[string]().
-			Title("Project").
-			Options(
-				huh.NewOption("Add   — register a target repository", "add"),
-				huh.NewOption("Plan  — preview pending changes", "plan"),
-				huh.NewOption("Apply — write changes into the repository", "apply"),
-				huh.NewOption("Back", "back"),
-			).
-			Value(&action).
-			Run()
+		err := runForm(huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Project").
+				Options(
+					huh.NewOption("Add   — register a target repository", "add"),
+					huh.NewOption("Plan  — preview pending changes", "plan"),
+					huh.NewOption("Apply — write changes into the repository", "apply"),
+					huh.NewOption("Back", "back"),
+				).
+				Value(&action),
+		))
 		if err != nil {
 			return err
 		}
@@ -176,10 +190,11 @@ func projectMenu(service *app.Service) error {
 // command completion so results are not wiped by the next form render.
 func pause() {
 	var ack bool
-	_ = huh.NewConfirm().
-		Title("Continue").
-		Affirmative("Ok").
-		Negative("").
-		Value(&ack).
-		Run()
+	_ = runForm(huh.NewGroup(
+		huh.NewConfirm().
+			Title("Continue").
+			Affirmative("Ok").
+			Negative("").
+			Value(&ack),
+	))
 }

@@ -2,7 +2,7 @@
 
 ## Status
 
-accepted
+superseded by [0006](./0006-remove-cli-subcommands-in-favor-of-pure-tui.md)
 
 ## Context
 

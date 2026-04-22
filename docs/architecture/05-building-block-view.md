@@ -38,8 +38,8 @@ candidates, writes files, and stores managed state in `.agentfiles/state.json`.
 
 ### `app`
 
-Coordinates the higher-level operations used by the CLI and TUI, including
-profile creation, project ownership checks, planning, and apply.
+Coordinates the higher-level operations used by the TUI, including profile
+creation, project ownership checks, planning, and apply.
 
 ### `tui`
 
@@ -48,12 +48,14 @@ per-category submenus, and one form per command. Free-form fields use text
 inputs while closed sets (asset types, supported agents, registered profiles,
 profile-owned projects, profile-owned assets) use Select / MultiSelect
 populated from the domain layer. Every command lives here; no other package
-collects user input.
+collects user input. A local `runForm` helper installs a keymap that treats
+Esc the same as Ctrl+C so every prompt aborts consistently when the user
+wants to back out one level.
 
-### `appcmd`
+### `cmd/af`
 
-Thin Cobra routing layer. The bare `af` invocation runs the top-level TUI
-menu, while subcommand paths (e.g. `af project apply`) jump straight to the
-matching TUI form. The only flag is `--registry`, used to override the
-registry location for tests and isolated environments.
+The binary entry point. It parses the single `--registry` flag with the
+standard-library `flag` package and calls `tui.Run`. There is no Cobra
+command tree and no intermediate routing package — `af` always opens the
+TUI.
 

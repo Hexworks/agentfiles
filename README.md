@@ -73,7 +73,7 @@ One profile can feed many target projects. Each project chooses which
 ## Key terms
 
 Before you run any commands, it helps to know the vocabulary. These words mean
-something specific in `agentfiles` and are used throughout the CLI and docs.
+something specific in `agentfiles` and are used throughout the TUI and docs.
 
 | Term | What it is |
 | --- | --- |
@@ -139,22 +139,24 @@ Other common `make` targets:
 
 ## Quickstart: your first end-to-end run
 
-`agentfiles` is fully TUI-driven. Run `agentfiles` with no arguments to open
-the top-level menu, or jump directly to a flow with a subcommand path like
-`agentfiles project add`. Either way, every input is collected through the
-TUI — there are no per-command flags to memorize.
+`agentfiles` is fully TUI-driven. Run `agentfiles` — that's the only way to
+invoke it — and the top-level menu opens. From there you pick a category,
+then an action, and the matching form walks you through it. There are no
+per-command flags to memorize and no subcommand paths: every input is
+collected through the TUI.
+
+Press `Esc` at any prompt to back out one level. `Ctrl+C` works the same
+way.
 
 ### 1. Create a profile
 
-Open the menu and pick `Profile → Create`, or jump straight there:
-
 ```bash
-agentfiles profile create
+agentfiles
 ```
 
-The form prompts for a display name and a path. After it completes,
-`~/profiles/personal/` exists with `profile.json` and empty `assets/` and
-`projects/` subfolders, and the profile is registered in
+Pick `Profile → Create`. The form prompts for a display name and a path.
+After it completes, `~/profiles/personal/` exists with `profile.json` and
+empty `assets/` and `projects/` subfolders, and the profile is registered in
 `~/.agentprofiles.json`.
 
 ### 2. Add a reusable skill
@@ -162,40 +164,29 @@ The form prompts for a display name and a path. After it completes,
 A **skill** is one of the asset types. It's a markdown file (`SKILL.md`) plus
 optional supporting files that can be rendered for every agent.
 
-```bash
-agentfiles asset init
-```
-
-The form picks the owning profile from a list, presents the supported asset
-types as a Select, and asks for the id, name, and description. The new
-directory (e.g. `~/profiles/personal/assets/skill/review/`) is printed when
-the form completes; open `SKILL.md` and write your actual content.
+Pick `Asset → Init`. The form picks the owning profile from a list,
+presents the supported asset types as a Select, and asks for the id, name,
+and description. The new directory (e.g.
+`~/profiles/personal/assets/skill/review/`) is printed when the form
+completes; open `SKILL.md` and write your actual content.
 
 ### 3. Register a target project
 
-Tell `agentfiles` which repository this profile should feed, which AI agents
-it should render for, and which assets to include:
-
-```bash
-agentfiles project add
-```
-
-The form picks the profile, asks for a name and absolute path, lets you
+Pick `Project → Add`. Tell `agentfiles` which repository this profile should
+feed, which AI agents it should render for, and which assets to include. The
+form picks the profile, asks for a name and absolute path, lets you
 multi-select the supported agents, and lets you multi-select assets from the
-ones already defined in the chosen profile. The project manifest lands in the
-profile's `projects/` folder; nothing is written into the target repository
-yet.
+ones already defined in the chosen profile. The project manifest lands in
+the profile's `projects/` folder; nothing is written into the target
+repository yet.
 
 ### 4. Preview what will happen
 
-Always run `plan` before `apply`. It's read-only and shows you exactly what
+Always run `Plan` before `Apply`. It's read-only and shows you exactly what
 files would be created, updated, or flagged.
 
-```bash
-agentfiles project plan
-```
-
-The form picks the profile, then the project, then prints the preview:
+Pick `Project → Plan`. The form picks the profile, then the project, then
+prints the preview:
 
 ```
 Project: /home/you/src/app
@@ -205,73 +196,64 @@ Project: /home/you/src/app
 
 ### 5. Apply the changes
 
-`apply` runs `plan`, shows the same summary, and then asks you to confirm
-before writing. If delete candidates exist, the form also asks whether to
-remove them.
-
-```bash
-agentfiles project apply
-```
+Pick `Project → Apply`. The flow runs `Plan`, shows the same summary, and
+then asks you to confirm before writing. If delete candidates exist, the
+form also asks whether to remove them.
 
 After apply succeeds, `~/src/app/.agentfiles/state.json` records what was
-written. Next time you `plan`, `agentfiles` will compare against that state.
+written. Next time you run `Plan`, `agentfiles` will compare against that
+state.
 
 ### 6. Iterate
 
 Edit the skill in your profile (`~/profiles/personal/assets/skill/review/SKILL.md`),
-rerun `agentfiles project apply`, and the changes propagate. The profile is
-the source of truth; the project's `.claude/` and `.codex/` are outputs.
+run `agentfiles` again and pick `Project → Apply`, and the changes
+propagate. The profile is the source of truth; the project's `.claude/` and
+`.codex/` are outputs.
 
 ---
 
-## Command reference
+## Menu reference
 
-Running `agentfiles` with no arguments opens the main menu. Subcommand paths
-short-circuit straight to the matching TUI flow; no flags carry user input.
+`agentfiles` takes no positional arguments. Running it opens the main menu;
+everything else is a submenu pick followed by a form. The only flag the
+binary accepts is `--registry <path>`, which overrides the default
+`~/.agentprofiles.json` location (useful for tests or isolated environments).
 
-The only flag is `--registry <path>`, accepted globally to override the
-default `~/.agentprofiles.json` location (useful for tests or isolated
-environments).
-
-### `profile`
+### Profile
 
 Manage profiles and the global registry.
 
-| Subcommand | Flow |
+| Menu entry | Flow |
 | --- | --- |
-| `profile create` | Form: display name + path. Scaffolds and registers the profile. |
-| `profile register` | Form: path. Adopts an existing profile folder into the registry. |
-| `profile list` | Read-only list of every registered profile. |
+| `Profile → Create` | Form: display name + path. Scaffolds and registers the profile. |
+| `Profile → Register` | Form: path. Adopts an existing profile folder into the registry. |
+| `Profile → List` | Read-only list of every registered profile. |
 
-### `asset`
+### Asset
 
 Scaffold reusable content inside a profile.
 
-| Subcommand | Flow |
+| Menu entry | Flow |
 | --- | --- |
-| `asset init` | Pick the profile from a list, pick the type from the supported set, then enter id/name/description. |
+| `Asset → Init` | Pick the profile from a list, pick the type from the supported set, then enter id/name/description. |
 
-### `project`
+### Project
 
 Manage the target-repository manifests and run the render/apply workflow.
 
-| Subcommand | Flow |
+| Menu entry | Flow |
 | --- | --- |
-| `project add` | Pick the profile, enter name + path, multi-select agents from the supported set, multi-select assets from the profile. |
-| `project plan` | Pick the profile, then the project; previews changes (read-only). |
-| `project apply` | Pick the profile, then the project; previews changes; asks whether to delete candidates and confirm before writing. |
+| `Project → Add` | Pick the profile, enter name + path, multi-select agents from the supported set, multi-select assets from the profile. |
+| `Project → Plan` | Pick the profile, then the project; previews changes (read-only). |
+| `Project → Apply` | Pick the profile, then the project; previews changes; asks whether to delete candidates and confirm before writing. |
 
-### `doctor`
+### Doctor
 
 Read-only health check across every project owned by one profile. Reports
 drift, unmanaged recognized files, and delete candidates for all of them at
-once.
-
-```bash
-agentfiles doctor
-```
-
-The form prompts for the profile to inspect.
+once. Pick `Doctor` from the main menu; the form prompts for the profile to
+inspect.
 
 ---
 

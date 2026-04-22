@@ -47,11 +47,11 @@ func nonEmpty(field string) func(string) error {
 // RunProfileCreate drives the "profile create" flow.
 func RunProfileCreate(service *app.Service) error {
 	var name, path string
-	err := huh.NewForm(huh.NewGroup(
+	err := runForm(huh.NewGroup(
 		huh.NewNote().Title("Create profile").Description("Scaffolds a new profile folder and registers it."),
 		huh.NewInput().Title("Name").Description("Display name for the profile").Value(&name).Validate(nonEmpty("name")),
 		huh.NewInput().Title("Path").Description("Directory to create. ~ is expanded.").Value(&path).Validate(nonEmpty("path")),
-	)).Run()
+	))
 	if err != nil {
 		return err
 	}
@@ -66,10 +66,10 @@ func RunProfileCreate(service *app.Service) error {
 // RunProfileRegister drives the "profile register" flow.
 func RunProfileRegister(service *app.Service) error {
 	var path string
-	err := huh.NewForm(huh.NewGroup(
+	err := runForm(huh.NewGroup(
 		huh.NewNote().Title("Register profile").Description("Adds an existing profile folder to the registry."),
 		huh.NewInput().Title("Path").Description("Existing profile directory").Value(&path).Validate(nonEmpty("path")),
-	)).Run()
+	))
 	if err != nil {
 		return err
 	}
@@ -105,13 +105,13 @@ func RunAssetInit(service *app.Service) error {
 		return err
 	}
 	var typ, id, name, description string
-	err = huh.NewForm(huh.NewGroup(
+	err = runForm(huh.NewGroup(
 		huh.NewNote().Title("Init asset").Description("Scaffolds a new asset under the selected profile."),
 		huh.NewSelect[string]().Title("Type").Description("Asset type determines the starter files").Options(supportedAssetTypes...).Value(&typ),
 		huh.NewInput().Title("ID").Description("Stable identifier used in filenames and references").Value(&id).Validate(nonEmpty("id")),
 		huh.NewInput().Title("Name").Description("Human-readable name").Value(&name).Validate(nonEmpty("name")),
 		huh.NewInput().Title("Description").Description("Optional short description").Value(&description),
-	)).Run()
+	))
 	if err != nil {
 		return err
 	}
@@ -164,7 +164,7 @@ func RunProjectAdd(service *app.Service) error {
 	} else {
 		fields = append(fields, huh.NewNote().Title("Assets").Description("No assets in this profile yet. You can add some later."))
 	}
-	if err := huh.NewForm(huh.NewGroup(fields...)).Run(); err != nil {
+	if err := runForm(huh.NewGroup(fields...)); err != nil {
 		return err
 	}
 	manifest, err := service.AddProject(profileID, name, path, agents, assetIDs)
@@ -203,19 +203,21 @@ func RunProjectApply(service *app.Service) error {
 	fmt.Print(llmsync.FormatPreview(preview))
 	var deleteCandidates bool
 	if len(preview.DeleteCandidates) > 0 {
-		if err := huh.NewConfirm().
-			Title("Delete recognized unmanaged files?").
-			Description(fmt.Sprintf("%d delete candidate(s) detected", len(preview.DeleteCandidates))).
-			Value(&deleteCandidates).
-			Run(); err != nil {
+		if err := runForm(huh.NewGroup(
+			huh.NewConfirm().
+				Title("Delete recognized unmanaged files?").
+				Description(fmt.Sprintf("%d delete candidate(s) detected", len(preview.DeleteCandidates))).
+				Value(&deleteCandidates),
+		)); err != nil {
 			return err
 		}
 	}
 	var confirmed bool
-	if err := huh.NewConfirm().
-		Title("Apply these changes?").
-		Value(&confirmed).
-		Run(); err != nil {
+	if err := runForm(huh.NewGroup(
+		huh.NewConfirm().
+			Title("Apply these changes?").
+			Value(&confirmed),
+	)); err != nil {
 		return err
 	}
 	if !confirmed {
@@ -260,9 +262,9 @@ func selectProfile(service *app.Service, title, description string) (string, err
 	}
 	opts := profileOptions(reg.Profiles)
 	var id string
-	err = huh.NewForm(huh.NewGroup(
+	err = runForm(huh.NewGroup(
 		huh.NewSelect[string]().Title(title).Description(description).Options(opts...).Value(&id),
-	)).Run()
+	))
 	if err != nil {
 		return "", err
 	}
@@ -288,9 +290,9 @@ func selectProfileAndProject(service *app.Service) (string, string, error) {
 		opts = append(opts, huh.NewOption(fmt.Sprintf("%s (%s)", p.Name, p.Path), p.ID))
 	}
 	var projectID string
-	err = huh.NewForm(huh.NewGroup(
+	err = runForm(huh.NewGroup(
 		huh.NewSelect[string]().Title("Project").Description("Project to plan/apply").Options(opts...).Value(&projectID),
-	)).Run()
+	))
 	if err != nil {
 		return "", "", err
 	}

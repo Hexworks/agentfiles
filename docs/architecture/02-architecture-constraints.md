@@ -6,8 +6,9 @@ why some simpler or more dynamic options were not chosen.
 
 ## Local-First Execution
 
-`agentfiles` is a CLI application with a terminal UI. It runs on a developer
-machine and operates directly on the local filesystem.
+`agentfiles` is a terminal UI application. It runs on a developer machine,
+opens a full-screen TUI on launch, and operates directly on the local
+filesystem. There is no non-interactive invocation path.
 
 ## Git-Friendly Persistence
 

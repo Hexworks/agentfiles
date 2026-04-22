@@ -9,7 +9,8 @@ durable rationale is recorded as ADRs in [`../adr/`](../adr/README.md).
 - `0002`: materialize agent files into projects
 - `0003`: use a global profile registry
 - `0004`: enforce single-profile ownership per project path
-- `0005`: use the TUI as the only user interface
+- `0005`: use the TUI as the only user interface (superseded by `0006`)
+- `0006`: remove CLI subcommands in favor of pure TUI
 
 ## Usage
 

@@ -8,7 +8,7 @@ into agent-specific outputs, and synchronize those outputs safely.
 
 ```text
 +------------------+        +----------------------+
-| User / Terminal  | -----> | agentfiles CLI / TUI |
+| User / Terminal  | -----> |     agentfiles TUI   |
 +------------------+        +----------------------+
            |                           |
            |                           +----> ~/.agentprofiles.json
@@ -31,11 +31,10 @@ into agent-specific outputs, and synchronize those outputs safely.
 
 ### User Interface
 
-The system is fully TUI-driven. Running `af` with no arguments opens the
-top-level menu; subcommand paths (`profile create`, `asset init`,
-`project add`, `project plan`, `project apply`, `doctor`) jump straight to
-the matching form. There is no standalone `tui` command — the TUI is the
-only interactive surface.
+The system is fully TUI-driven. Running `af` opens the top-level menu and
+all navigation happens from there; the binary takes no positional arguments
+and has no subcommand tree. The only flag is `--registry`, used to override
+the registry file location for tests and isolated environments.
 
 ### Global Registry
 

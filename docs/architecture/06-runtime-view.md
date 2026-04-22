@@ -1,13 +1,14 @@
 # 6. Runtime View
 
 The runtime behavior is best understood through a few core scenarios. Every
-scenario starts from the TUI: either the top-level menu (when the user runs
-`af`) or directly from a Cobra subcommand path (`af profile create`, etc.).
+scenario starts from the TUI. Running `af` opens the top-level menu, and the
+user navigates to the matching flow from there; there are no direct
+subcommand paths.
 
 ## Scenario: Create A Profile
 
-1. The user reaches the "profile create" form (via the menu or `af profile
-   create`).
+1. The user reaches the "profile create" form by picking
+   `Profile → Create` from the top-level menu.
 2. The form collects display name and target path.
 3. The application normalizes the requested path.
 4. The profile package creates the profile folder structure.
