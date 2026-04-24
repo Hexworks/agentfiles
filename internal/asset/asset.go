@@ -24,7 +24,7 @@ const (
 	// TypeSkill stores reusable skill directories that render differently per
 	// agent. Some agents want a directory, Cursor wants a single markdown file.
 	TypeSkill Type = "skill"
-	// TypeAgentsDoc is a project-level AGENTS.md document used by Codex.
+	// TypeAgentsDoc is a project-level file (like AGENTS.md, CLAUDE.md)
 	TypeAgentsDoc Type = "agents_doc"
 	// TypeSettings holds per-agent configuration files (claude-code.json,
 	// codex.toml, etc.) that render into each agent's well-known config path.
@@ -80,6 +80,7 @@ func (m Manifest) Validate() error {
 	switch m.Type {
 	case TypeSkill, TypeAgentsDoc, TypeSettings, TypeMCP, TypeRule, TypeHook:
 	default:
+		// FIX: return error object instead of string (@see task#0005)
 		return fmt.Errorf("unsupported asset type: %s", m.Type)
 	}
 	return nil
@@ -99,6 +100,7 @@ func Load(dir string) (*Asset, error) {
 
 // Init scaffolds a new asset directory with a starter file layout that matches
 // the chosen type.
+// FIX:: extract hard-coded values to config @see task#0004
 func Init(root string, manifest Manifest) (string, error) {
 	if err := manifest.Validate(); err != nil {
 		return "", err
@@ -125,6 +127,7 @@ func Init(root string, manifest Manifest) (string, error) {
 		if err := os.WriteFile(filepath.Join(dir, "codex.toml"), []byte("# codex settings\n"), 0o644); err != nil {
 			return "", err
 		}
+	// FIX: we don't want a default case, this should be an error instead
 	default:
 		if err := os.WriteFile(filepath.Join(dir, ".keep"), []byte{}, 0o644); err != nil {
 			return "", err
@@ -155,7 +158,8 @@ func RelativeFiles(root string) ([]string, error) {
 		if d.IsDir() {
 			return nil
 		}
-		rel := fsutil.Rel(root, path)
+		rel := fsutil.ToRelative(root, path)
+		// FIX: extract hard-coded "asset.json" to config @see task#0004
 		if rel == "asset.json" || strings.HasPrefix(rel, ".") {
 			return nil
 		}

@@ -29,9 +29,9 @@ type Manifest struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
-// Loaded is the in-memory representation of a profile after scanning its asset
+// Profile is the in-memory representation of a profile after scanning its asset
 // and project subdirectories. This is the object most domain operations work on.
-type Loaded struct {
+type Profile struct {
 	Root     string
 	Manifest Manifest
 	Assets   map[string]*asset.Asset
@@ -41,7 +41,7 @@ type Loaded struct {
 // Init scaffolds a brand-new profile root with the expected folder layout.
 // The created directories mirror the current set of first-class asset types.
 func Init(root, name string) (*Manifest, error) {
-	root, err := fsutil.CleanAbs(root)
+	root, err := fsutil.ToAbsolute(root)
 	if err != nil {
 		return nil, err
 	}
@@ -51,6 +51,7 @@ func Init(root, name string) (*Manifest, error) {
 		Name:      name,
 		CreatedAt: time.Now().UTC(),
 	}
+	// FIX: extract to config @see task#0004
 	for _, dir := range []string{
 		filepath.Join(root, "assets", "skill"),
 		filepath.Join(root, "assets", "agents_doc"),
@@ -64,6 +65,7 @@ func Init(root, name string) (*Manifest, error) {
 			return nil, err
 		}
 	}
+	// FIX: extract to config @see task#0004
 	if err := fsutil.WriteJSON(filepath.Join(root, "profile.json"), manifest); err != nil {
 		return nil, err
 	}
@@ -72,16 +74,17 @@ func Init(root, name string) (*Manifest, error) {
 
 // Load reads profile.json and then scans assets/ and projects/ to build the
 // complete in-memory profile model.
-func Load(root string) (*Loaded, error) {
-	root, err := fsutil.CleanAbs(root)
+func Load(root string) (*Profile, error) {
+	root, err := fsutil.ToAbsolute(root)
 	if err != nil {
 		return nil, err
 	}
 	var manifest Manifest
+	// FIX: extract hard-coded value to config @see task#0004
 	if err := fsutil.ReadJSON(filepath.Join(root, "profile.json"), &manifest); err != nil {
 		return nil, err
 	}
-	loaded := &Loaded{
+	loaded := &Profile{
 		Root:     root,
 		Manifest: manifest,
 		Assets:   map[string]*asset.Asset{},
@@ -98,7 +101,8 @@ func Load(root string) (*Loaded, error) {
 
 // scanAssets walks the assets tree and loads every directory that contains an
 // asset.json file. Each asset id must be unique within one profile.
-func scanAssets(loaded *Loaded) error {
+// FIX: extract hard-coded values to config @see task#0004
+func scanAssets(loaded *Profile) error {
 	assetsRoot := filepath.Join(loaded.Root, "assets")
 	return filepath.WalkDir(assetsRoot, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -119,6 +123,7 @@ func scanAssets(loaded *Loaded) error {
 			return err
 		}
 		if _, exists := loaded.Assets[a.ID]; exists {
+			// FIX: use error struct instead of strings @see task#0005
 			return fmt.Errorf("duplicate asset id: %s", a.ID)
 		}
 		loaded.Assets[a.ID] = a
@@ -128,7 +133,8 @@ func scanAssets(loaded *Loaded) error {
 
 // scanProjects loads all project manifests from the profile's projects/
 // directory and normalizes them before exposing them to the rest of the app.
-func scanProjects(loaded *Loaded) error {
+// FIX: extract hard-coded values to config @see task#0004
+func scanProjects(loaded *Profile) error {
 	entries, err := os.ReadDir(filepath.Join(loaded.Root, "projects"))
 	if err != nil {
 		return err
@@ -149,6 +155,7 @@ func scanProjects(loaded *Loaded) error {
 			return err
 		}
 		if _, exists := loaded.Projects[manifest.ID]; exists {
+			// FIX: use error struct instead of string @see task#0005
 			return fmt.Errorf("duplicate project id: %s", manifest.ID)
 		}
 		loaded.Projects[manifest.ID] = &manifest
@@ -158,7 +165,7 @@ func scanProjects(loaded *Loaded) error {
 
 // ProjectList returns projects sorted by display name, which keeps CLI/TUI
 // presentation stable.
-func (l *Loaded) ProjectList() []*project.Manifest {
+func (l *Profile) ProjectList() []*project.Manifest {
 	var list []*project.Manifest
 	for _, p := range l.Projects {
 		list = append(list, p)
@@ -188,6 +195,7 @@ func slug(v string) string {
 	}
 	out := strings.Trim(b.String(), "-")
 	if out == "" {
+		// FIX: extract to config value @see task#0004
 		return "profile"
 	}
 	return out

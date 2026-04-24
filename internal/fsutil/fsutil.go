@@ -29,7 +29,10 @@ func ExpandHome(path string) string {
 }
 
 // EnsureDir creates the directory at path (and any missing parents) with 0755
-// permissions, returning nil if it already exists.
+// permissions, returning nil if it already exists. 0755 means the owner has
+// read, write, and execute permission (7), while group and others have read
+// and execute but not write (5) — the standard mode for user-owned directories
+// that should be traversable by everyone but only modifiable by the owner.
 func EnsureDir(path string) error {
 	return os.MkdirAll(path, 0o755)
 }
@@ -43,6 +46,7 @@ func Exists(path string) bool {
 }
 
 // ReadJSON reads the file at path and decodes its contents into v.
+// TODO: make this a generic function (@see task#0001)
 func ReadJSON(path string, v any) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -53,6 +57,7 @@ func ReadJSON(path string, v any) error {
 
 // WriteJSON marshals v as pretty-printed JSON with a trailing newline and
 // writes it to path, creating parent directories as needed.
+// TODO: make this a generic function (@see task#0001)
 func WriteJSON(path string, v any) error {
 	if err := EnsureDir(filepath.Dir(path)); err != nil {
 		return err
@@ -89,10 +94,10 @@ func HashFile(path string) (string, error) {
 	return HashBytes(data), nil
 }
 
-// Rel returns target as a forward-slash relative path against base. If the
+// ToRelative returns target as a forward-slash relative path against base. If the
 // relative path cannot be computed, target is returned unchanged so callers
 // always get a usable string.
-func Rel(base, target string) string {
+func ToRelative(base, target string) string {
 	rel, err := filepath.Rel(base, target)
 	if err != nil {
 		return target
@@ -100,10 +105,10 @@ func Rel(base, target string) string {
 	return filepath.ToSlash(rel)
 }
 
-// CleanAbs expands "~" and resolves path to an absolute form. It returns an
+// ToAbsolute expands "~" and resolves path to an absolute form. It returns an
 // error for the empty string so callers cannot silently operate on the current
 // working directory.
-func CleanAbs(path string) (string, error) {
+func ToAbsolute(path string) (string, error) {
 	path = ExpandHome(path)
 	if path == "" {
 		return "", errors.New("path is empty")

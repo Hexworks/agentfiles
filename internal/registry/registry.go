@@ -45,6 +45,7 @@ type Store struct {
 // DefaultPath returns the conventional location of the global registry.
 func DefaultPath() string {
 	home, _ := os.UserHomeDir()
+	// FIX: move to config @see task#0004
 	return filepath.Join(home, ".agentprofiles.json")
 }
 
@@ -124,7 +125,7 @@ func (s *Store) Touch(profileID string) error {
 	return errors.New("profile not found")
 }
 
-// Resolve finds a profile by any user-facing identifier the CLI/TUI accepts:
+// Resolve finds a profile by any user-facing identifier the TUI accepts:
 // id, name, or exact path.
 func (s *Store) Resolve(ref string) (*ProfileRef, error) {
 	reg, err := s.Load()

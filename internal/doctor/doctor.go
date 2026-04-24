@@ -14,7 +14,8 @@ import (
 // CheckProfile runs a sync plan for every project owned by the profile and
 // returns a human-readable summary. Projects with no pending changes are
 // reported as "clean".
-func CheckProfile(p *profile.Loaded) (string, error) {
+// FIX: return error object instaed of string @see task#0005
+func CheckProfile(p *profile.Profile) (string, error) {
 	var out strings.Builder
 	fmt.Fprintf(&out, "Profile: %s\n", p.Manifest.Name)
 	for _, proj := range p.ProjectList() {

@@ -36,6 +36,7 @@ type ProjectPlan struct {
 
 // allowedPrefixes is the coarse-grained safety fence for rendering. Assets may
 // only target paths that are recognized as managed LLM-tooling surfaces.
+// FIX: extract this to config @see task#0004
 var allowedPrefixes = []string{
 	"AGENTS.md",
 	".claude/",
@@ -48,7 +49,7 @@ var allowedPrefixes = []string{
 // Build resolves a project's selected assets into the concrete files that
 // should appear in the repository. It does not read the current repo state and
 // it does not write anything; that is sync's job.
-func Build(p *profile.Loaded, proj *project.Manifest) (*ProjectPlan, error) {
+func Build(p *profile.Profile, proj *project.Manifest) (*ProjectPlan, error) {
 	selected, err := resolveAssets(p, proj)
 	if err != nil {
 		return nil, err
@@ -59,6 +60,8 @@ func Build(p *profile.Loaded, proj *project.Manifest) (*ProjectPlan, error) {
 			continue
 		}
 		if current, exists := groupSelections[a.ExclusiveGroup]; exists && current != a.ID {
+			// FIX: create a list of errors as opposed to short-circuiting on the first one.
+			// then return this list of errors as opposed to a single string @see task#0005
 			return nil, fmt.Errorf("multiple assets selected in exclusive group %s", a.ExclusiveGroup)
 		}
 		groupSelections[a.ExclusiveGroup] = a.ID
@@ -67,6 +70,8 @@ func Build(p *profile.Loaded, proj *project.Manifest) (*ProjectPlan, error) {
 	files := map[string]RenderedFile{}
 	for _, a := range selected {
 		if err := addAssetOutputs(files, a, proj.EnabledAgents); err != nil {
+			// FIX: create a list of errors as opposed to short-circuiting on the first one.
+			// then return this list of errors as opposed to a single string @see task#0005
 			return nil, fmt.Errorf("%s: %w", a.ID, err)
 		}
 	}
@@ -83,11 +88,13 @@ func Build(p *profile.Loaded, proj *project.Manifest) (*ProjectPlan, error) {
 
 // resolveAssets turns the selected asset ids from the project manifest into the
 // loaded asset objects from the profile.
-func resolveAssets(p *profile.Loaded, proj *project.Manifest) ([]*asset.Asset, error) {
+func resolveAssets(p *profile.Profile, proj *project.Manifest) ([]*asset.Asset, error) {
 	var selected []*asset.Asset
 	for _, id := range proj.SelectedAssetIDs {
 		a := p.Assets[id]
 		if a == nil {
+			// FIX: create a list of errors as opposed to short-circuiting on the first one.
+			// then return this list of errors as opposed to a single string @see task#0005
 			return nil, fmt.Errorf("selected asset not found: %s", id)
 		}
 		selected = append(selected, a)
@@ -169,7 +176,7 @@ func addAssetOutputs(files map[string]RenderedFile, a *asset.Asset, enabledAgent
 					if err != nil {
 						return err
 					}
-					rel := fsutil.Rel(source, path)
+					rel := fsutil.ToRelative(source, path)
 					target := filepath.ToSlash(filepath.Join(projection.Target, rel))
 					files[target] = RenderedFile{Path: target, Body: body, Mode: 0o644, Source: a.ID}
 					return nil

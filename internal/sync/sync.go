@@ -23,7 +23,7 @@ const StatePath = ".agentfiles/state.json"
 
 // GeneratorVersion is stamped into the managed state so future format changes
 // can be detected and migrated.
-const GeneratorVersion = "0.1.0"
+const GeneratorVersion = "1.0.0"
 
 // ManagedState is the persisted memory of the last successful apply.
 // It lets the next preview tell the difference between:
@@ -83,7 +83,7 @@ type Preview struct {
 
 // Plan compares the desired outputs with the current repository state. This is
 // where create/update/drift/delete-candidate classification happens.
-func Plan(p *profile.Loaded, proj *project.Manifest) (*Preview, error) {
+func Plan(p *profile.Profile, proj *project.Manifest) (*Preview, error) {
 	rendered, err := render.Build(p, proj)
 	if err != nil {
 		return nil, err
@@ -190,6 +190,7 @@ func detectDeleteCandidates(projectPath string, desired map[string]string, state
 			}
 		}
 	}
+	// FIX: task#0004
 	for _, root := range []string{"AGENTS.md", ".claude", ".cursor", ".codex", ".opencode", ".mcp.json"} {
 		abs := filepath.Join(projectPath, root)
 		if !fsutil.Exists(abs) {
@@ -200,7 +201,7 @@ func detectDeleteCandidates(projectPath string, desired map[string]string, state
 			return nil, err
 		}
 		if !info.IsDir() {
-			rel := fsutil.Rel(projectPath, abs)
+			rel := fsutil.ToRelative(projectPath, abs)
 			if desired[rel] == "" && rel != StatePath {
 				candidates[rel] = true
 			}
@@ -213,7 +214,7 @@ func detectDeleteCandidates(projectPath string, desired map[string]string, state
 			if d.IsDir() {
 				return nil
 			}
-			rel := fsutil.Rel(projectPath, path)
+			rel := fsutil.ToRelative(projectPath, path)
 			if rel == StatePath {
 				return nil
 			}
@@ -235,6 +236,7 @@ func detectDeleteCandidates(projectPath string, desired map[string]string, state
 }
 
 // FormatPreview renders the preview into a compact CLI-friendly text summary.
+// FIX: task#0005
 func FormatPreview(preview *Preview) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Project: %s\n", preview.ProjectPath)

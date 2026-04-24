@@ -16,7 +16,7 @@ import (
 	llmsync "github.com/addamsson/agentfiles/internal/sync"
 )
 
-// Service is the thin application layer used by the CLI and TUI.
+// Service is the thin application layer used by the TUI.
 //
 // The domain packages do the real work:
 //   - registry discovers profiles
@@ -39,7 +39,7 @@ func New(registryPath string) *Service {
 // the global profile registry. The profile folder is the authoritative source
 // of truth; project files are generated later from its contents.
 func (s *Service) CreateProfile(name, path string) (*registry.ProfileRef, error) {
-	path, err := fsutil.CleanAbs(path)
+	path, err := fsutil.ToAbsolute(path)
 	if err != nil {
 		return nil, err
 	}
@@ -48,9 +48,10 @@ func (s *Service) CreateProfile(name, path string) (*registry.ProfileRef, error)
 		return nil, err
 	}
 	ref := registry.ProfileRef{
-		ID:           manifest.ID,
-		Name:         manifest.Name,
-		Path:         path,
+		ID:   manifest.ID,
+		Name: manifest.Name,
+		Path: path,
+		// FIX: task#0004 move these values to global config
 		Source:       "local",
 		ManagedBy:    "self",
 		CreatedAt:    time.Now().UTC(),
@@ -71,9 +72,10 @@ func (s *Service) RegisterProfile(path string) (*registry.ProfileRef, error) {
 		return nil, err
 	}
 	ref := registry.ProfileRef{
-		ID:           loaded.Manifest.ID,
-		Name:         loaded.Manifest.Name,
-		Path:         loaded.Root,
+		ID:   loaded.Manifest.ID,
+		Name: loaded.Manifest.Name,
+		Path: loaded.Root,
+		// FIX: task#0004 move these values to global config
 		Source:       "local",
 		ManagedBy:    "self",
 		CreatedAt:    loaded.Manifest.CreatedAt,
@@ -87,7 +89,7 @@ func (s *Service) RegisterProfile(path string) (*registry.ProfileRef, error) {
 
 // LoadProfile resolves a user-facing profile reference (id, name, or path),
 // updates its last-opened timestamp, and returns the fully loaded profile model.
-func (s *Service) LoadProfile(ref string) (*profile.Loaded, error) {
+func (s *Service) LoadProfile(ref string) (*profile.Profile, error) {
 	profileRef, err := s.Registry.Resolve(ref)
 	if err != nil {
 		return nil, err
@@ -107,7 +109,7 @@ func (s *Service) AddProject(profileRef, name, path string, agents, assetIDs []s
 	if err != nil {
 		return nil, err
 	}
-	path, err = fsutil.CleanAbs(path)
+	path, err = fsutil.ToAbsolute(path)
 	if err != nil {
 		return nil, err
 	}
@@ -122,6 +124,8 @@ func (s *Service) AddProject(profileRef, name, path string, agents, assetIDs []s
 		SelectedAssetIDs: assetIDs,
 		CreatedAt:        time.Now().UTC(),
 	}
+	// FIX: task#0005: Accumulate errors into an error list and return it
+	// instead of returning an error message
 	for _, assetID := range assetIDs {
 		if loaded.Assets[assetID] == nil {
 			return nil, fmt.Errorf("unknown asset: %s", assetID)
@@ -141,6 +145,7 @@ func (s *Service) InitAsset(profileRef string, manifest asset.Manifest) (string,
 		return "", err
 	}
 	if loaded.Assets[manifest.ID] != nil {
+		// FIX: task#0005 return metadata for error instead of hard-coded error message
 		return "", fmt.Errorf("asset already exists: %s", manifest.ID)
 	}
 	return asset.Init(loaded.Root, manifest)
@@ -155,6 +160,7 @@ func (s *Service) Plan(profileRef, projectID string) (*llmsync.Preview, error) {
 	}
 	proj := loaded.Projects[projectID]
 	if proj == nil {
+		// FIX: task#0005 return metadata for error instead of hard-coded error message
 		return nil, fmt.Errorf("project not found: %s", projectID)
 	}
 	return llmsync.Plan(loaded, proj)
@@ -186,6 +192,8 @@ func (s *Service) ensureProjectPathAvailable(projectPath, activeProfileID string
 		if err != nil {
 			continue
 		}
+		// FIX: task#0005 accumulate error metadata (eg: {Path, Profile}) as opposed to rendering
+		// and return all of them instead of failing fast on the first one.
 		for _, proj := range loaded.Projects {
 			if proj.Path == projectPath && profileRef.ID != activeProfileID {
 				return fmt.Errorf("project path already owned by profile %s", profileRef.Name)
