@@ -1,7 +1,8 @@
 ---
-id: 0003
-type: feature
-status: Pending
+id: 0004
+type: task
+status: pending
+topics: go, research
 ---
 
 # Move all configuration into a single module.
