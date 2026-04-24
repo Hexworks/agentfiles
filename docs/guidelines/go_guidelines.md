@@ -100,3 +100,20 @@ if _, err := svc.AddProject("second", "Repo2", projectPath, []string{"codex"}, n
 func TestService(t *testing.T) {}
 ```
 
+## Implement the `Error` function whenever non-string values are returned as errors
+
+If a function returns with an error (eg: `(result, CustomError)`) make sure that the struct that
+is returned also has an `Error` function that can turn it into a `string`.
+
+```go
+type CustomError struct {
+    IntField int
+    StrField string
+}
+
+func (e CustomError) Error() string {
+    return fmt.Sprintf("shit happened: %d, %s", e.IntField, e.StrField)
+}
+```
+
+**Note that** this guideline only applies if a simple `string` is not sufficient.
