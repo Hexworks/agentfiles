@@ -54,7 +54,9 @@ Before any further work, if not already in plan mode, **enter plan mode** (`Ente
 
 ## Step 4 — Read Relevant Guidelines
 
-For each entry in `topics`, read `docs/guidelines/{topic}.md`. **Do not** read guideline files for topics not listed. Apply that knowledge to the plan.
+For each entry in `topics`, read `docs/guidelines/{topic}.md`. **Always follow** this "must read" list of guidelines in the `docs/guidelines` folder: `clean_architecture.md`, `clean_code.md`, `domain_model.md`, `solid.md`, `testing.md`.
+**Do not** read guideline files for topics that are not listed and aren't in the "must read" list. Apply that knowledge to the plan.
+**Make sure** that you write tests too, not just application code.
 
 ## Step 5 — Branch + Clean Working Tree
 
@@ -108,7 +110,7 @@ Edit task file frontmatter: `status: in-progress`.
 
 ## Step 10 — Write the Plan
 
-Plan file path: `docs/plans/plan_{task-number}_{short-description}.md`.
+Plan file path: `docs/plans/{task-id}_{short-description}.md`.
 
 **Important**: if the plan file already exists ask the user to review it.
 
@@ -173,23 +175,11 @@ Format:
 
 {Docs changed, patterns observed, bugs found, etc.}
 
-## Change 1
+List of changes using the following structure for each change:
 
-{Short description of change}
+## {change-description}
 
-```{lang}
-// before
-{old code}
-```
-
-```{lang}
-// after — {inline doc explaining change}
-{new code}
-```
-
-## Change 2
-
-{Short description of change}
+{Short description of change a few paragraphs max}
 
 ```{lang}
 // before
@@ -200,6 +190,8 @@ Format:
 // after — {inline doc explaining change}
 {new code}
 ```
+
+...
 ````
 
 ## Step 15 — Conclusion

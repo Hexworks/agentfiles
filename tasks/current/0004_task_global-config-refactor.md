@@ -1,7 +1,7 @@
 ---
 id: 0004
 type: task
-status: pending
+status: in-review
 topics: go, research
 ---
 
@@ -27,3 +27,7 @@ var SomethingConfig = []string{
 	".mcp.json",
 }
 ```
+
+## Plan
+
+[plan_0004_global-config-refactor.md](../../docs/plans/plan_0004_global-config-refactor.md)
