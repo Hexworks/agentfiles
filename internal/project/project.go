@@ -9,6 +9,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/addamsson/agentfiles/internal/config"
 	"github.com/addamsson/agentfiles/internal/fsutil"
 )
 
@@ -56,6 +57,6 @@ func Save(profileRoot string, manifest *Manifest) error {
 	if err := manifest.Validate(); err != nil {
 		return err
 	}
-	path := filepath.Join(profileRoot, "projects", manifest.ID+".json")
+	path := filepath.Join(profileRoot, config.ProjectsDirName, manifest.ID+".json")
 	return fsutil.WriteJSON(path, manifest)
 }

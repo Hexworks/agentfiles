@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/addamsson/agentfiles/internal/asset"
+	"github.com/addamsson/agentfiles/internal/config"
 	"github.com/addamsson/agentfiles/internal/fsutil"
 	"github.com/addamsson/agentfiles/internal/project"
 )
@@ -51,22 +52,18 @@ func Init(root, name string) (*Manifest, error) {
 		Name:      name,
 		CreatedAt: time.Now().UTC(),
 	}
-	// FIX: extract to config @see task#0004
-	for _, dir := range []string{
-		filepath.Join(root, "assets", "skill"),
-		filepath.Join(root, "assets", "agents_doc"),
-		filepath.Join(root, "assets", "settings"),
-		filepath.Join(root, "assets", "mcp"),
-		filepath.Join(root, "assets", "rule"),
-		filepath.Join(root, "assets", "hook"),
-		filepath.Join(root, "projects"),
-	} {
+	types := asset.AllTypes()
+	dirs := make([]string, 0, len(types)+1)
+	for _, t := range types {
+		dirs = append(dirs, filepath.Join(root, config.AssetsDirName, string(t)))
+	}
+	dirs = append(dirs, filepath.Join(root, config.ProjectsDirName))
+	for _, dir := range dirs {
 		if err := fsutil.EnsureDir(dir); err != nil {
 			return nil, err
 		}
 	}
-	// FIX: extract to config @see task#0004
-	if err := fsutil.WriteJSON(filepath.Join(root, "profile.json"), manifest); err != nil {
+	if err := fsutil.WriteJSON(filepath.Join(root, config.ProfileManifestFileName), manifest); err != nil {
 		return nil, err
 	}
 	return manifest, nil
@@ -80,8 +77,7 @@ func Load(root string) (*Profile, error) {
 		return nil, err
 	}
 	var manifest Manifest
-	// FIX: extract hard-coded value to config @see task#0004
-	if err := fsutil.ReadJSON(filepath.Join(root, "profile.json"), &manifest); err != nil {
+	if err := fsutil.ReadJSON(filepath.Join(root, config.ProfileManifestFileName), &manifest); err != nil {
 		return nil, err
 	}
 	loaded := &Profile{
@@ -101,9 +97,8 @@ func Load(root string) (*Profile, error) {
 
 // scanAssets walks the assets tree and loads every directory that contains an
 // asset.json file. Each asset id must be unique within one profile.
-// FIX: extract hard-coded values to config @see task#0004
 func scanAssets(loaded *Profile) error {
-	assetsRoot := filepath.Join(loaded.Root, "assets")
+	assetsRoot := filepath.Join(loaded.Root, config.AssetsDirName)
 	return filepath.WalkDir(assetsRoot, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -114,7 +109,7 @@ func scanAssets(loaded *Profile) error {
 		if path == assetsRoot {
 			return nil
 		}
-		manifestPath := filepath.Join(path, "asset.json")
+		manifestPath := filepath.Join(path, config.AssetManifestFileName)
 		if !fsutil.Exists(manifestPath) {
 			return nil
 		}
@@ -133,9 +128,9 @@ func scanAssets(loaded *Profile) error {
 
 // scanProjects loads all project manifests from the profile's projects/
 // directory and normalizes them before exposing them to the rest of the app.
-// FIX: extract hard-coded values to config @see task#0004
 func scanProjects(loaded *Profile) error {
-	entries, err := os.ReadDir(filepath.Join(loaded.Root, "projects"))
+	projectsRoot := filepath.Join(loaded.Root, config.ProjectsDirName)
+	entries, err := os.ReadDir(projectsRoot)
 	if err != nil {
 		return err
 	}
@@ -144,7 +139,7 @@ func scanProjects(loaded *Profile) error {
 			continue
 		}
 		var manifest project.Manifest
-		path := filepath.Join(loaded.Root, "projects", entry.Name())
+		path := filepath.Join(projectsRoot, entry.Name())
 		if err := fsutil.ReadJSON(path, &manifest); err != nil {
 			return err
 		}
@@ -195,8 +190,7 @@ func slug(v string) string {
 	}
 	out := strings.Trim(b.String(), "-")
 	if out == "" {
-		// FIX: extract to config value @see task#0004
-		return "profile"
+		return config.DefaultProfileSlug
 	}
 	return out
 }

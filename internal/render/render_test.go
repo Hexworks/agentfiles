@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/addamsson/agentfiles/internal/config"
 	"github.com/addamsson/agentfiles/internal/profile"
 	"github.com/addamsson/agentfiles/internal/project"
 )
@@ -15,21 +16,21 @@ func TestBuildSkillAndAgentsDoc(t *testing.T) {
 	if _, err := profile.Init(root, "Personal"); err != nil {
 		t.Fatalf("init profile: %v", err)
 	}
-	skillDir := filepath.Join(root, "assets", "skill", "review")
+	skillDir := filepath.Join(root, config.AssetsDirName, "skill", "review")
 	if err := os.MkdirAll(skillDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(skillDir, "asset.json"), []byte(`{"id":"review","name":"review","type":"skill"}`), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(skillDir, config.AssetManifestFileName), []byte(`{"id":"review","name":"review","type":"skill"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("hello"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	docDir := filepath.Join(root, "assets", "agents_doc", "base")
+	docDir := filepath.Join(root, config.AssetsDirName, "agents_doc", "base")
 	if err := os.MkdirAll(docDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(docDir, "asset.json"), []byte(`{"id":"base","name":"base","type":"agents_doc"}`), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(docDir, config.AssetManifestFileName), []byte(`{"id":"base","name":"base","type":"agents_doc"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(docDir, "AGENTS.md"), []byte("agents"), 0o644); err != nil {

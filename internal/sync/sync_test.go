@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/addamsson/agentfiles/internal/config"
 	"github.com/addamsson/agentfiles/internal/profile"
 	"github.com/addamsson/agentfiles/internal/project"
 )
@@ -17,13 +18,14 @@ func TestPlanDetectsDriftAndDeleteCandidate(t *testing.T) {
 	if _, err := profile.Init(profileRoot, "Personal"); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Join(profileRoot, "assets", "agents_doc", "base"), 0o755); err != nil {
+	assetDir := filepath.Join(profileRoot, config.AssetsDirName, "agents_doc", "base")
+	if err := os.MkdirAll(assetDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(profileRoot, "assets", "agents_doc", "base", "asset.json"), []byte(`{"id":"base","name":"base","type":"agents_doc"}`), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(assetDir, config.AssetManifestFileName), []byte(`{"id":"base","name":"base","type":"agents_doc"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(profileRoot, "assets", "agents_doc", "base", "AGENTS.md"), []byte("wanted"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(assetDir, "AGENTS.md"), []byte("wanted"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(projectRoot, "AGENTS.md"), []byte("drifted"), 0o644); err != nil {
@@ -35,7 +37,7 @@ func TestPlanDetectsDriftAndDeleteCandidate(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(projectRoot, ".codex", "old.txt"), []byte("old"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Join(projectRoot, ".agentfiles"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(projectRoot, config.StateDirName), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	state := ManagedState{
@@ -45,7 +47,7 @@ func TestPlanDetectsDriftAndDeleteCandidate(t *testing.T) {
 		LastAppliedAt:    time.Now(),
 		ManagedFiles:     map[string]string{"AGENTS.md": "previous"},
 	}
-	if err := os.WriteFile(filepath.Join(projectRoot, StatePath), mustJSON(t, state), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(projectRoot, config.StateDirName, config.StateFileName), mustJSON(t, state), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	loaded, err := profile.Load(profileRoot)

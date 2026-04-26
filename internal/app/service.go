@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/addamsson/agentfiles/internal/asset"
+	"github.com/addamsson/agentfiles/internal/config"
 	"github.com/addamsson/agentfiles/internal/fsutil"
 	"github.com/addamsson/agentfiles/internal/profile"
 	"github.com/addamsson/agentfiles/internal/project"
@@ -48,12 +49,11 @@ func (s *Service) CreateProfile(name, path string) (*registry.ProfileRef, error)
 		return nil, err
 	}
 	ref := registry.ProfileRef{
-		ID:   manifest.ID,
-		Name: manifest.Name,
-		Path: path,
-		// FIX: task#0004 move these values to global config
-		Source:       "local",
-		ManagedBy:    "self",
+		ID:           manifest.ID,
+		Name:         manifest.Name,
+		Path:         path,
+		Source:       config.DefaultProfileSource,
+		ManagedBy:    config.DefaultProfileManagedBy,
 		CreatedAt:    time.Now().UTC(),
 		LastOpenedAt: time.Now().UTC(),
 	}
@@ -72,12 +72,11 @@ func (s *Service) RegisterProfile(path string) (*registry.ProfileRef, error) {
 		return nil, err
 	}
 	ref := registry.ProfileRef{
-		ID:   loaded.Manifest.ID,
-		Name: loaded.Manifest.Name,
-		Path: loaded.Root,
-		// FIX: task#0004 move these values to global config
-		Source:       "local",
-		ManagedBy:    "self",
+		ID:           loaded.Manifest.ID,
+		Name:         loaded.Manifest.Name,
+		Path:         loaded.Root,
+		Source:       config.DefaultProfileSource,
+		ManagedBy:    config.DefaultProfileManagedBy,
 		CreatedAt:    loaded.Manifest.CreatedAt,
 		LastOpenedAt: time.Now().UTC(),
 	}

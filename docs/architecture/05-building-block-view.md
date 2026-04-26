@@ -5,6 +5,21 @@ main workflow.
 
 ## Top-Level Building Blocks
 
+### `config`
+
+Centralizes file/directory names and default profile metadata shared by more
+than one domain package. Has no internal dependencies and sits at the bottom
+of the import graph; every other domain package reads its constants from
+here so a single edit changes behavior everywhere.
+
+### `surfaces`
+
+Owns the managed-surface root list and the `IsAllowed(target)` matcher that
+gates writes into a target repository. Render consults it to refuse
+projection targets outside the fence; sync iterates `Roots()` to find
+delete candidates. Co-locates the data and the rule so both halves of the
+safety fence stay in one package.
+
 ### `registry`
 
 Loads and saves `~/.agentprofiles.json`, resolves profiles, and tracks metadata

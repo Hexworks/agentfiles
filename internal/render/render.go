@@ -12,9 +12,11 @@ import (
 	"strings"
 
 	"github.com/addamsson/agentfiles/internal/asset"
+	"github.com/addamsson/agentfiles/internal/config"
 	"github.com/addamsson/agentfiles/internal/fsutil"
 	"github.com/addamsson/agentfiles/internal/profile"
 	"github.com/addamsson/agentfiles/internal/project"
+	"github.com/addamsson/agentfiles/internal/surfaces"
 )
 
 // RenderedFile is the final unit produced by the render pipeline: one target
@@ -32,18 +34,6 @@ type RenderedFile struct {
 // the repo on disk.
 type ProjectPlan struct {
 	Files []RenderedFile
-}
-
-// allowedPrefixes is the coarse-grained safety fence for rendering. Assets may
-// only target paths that are recognized as managed LLM-tooling surfaces.
-// FIX: extract this to config @see task#0004
-var allowedPrefixes = []string{
-	"AGENTS.md",
-	".claude/",
-	".cursor/",
-	".codex/",
-	".opencode/",
-	".mcp.json",
 }
 
 // Build resolves a project's selected assets into the concrete files that
@@ -117,11 +107,12 @@ func addAssetOutputs(files map[string]RenderedFile, a *asset.Asset, enabledAgent
 		if !slices.Contains(enabledAgents, "codex") {
 			return nil
 		}
-		body, err := os.ReadFile(filepath.Join(a.Dir, "AGENTS.md"))
+		body, err := os.ReadFile(filepath.Join(a.Dir, config.AgentsDocStarterFileName))
 		if err != nil {
 			return err
 		}
-		files["AGENTS.md"] = RenderedFile{Path: "AGENTS.md", Body: body, Mode: 0o644, Source: a.ID}
+		target := config.AgentsDocStarterFileName
+		files[target] = RenderedFile{Path: target, Body: body, Mode: 0o644, Source: a.ID}
 		return nil
 	case asset.TypeSettings:
 		for _, mapping := range []struct {
@@ -156,7 +147,7 @@ func addAssetOutputs(files map[string]RenderedFile, a *asset.Asset, enabledAgent
 			if !asset.SupportsAgent(a, projection.Agent) {
 				continue
 			}
-			if !isAllowedTarget(projection.Target) {
+			if !surfaces.IsAllowed(projection.Target) {
 				return fmt.Errorf("target outside managed surfaces: %s", projection.Target)
 			}
 			source := filepath.Join(a.Dir, projection.Source)
@@ -199,7 +190,7 @@ func addAssetOutputs(files map[string]RenderedFile, a *asset.Asset, enabledAgent
 // addSkillOutputs expands a single skill asset into each enabled agent's
 // expected directory or file structure.
 func addSkillOutputs(files map[string]RenderedFile, a *asset.Asset, enabledAgents []string) error {
-	skillFile := filepath.Join(a.Dir, "SKILL.md")
+	skillFile := filepath.Join(a.Dir, config.SkillStarterFileName)
 	body, err := os.ReadFile(skillFile)
 	if err != nil {
 		return err
@@ -249,15 +240,4 @@ func addSkillOutputs(files map[string]RenderedFile, a *asset.Asset, enabledAgent
 		}
 	}
 	return nil
-}
-
-// isAllowedTarget enforces the managed-surfaces rule at render time.
-func isAllowedTarget(target string) bool {
-	target = filepath.ToSlash(target)
-	for _, prefix := range allowedPrefixes {
-		if target == prefix || strings.HasPrefix(target, prefix) {
-			return true
-		}
-	}
-	return false
 }

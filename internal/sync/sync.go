@@ -11,15 +11,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/addamsson/agentfiles/internal/config"
 	"github.com/addamsson/agentfiles/internal/fsutil"
 	"github.com/addamsson/agentfiles/internal/profile"
 	"github.com/addamsson/agentfiles/internal/project"
 	"github.com/addamsson/agentfiles/internal/render"
+	"github.com/addamsson/agentfiles/internal/surfaces"
 )
-
-// StatePath is the repo-relative location of the managed-state snapshot
-// written after each successful apply.
-const StatePath = ".agentfiles/state.json"
 
 // GeneratorVersion is stamped into the managed state so future format changes
 // can be detected and migrated.
@@ -160,12 +158,12 @@ func Apply(preview *Preview, deleteCandidates bool) error {
 	for _, file := range preview.Files {
 		state.ManagedFiles[file.Path] = fsutil.HashBytes(file.Body)
 	}
-	return fsutil.WriteJSON(filepath.Join(preview.ProjectPath, StatePath), state)
+	return fsutil.WriteJSON(filepath.Join(preview.ProjectPath, config.StateDirName, config.StateFileName), state)
 }
 
 // loadState reads the previous managed snapshot from the target repository.
 func loadState(projectPath string) (*ManagedState, error) {
-	path := filepath.Join(projectPath, StatePath)
+	path := filepath.Join(projectPath, config.StateDirName, config.StateFileName)
 	if !fsutil.Exists(path) {
 		return nil, os.ErrNotExist
 	}
@@ -190,8 +188,9 @@ func detectDeleteCandidates(projectPath string, desired map[string]string, state
 			}
 		}
 	}
-	// FIX: task#0004
-	for _, root := range []string{"AGENTS.md", ".claude", ".cursor", ".codex", ".opencode", ".mcp.json"} {
+	// .agentfiles is intentionally outside surfaces.Roots(), so the walk
+	// below never enters the managed-state directory; no skip check needed.
+	for _, root := range surfaces.Roots() {
 		abs := filepath.Join(projectPath, root)
 		if !fsutil.Exists(abs) {
 			continue
@@ -202,7 +201,7 @@ func detectDeleteCandidates(projectPath string, desired map[string]string, state
 		}
 		if !info.IsDir() {
 			rel := fsutil.ToRelative(projectPath, abs)
-			if desired[rel] == "" && rel != StatePath {
+			if desired[rel] == "" {
 				candidates[rel] = true
 			}
 			continue
@@ -215,9 +214,6 @@ func detectDeleteCandidates(projectPath string, desired map[string]string, state
 				return nil
 			}
 			rel := fsutil.ToRelative(projectPath, path)
-			if rel == StatePath {
-				return nil
-			}
 			if desired[rel] == "" {
 				candidates[rel] = true
 			}

@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/addamsson/agentfiles/internal/config"
 	"github.com/addamsson/agentfiles/internal/fsutil"
 )
 
@@ -37,6 +38,20 @@ const (
 	// calls or lifecycle events.
 	TypeHook Type = "hook"
 )
+
+// AllTypes returns every supported asset type in the order callers should
+// iterate them (used by profile.Init to scaffold per-type subdirectories).
+// Adding a new Type constant requires extending this slice.
+func AllTypes() []Type {
+	return []Type{
+		TypeSkill,
+		TypeAgentsDoc,
+		TypeSettings,
+		TypeMCP,
+		TypeRule,
+		TypeHook,
+	}
+}
 
 // Projection describes a generic source-to-target mapping for an asset file.
 // It is mainly used by the generic asset types whose behavior is not hard-coded
@@ -89,7 +104,7 @@ func (m Manifest) Validate() error {
 // Load reads and validates one asset directory.
 func Load(dir string) (*Asset, error) {
 	var manifest Manifest
-	if err := fsutil.ReadJSON(filepath.Join(dir, "asset.json"), &manifest); err != nil {
+	if err := fsutil.ReadJSON(filepath.Join(dir, config.AssetManifestFileName), &manifest); err != nil {
 		return nil, err
 	}
 	if err := manifest.Validate(); err != nil {
@@ -100,39 +115,37 @@ func Load(dir string) (*Asset, error) {
 
 // Init scaffolds a new asset directory with a starter file layout that matches
 // the chosen type.
-// FIX:: extract hard-coded values to config @see task#0004
 func Init(root string, manifest Manifest) (string, error) {
 	if err := manifest.Validate(); err != nil {
 		return "", err
 	}
-	dir := filepath.Join(root, "assets", string(manifest.Type), manifest.ID)
+	dir := filepath.Join(root, config.AssetsDirName, string(manifest.Type), manifest.ID)
 	if err := fsutil.EnsureDir(dir); err != nil {
 		return "", err
 	}
-	if err := fsutil.WriteJSON(filepath.Join(dir, "asset.json"), manifest); err != nil {
+	if err := fsutil.WriteJSON(filepath.Join(dir, config.AssetManifestFileName), manifest); err != nil {
 		return "", err
 	}
 
 	switch manifest.Type {
 	case TypeSkill:
 		body := []byte("---\nname: " + manifest.Name + "\ndescription: " + manifest.Description + "\n---\n\nDescribe the skill here.\n")
-		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), body, 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, config.SkillStarterFileName), body, 0o644); err != nil {
 			return "", err
 		}
 	case TypeAgentsDoc:
-		if err := os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("# "+manifest.Name+"\n"), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, config.AgentsDocStarterFileName), []byte("# "+manifest.Name+"\n"), 0o644); err != nil {
 			return "", err
 		}
 	case TypeSettings:
-		if err := os.WriteFile(filepath.Join(dir, "codex.toml"), []byte("# codex settings\n"), 0o644); err != nil {
-			return "", err
-		}
-	// FIX: we don't want a default case, this should be an error instead
-	default:
-		if err := os.WriteFile(filepath.Join(dir, ".keep"), []byte{}, 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, config.SettingsStarterFileName), []byte("# codex settings\n"), 0o644); err != nil {
 			return "", err
 		}
 	}
+	// TypeMCP, TypeRule, TypeHook intentionally produce no starter file —
+	// their content is user-authored and the directory is left ready for it.
+	// Manifest.Validate above rejects unknown types, so no default branch is
+	// needed.
 
 	return dir, nil
 }
@@ -159,8 +172,7 @@ func RelativeFiles(root string) ([]string, error) {
 			return nil
 		}
 		rel := fsutil.ToRelative(root, path)
-		// FIX: extract hard-coded "asset.json" to config @see task#0004
-		if rel == "asset.json" || strings.HasPrefix(rel, ".") {
+		if rel == config.AssetManifestFileName || strings.HasPrefix(rel, ".") {
 			return nil
 		}
 		files = append(files, rel)

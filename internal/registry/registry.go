@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/addamsson/agentfiles/internal/config"
 	"github.com/addamsson/agentfiles/internal/fsutil"
 )
 
@@ -45,8 +46,7 @@ type Store struct {
 // DefaultPath returns the conventional location of the global registry.
 func DefaultPath() string {
 	home, _ := os.UserHomeDir()
-	// FIX: move to config @see task#0004
-	return filepath.Join(home, ".agentprofiles.json")
+	return filepath.Join(home, config.RegistryFileName)
 }
 
 // NewStore creates a registry store. An empty path means "use the default
