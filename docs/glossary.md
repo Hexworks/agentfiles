@@ -66,12 +66,47 @@ asset.
 ## Projection
 
 A mapping from an asset source file or directory to an agent-specific target
-path.
+path. Used by generic asset types (`mcp`, `rule`, `hook`) whose render shape is
+not hard-coded; `skill`, `agents_doc`, and `settings` derive targets from
+per-agent conventions instead. Each projection names the agent it applies to,
+the source path inside the asset directory, and the target path inside the
+project — which must lie within the managed surfaces. When the source is a
+directory, every file under it is projected, preserving the relative layout.
+
+Example (hook asset):
+
+```json
+{
+  "projections": [
+    {
+      "agent": "claude-code",
+      "source": "pre-tool.sh",
+      "target": ".claude/hooks/pre-tool.sh"
+    }
+  ]
+}
+```
 
 ## Exclusive Group
 
 An asset manifest key that marks assets as mutually exclusive so only one chosen
-asset from that group may render for a project.
+asset from that group may render for a project. The render layer refuses to
+produce a plan when two selected assets share the same non-empty group, which
+forces the conflict to be resolved at selection time rather than silently
+overwriting files.
+
+Example: two `agents_doc` assets that both populate `AGENTS.md` declare the
+same group so a project cannot select both:
+
+```json
+// codex-default/asset.json
+{ "id": "codex-default", "type": "agents_doc",
+  "exclusive_group": "main-agents-doc" }
+
+// codex-strict/asset.json
+{ "id": "codex-strict", "type": "agents_doc",
+  "exclusive_group": "main-agents-doc" }
+```
 
 ## Render Plan
 

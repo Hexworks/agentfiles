@@ -99,6 +99,12 @@ func resolveAssets(p *profile.Profile, proj *project.Manifest) ([]*asset.Asset, 
 //   - settings: uses well-known config file names per agent
 //
 // Everything else uses generic projections.
+// TODO: Refactor this function **and `addSkillOutputs`**  so that it doesn't contain asset-specific renderling logic. For each
+// Asset - agent combination we should use a rendering strategy instead. This means that there should be
+// a rendering strategy for `TypeSkill` + `Claude` that renders a skill for claude specifically.
+// These strategies should be imported from a static lookup so we could just do something along the lines
+// of `lookup[Asset+Agent].render()` instead of having this huge ugly switch.
+// These strategies should go to their own package
 func addAssetOutputs(files map[string]RenderedFile, a *asset.Asset, enabledAgents []string) error {
 	switch a.Type {
 	case asset.TypeSkill:

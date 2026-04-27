@@ -70,14 +70,49 @@ type Projection struct {
 //   - whether it conflicts with other assets
 //   - how its files should be projected into a repo
 type Manifest struct {
-	ID               string       `json:"id"`
-	Name             string       `json:"name"`
-	Type             Type         `json:"type"`
-	Description      string       `json:"description,omitempty"`
-	Tags             []string     `json:"tags,omitempty"`
-	CompatibleAgents []string     `json:"compatible_agents,omitempty"`
-	ExclusiveGroup   string       `json:"exclusive_group,omitempty"`
-	Projections      []Projection `json:"projections,omitempty"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Type        Type   `json:"type"`
+	Description string `json:"description,omitempty"`
+	// Tags are free-form labels used by the TUI to group and filter assets
+	// when the user picks which ones to attach to a project. They carry no
+	// render semantics: the same set of files is produced regardless of tags.
+	//
+	// Example: []string{"review", "security"} on a rule asset lets the user
+	// narrow the asset picker to security-related rules.
+	Tags []string `json:"tags,omitempty"`
+	// CompatibleAgents restricts which enabled agents the asset will render
+	// for. Empty means "every enabled agent" (see SupportsAgent). Names must
+	// match values in project.Manifest.EnabledAgents (codex, claude-code,
+	// cursor, opencode).
+	//
+	// FIX: This should be a concrete type (eg: CompatibleAgent), that enumerates all the possible
+	// options instead of a simple string
+	CompatibleAgents []string `json:"compatible_agents,omitempty"`
+	// ExclusiveGroup marks the asset as a member of a mutually-exclusive set:
+	// at most one selected asset per group may render for a given project.
+	//
+	// render.Build refuses to produce a plan when two selected assets share
+	// the same non-empty group.
+	//
+	// Example: two agents_doc assets — "codex-default" and "codex-strict" —
+	// both set ExclusiveGroup: "main-agents-doc" so a project cannot
+	// accidentally select both.
+	ExclusiveGroup string `json:"exclusive_group,omitempty"`
+	// Projections is the generic source-to-target mapping used by asset types
+	// without hard-coded render rules (mcp, rule, hook). For skill,
+	// agents_doc, and settings, render derives targets from agent
+	// conventions and ignores this field.
+	//
+	// Each Projection.Target must stay inside the managed surfaces fence
+	// (see internal/surfaces); render rejects the plan otherwise. If Source
+	// points to a directory, render walks it and projects every file under
+	// Target preserving relative paths.
+	//
+	// Example for a hook asset:
+	//   [{Agent: "claude-code", Source: "pre-tool.sh",
+	//     Target: ".claude/hooks/pre-tool.sh"}]
+	Projections []Projection `json:"projections,omitempty"`
 }
 
 // Asset combines the manifest with its resolved filesystem location.
@@ -128,6 +163,9 @@ func Init(root string, manifest Manifest) (string, error) {
 	}
 
 	switch manifest.Type {
+	// TODO: This is only temporary. We need to create a new module that contains strategies for each Type plus the accompanying
+	// template. We need to figure out how we can include template files into this project. Check `../../../agentfiles-old/` that
+	// has an example solution for this. Than we just load the template for the type here, and render it into the folder.
 	case TypeSkill:
 		body := []byte("---\nname: " + manifest.Name + "\ndescription: " + manifest.Description + "\n---\n\nDescribe the skill here.\n")
 		if err := os.WriteFile(filepath.Join(dir, config.SkillStarterFileName), body, 0o644); err != nil {

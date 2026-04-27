@@ -35,8 +35,8 @@ func (m *Manifest) Validate() error {
 	return nil
 }
 
-// Normalize canonicToAbsoluteath and ordering so the manifest stays stable in
-// storage and comparisons.
+// Normalize transforms all paths to absolute and fixes ordering so
+// the manifest stays stable in storage and comparisons.
 func (m *Manifest) Normalize() error {
 	abs, err := fsutil.ToAbsolute(m.Path)
 	if err != nil {

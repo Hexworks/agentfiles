@@ -135,6 +135,7 @@ func scanProjects(loaded *Profile) error {
 		return err
 	}
 	for _, entry := range entries {
+		// WARN: Not too readable, extract this to an expressive function
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
 			continue
 		}
@@ -158,8 +159,8 @@ func scanProjects(loaded *Profile) error {
 	return nil
 }
 
-// ProjectList returns projects sorted by display name, which keeps CLI/TUI
-// presentation stable.
+// ProjectList returns projects sorted by display name, which keeps the
+// TUI presentation stable.
 func (l *Profile) ProjectList() []*project.Manifest {
 	var list []*project.Manifest
 	for _, p := range l.Projects {

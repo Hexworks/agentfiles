@@ -18,7 +18,7 @@ import (
 // Version is the current registry file schema version written by Save.
 const Version = 1
 
-// ProfileRef is the lightweight, global metadata stored in ~/.llmprofiles.json.
+// ProfileRef is the lightweight, global metadata stored in ~/.agentfiles.json.
 //
 // It intentionally does not contain the whole profile model; it only provides
 // enough information to discover and resolve a profile folder quickly.
