@@ -17,3 +17,4 @@ Use these files when you want to understand how to model the domain, how to auth
 - [SOLID](./solid.md)
 - [Sync And Safety](./sync_and_safety.md)
 - [Testing](./testing.md)
+- [TUI](./tui.md)
