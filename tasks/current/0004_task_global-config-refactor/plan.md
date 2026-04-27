@@ -2,8 +2,8 @@
 
 Cross-links:
 
-- Task: [../../tasks/current/0004_task_global-config-refactor.md](../../tasks/current/0004_task_global-config-refactor.md)
-- Architecture (updated): [../architecture/05-building-block-view.md](../architecture/05-building-block-view.md)
+- Task: [./description.md](./description.md)
+- Architecture (updated): [../../../docs/architecture/05-building-block-view.md](../../../docs/architecture/05-building-block-view.md)
 
 ## Context
 
@@ -97,7 +97,7 @@ Notes:
 9. Update `CLAUDE.md` — drop task#0004 from "Open refactor markers".
 10. Run `make fmt && make lint && make test`.
 11. Set task status `in-review`.
-12. Write `docs/changelog/0004_global-config-refactor.md`.
+12. Write `docs/changelog/{YYYY-MM-DD}_0004-global-config-refactor.md`.
 
 ## Verification
 
@@ -117,4 +117,4 @@ Notes:
 - Architecture: arc42 §5 building-block view updated.
 - ADR: none. Code-organization refactor, not a durable architectural decision.
 - Guidelines: no change.
-- Changelog: `docs/changelog/0004_global-config-refactor.md`.
+- Changelog: `docs/changelog/{YYYY-MM-DD}_0004-global-config-refactor.md`.

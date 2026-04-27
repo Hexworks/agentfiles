@@ -1,11 +1,22 @@
 ---
 name: implement-task
-description: Use when the user invokes /implement-task <task-number> (e.g. /implement-task 0001) to plan and implement a task from the project's tasks/ folder. Locates the task file, validates frontmatter, asks clarifying questions, writes a plan to docs/plans/, awaits approval, implements the work, then writes a changelog entry. Project-specific to repos that follow the tasks/{backlog,current,done}/ convention.
+description: Use when the user invokes /implement-task <task-number> (e.g. /implement-task 0001) to plan and implement a task from the project's tasks/ folder. Locates the task directory, validates frontmatter, asks clarifying questions, writes a plan inside the task directory, awaits approval, implements the work, then writes a changelog entry. Project-specific to repos that follow the tasks/{backlog,current,done}/ convention with directory-per-task layout.
 ---
 
 # Implement Task
 
-End-to-end workflow that takes a task id (e.g. `0001`), locates it in `tasks/`, validates it, plans the work in `docs/plans/`, gets human approval, implements it, and records a changelog in `docs/changelog/`.
+End-to-end workflow that takes a task id (e.g. `0001`), locates it in `tasks/`, validates it, plans the work inside the task directory, gets human approval, implements it, and records a changelog in `docs/changelog/`.
+
+## Task Layout
+
+Each task is a directory:
+
+```
+tasks/{backlog|current|done}/{task-id}_{task-type}_{short-description}/
+    description.md   # task body + frontmatter
+    plan.md          # optional, written by this skill
+    review.md        # optional, written by review-task skill
+```
 
 ## Input
 
@@ -13,7 +24,7 @@ Single argument: the **task number** as a 4-digit string (e.g. `0001`, `0042`).
 
 ## Step 1 — Locate Task
 
-Search `tasks/backlog/`, `tasks/current/`, `tasks/done/` for files matching `{task-number}_*.md`.
+Search `tasks/backlog/`, `tasks/current/`, `tasks/done/` for **directories** matching `{task-number}_*`.
 
 | Found in         | Action                                    |
 | ---------------- | ----------------------------------------- |
@@ -22,11 +33,13 @@ Search `tasks/backlog/`, `tasks/current/`, `tasks/done/` for files matching `{ta
 | (none)           | Tell user task not found. **Stop.**       |
 | `tasks/current/` | Continue to Step 2.                       |
 
-Extract `{task-type}` and `{short-description}` from the filename: `{task-number}_{task-type}_{short-description}.md`.
+Extract `{task-type}` and `{short-description}` from the directory name: `{task-number}_{task-type}_{short-description}`.
+
+The task body lives in `description.md` inside that directory.
 
 ## Step 2 — Validate Frontmatter
 
-Read the task file. It must start with frontmatter:
+Read `description.md` inside the task directory. It must start with frontmatter:
 
 ```yaml
 ---
@@ -43,8 +56,8 @@ Validate each field:
 
 | Field    | Rule                                                                            | On failure         |
 | -------- | ------------------------------------------------------------------------------- | ------------------ |
-| `id`     | Equals `{task-number}` from filename                                            | Signal error, stop |
-| `type`   | One of `feature`, `bug`, `task`, `spike` AND equals `{task-type}` from filename | Signal error, stop |
+| `id`     | Equals `{task-number}` from directory name                                      | Signal error, stop |
+| `type`   | One of `feature`, `bug`, `task`, `spike` AND equals `{task-type}` from dir name | Signal error, stop |
 | `status` | One of `pending`, `in-progress`, `blocked`, `in-review`, `done`                 | Signal error, stop |
 | `topics` | Non-empty                                                                       | Signal error, stop |
 
@@ -62,7 +75,7 @@ For each entry in `topics`, read `docs/guidelines/{topic}.md`. **Always follow**
 
 Run `git status --porcelain`. If output non-empty → signal error, ask user to clean up, stop.
 
-Create branch from filename: `{task-type}/{short-description}`. Example: `0004_task_create-this-and-that.md` → branch `task/create-this-and-that`.
+Create branch from directory name: `{task-type}/{short-description}`. Example: `0004_task_create-this-and-that` → branch `task/create-this-and-that`.
 
 ```bash
 git checkout -b {task-type}/{short-description}
@@ -88,9 +101,9 @@ Rules:
 - Only ask what you **need** to implement the task.
 - Don't ask what the task or docs already answer.
 
-## Step 8 — Record Q&A in Task File
+## Step 8 — Record Q&A in description.md
 
-Append every question + answer pair to the task file under a `## Clarification` section (create if absent):
+Append every question + answer pair to `description.md` under a `## Clarification` section (create if absent):
 
 ```md
 ## Clarification
@@ -106,13 +119,13 @@ Append every question + answer pair to the task file under a `## Clarification` 
 
 ## Step 9 — Set Status to in-progress
 
-Edit task file frontmatter: `status: in-progress`.
+Edit `description.md` frontmatter: `status: in-progress`.
 
 ## Step 10 — Write the Plan
 
-Plan file path: `docs/plans/{task-id}_{short-description}.md`.
+Plan file path: `tasks/current/{task-id}_{task-type}_{short-description}/plan.md`.
 
-**Important**: if the plan file already exists ask the user to review it.
+**Important**: if `plan.md` already exists ask the user to review it.
 
 1. If the user approves continue with the next step and skip to step 12 (Implementation)
 
@@ -120,20 +133,20 @@ Use subagents wherever applicable (especially `type: spike` or `topics: research
 
 The plan file must:
 
-- Cross-link to the task file (relative link).
+- Cross-link to `description.md` with a relative link (`./description.md`).
 - Cross-link to the relevant docs file (for example if an ADR was implemented in a task)
 - Include a step-by-step execution plan.
 - Note any ADRs that will be created/updated.
 - Note any documentation that will be updated.
 - Note any new/updated files in `docs/guidelines/`.
 
-In the task file, add a link to the plan file (e.g. under a `## Plan` section).
+In `description.md`, add a link to `plan.md` (e.g. under a `## Plan` section with `[plan.md](./plan.md)`).
 
 ## Step 11 — Request Approval, Iterate
 
 Present the plan and ask the user to review. Loop:
 
-1. User asks for changes → update plan file → ask for confirmation.
+1. User asks for changes → update `plan.md` → ask for confirmation.
 2. Repeat until user **approves**.
 
 Do not implement until explicit approval.
@@ -150,64 +163,30 @@ While implementing:
 
 ## Step 13 — Set Status to in-review
 
-Edit task file frontmatter: `status: in-review`.
+Edit `description.md` frontmatter: `status: in-review`.
 
 ## Step 14 — Write Changelog
 
-Path: `docs/changelog/{task-id}_{short-description}.md`.
+Path: `docs/changelog/{YYYY-MM-DD}_{task-id}-{short-description}.md`.
 
-Format:
+`{YYYY-MM-DD}` is today's date (UTC). Example: `docs/changelog/2026-04-27_0004-global-config-refactor.md`.
 
-````md
-# {task-id} changes
-
-{Short description of changes — a few paragraphs.}
-
-## Decisions
-
-- {Decision} — **Why:** {rationale}
-
-## Assumptions
-
-- {Assumption made without asking the user} — **Why:** {rationale}
-
-## Other Notes
-
-{Docs changed, patterns observed, bugs found, etc.}
-
-List of changes using the following structure for each change:
-
-## {change-description}
-
-{Short description of change a few paragraphs max}
-
-```{lang}
-// before
-{old code}
-```
-
-```{lang}
-// after — {inline doc explaining change}
-{new code}
-```
-
-...
-````
+Use the template at [`./changelog-template.md`](./changelog-template.md). Read it, fill in placeholders, write to the path above.
 
 ## Step 15 — Conclusion
 
 Summarize work done. Provide links to:
 
-- The task file
-- The plan file (`docs/plans/...`)
-- The changelog file (`docs/changelog/...`)
+- The task directory (`tasks/current/{task-id}_{task-type}_{short-description}/`)
+- `description.md` and `plan.md` inside it
+- The changelog file (`docs/changelog/{YYYY-MM-DD}_{task-id}-{short-description}.md`)
 - Any new/updated ADRs, guidelines, or architecture docs.
 
 Tell user the task is complete.
 
 ## Notes on Task Body Conventions
 
-Tasks may contain GitHub-style alerts. Treat them as guidance:
+`description.md` may contain GitHub-style alerts. Treat them as guidance:
 
 | Block            | Treat as                                         |
 | ---------------- | ------------------------------------------------ |

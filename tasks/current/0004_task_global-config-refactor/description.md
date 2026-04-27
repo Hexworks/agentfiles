@@ -30,4 +30,4 @@ var SomethingConfig = []string{
 
 ## Plan
 
-[plan_0004_global-config-refactor.md](../../docs/plans/plan_0004_global-config-refactor.md)
+[plan.md](./plan.md)

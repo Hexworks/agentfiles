@@ -1,11 +1,11 @@
 ---
 name: review-task
-description: Use when the user invokes /review-task <task-number> (e.g. /review-task 0001) to review the implementation of a task that is currently in `in-review` state. Reads the task, plan, changelog, and guidelines, dispatches parallel subagents for security/clean-code/clean-architecture/SOLID/DDD/testing/Go reviews, writes a consolidated review file to `tmp/`, awaits user choice from solution checklists, applies the chosen fixes, runs the build/test/lint quality gate, and commits the changes.
+description: Use when the user invokes /review-task <task-number> (e.g. /review-task 0001) to review the implementation of a task that is currently in `in-review` state. Reads the task directory (description, plan, review notes), the changelog, and guidelines, dispatches parallel subagents for security/clean-code/clean-architecture/SOLID/DDD/testing/Go reviews, writes a consolidated review file inside the task directory, awaits user choice from solution checklists, applies the chosen fixes, runs the build/test/lint quality gate, and commits the changes.
 ---
 
 # Review Task
 
-End-to-end workflow that reviews a task implementation. Takes a task id (e.g. `0001`), validates it is in `in-review`, gathers context (task, plan, changelog, guidelines, ADRs, architecture, code), dispatches parallel review subagents, consolidates findings into a review file in `tmp/`, lets the user pick fixes, applies them, gates on build/test/lint, and commits.
+End-to-end workflow that reviews a task implementation. Takes a task id (e.g. `0001`), validates it is in `in-review`, gathers context (task directory, changelog, guidelines, ADRs, architecture, code), dispatches parallel review subagents, consolidates findings into `review.md` inside the task directory, lets the user pick fixes, applies them, gates on build/test/lint, and commits.
 
 > [!IMPORTANT]
 > This skill **must be run with a clean context**. Do not chain it after other long-running work in the same session.
@@ -13,13 +13,24 @@ End-to-end workflow that reviews a task implementation. Takes a task id (e.g. `0
 > [!IMPORTANT]
 > Follow the steps **in order**. Do not skip a step.
 
+## Task Layout
+
+Each task is a directory:
+
+```
+tasks/{backlog|current|done}/{task-id}_{task-type}_{short-description}/
+    description.md   # task body + frontmatter
+    plan.md          # written by implement-task
+    review.md        # written by this skill (Step 9)
+```
+
 ## Input
 
 Single argument: the **task number** as a 4-digit string (e.g. `0001`, `0042`).
 
 ## Step 1 — Locate Task
 
-Search `tasks/backlog/`, `tasks/current/`, `tasks/done/` for files matching `{task-number}_*.md`.
+Search `tasks/backlog/`, `tasks/current/`, `tasks/done/` for **directories** matching `{task-number}_*`.
 
 | Found in         | Action                                    |
 | ---------------- | ----------------------------------------- |
@@ -28,11 +39,11 @@ Search `tasks/backlog/`, `tasks/current/`, `tasks/done/` for files matching `{ta
 | (none)           | Tell user task not found. **Stop.**       |
 | `tasks/current/` | Continue to Step 2.                       |
 
-Extract `{task-type}` and `{short-description}` from the filename: `{task-number}_{task-type}_{short-description}.md`.
+Extract `{task-type}` and `{short-description}` from the directory name: `{task-number}_{task-type}_{short-description}`.
 
 ## Step 2 — Validate Status
 
-Read the task file frontmatter. It must look like:
+Read `description.md` inside the task directory. Frontmatter must look like:
 
 ```yaml
 ---
@@ -56,10 +67,10 @@ If `status` is anything other than `in-review`, signal the error explicitly: e.g
 
 Read in this order; do not start reviewing until all are read:
 
-1. The task file itself (full body, including any `## Clarification` Q&A).
-2. Every reference inside the task body (links to ADRs, architecture views, design notes, etc.).
-3. The plan file at `docs/plans/{task-id}_{short-description}.md` if present.
-4. The changelog at `docs/changelog/{task-id}_{short-description}.md` if present.
+1. `description.md` (full body, including any `## Clarification` Q&A).
+2. Every reference inside the description body (links to ADRs, architecture views, design notes, etc.).
+3. `plan.md` inside the task directory if present.
+4. The changelog at `docs/changelog/{YYYY-MM-DD}_{task-id}-{short-description}.md` if present. Find it by globbing `docs/changelog/*_{task-id}-{short-description}.md`.
 
 If the plan or changelog is missing, note that as a finding for the review (the implement-task workflow expects both).
 
@@ -98,7 +109,7 @@ git diff --stat
 For each touched file:
 
 - Read it in full (not just the hunks) so you understand surrounding context.
-- Map every change back to an item in the task / plan / changelog. Anything in the diff that is **not** justified by the task is itself a finding.
+- Map every change back to an item in description / plan / changelog. Anything in the diff that is **not** justified by the task is itself a finding.
 - Note coding patterns, naming conventions, and existing abstractions in the package; deviations are findings.
 
 ## Step 7 — Dispatch Parallel Review Subagents
@@ -115,7 +126,7 @@ Spawn **one subagent per topic in parallel** (single message, multiple Agent too
 
 Each subagent prompt **must** include:
 
-- The task id, the task file path, and the changelog path.
+- The task id, the task directory path, and the changelog path.
 - The exact list of changed files (`git diff --name-only`).
 - The relevant guideline file path (e.g. `docs/guidelines/solid.md` for the SOLID agent).
 - A request for findings in the exact output format specified in Step 9 (one `## {issue-short-description}` block per issue, with the warning callout, description, code example, and solution checklist).
@@ -133,32 +144,9 @@ Merge the subagents' findings:
 
 ## Step 9 — Produce the Review File
 
-Path: `tmp/review_{task-id}_{short-description}.md`. Create the `tmp/` folder if missing (it is gitignored).
+Path: `tasks/current/{task-id}_{task-type}_{short-description}/review.md`.
 
-Format **exactly**:
-
-````md
-# {task-short-description} review
-
-Short summary of the review, what you found, what are the main issues, followed by the list of issues.
-
-## {issue-short-description}
-
-> [!WARNING]
-> {links-to-the-guidelines-that-were-broken}
-
-Description of the issue, a few paragraphs.
-
-```{lang}
-// code example of the issue with inline comments explaining the problem
-```
-
-Suggestions for solving the issue in a checklist format such as (must also include directions for the user to choose one):
-
-- [ ] solution 1
-- [ ] ...
-- [ ] solution n
-````
+Use the template at [`./review-template.md`](./review-template.md). Read it, fill in placeholders, write to the path above.
 
 Rules:
 
@@ -168,13 +156,13 @@ Rules:
 - Always include at least two solution checkboxes when sensible alternatives exist; otherwise a single checkbox is fine.
 - Do **not** apply any fix yet.
 
-After writing, **tell the user**: _"Review written to `tmp/review_{task-id}_{short-description}.md`. Read it and tick the checkbox for the solution you want me to apply, then come back."_
+After writing, **tell the user**: _"Review written to `tasks/current/{task-id}_{task-type}_{short-description}/review.md`. Read it and tick the checkbox for the solution you want me to apply, then come back."_
 
 ## Step 10 — Wait for User Selection
 
 Do nothing until the user signals they have made their choices.
 
-When they return, re-read the review file and verify: **every** `## {issue}` block has **exactly one** `[x]` checkbox in its solution checklist.
+When they return, re-read `review.md` and verify: **every** `## {issue}` block has **exactly one** `[x]` checkbox in its solution checklist.
 
 | Condition                          | Action                                                                |
 | ---------------------------------- | --------------------------------------------------------------------- |
