@@ -180,7 +180,7 @@ clean:
 #   "run: build" means the "build" target is a dependency — make will run
 #   "build" first, then run the binary. This is called a "prerequisite".
 #
-#   $(ARGS) is an empty variable by default. You pass arguments via:
+#   $(ARGS) is lintan empty variable by default. You pass arguments via:
 #     make run ARGS="status --audit"
 #   which expands to:
 #     ./bin/af status --audit
@@ -192,3 +192,6 @@ clean:
 
 run: build
 	$(BUILD_DIR)/$(BINARY) $(ARGS)
+
+
+all: clean fmt lint test build
