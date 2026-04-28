@@ -4,7 +4,6 @@
 package profile
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -118,8 +117,7 @@ func scanAssets(loaded *Profile) error {
 			return err
 		}
 		if _, exists := loaded.Assets[a.ID]; exists {
-			// FIX: use error struct instead of strings @see task#0005
-			return fmt.Errorf("duplicate asset id: %s", a.ID)
+			return DuplicateAssetIDError{ID: a.ID}
 		}
 		loaded.Assets[a.ID] = a
 		return filepath.SkipDir
@@ -135,7 +133,7 @@ func scanProjects(loaded *Profile) error {
 		return err
 	}
 	for _, entry := range entries {
-		// WARN: Not too readable, extract this to an expressive function
+		// Task 0012 tracks extracting this filter into a named helper.
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
 			continue
 		}
@@ -151,8 +149,7 @@ func scanProjects(loaded *Profile) error {
 			return err
 		}
 		if _, exists := loaded.Projects[manifest.ID]; exists {
-			// FIX: use error struct instead of string @see task#0005
-			return fmt.Errorf("duplicate project id: %s", manifest.ID)
+			return DuplicateProjectIDError{ID: manifest.ID}
 		}
 		loaded.Projects[manifest.ID] = &manifest
 	}

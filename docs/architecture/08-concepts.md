@@ -31,3 +31,23 @@ silently overwriting without explanation.
 Recognized but currently undesired LLM files are surfaced as delete candidates.
 Deletion is explicit and opt-in rather than automatic.
 
+## Rendering Lives In The TUI
+
+Domain packages return data — `sync.Preview`, `doctor.Report`, `RenderedFile`,
+typed error structs. The TUI is the only layer that produces user-facing
+text. This keeps stable policy independent of presentation, and makes
+output styling (icons, colors, severity) testable in one place. See ADR
+0007.
+
+## Typed Errors With Accumulation
+
+Domain packages declare typed error structs (one per failure mode) that
+satisfy `errs.DomainError` (each implements `Error()` and
+`Severity() errs.Severity`). Accumulator-shape functions return
+`[]errs.DomainError` directly so the TUI can list every problem in one
+go; non-accumulator functions wrap the slice in `errs.Errors` and
+return a single `error`. The TUI dispatches on `err.Severity()` rather
+than enumerating concrete types, so a new typed error picks up
+icon + color automatically. The detailed convention lives in
+[`docs/guidelines/errors.md`](../guidelines/errors.md).
+

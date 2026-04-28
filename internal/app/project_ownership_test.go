@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"path/filepath"
 	"testing"
 )
@@ -17,10 +18,101 @@ func TestProjectPathCannotBeSharedAcrossProfiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	projectPath := filepath.Join(root, "repo")
-	if _, err := svc.AddProject("first", "Repo", projectPath, []string{"codex"}, nil); err != nil {
+	if _, addErrs := svc.AddProject("first", "Repo", projectPath, []string{"codex"}, nil); len(addErrs) > 0 {
+		t.Fatalf("first add: %v", addErrs)
+	}
+
+	_, addErrs := svc.AddProject("second", "Repo2", projectPath, []string{"codex"}, nil)
+
+	if len(addErrs) == 0 {
+		t.Fatal("expected ownership conflict")
+	}
+	var typed ProjectPathOwnedError
+	if !errors.As(addErrs[0], &typed) {
+		t.Fatalf("expected ProjectPathOwnedError, got %T: %v", addErrs[0], addErrs[0])
+	}
+	if typed.ProfileName != "First" || typed.ProjectName != "Repo" {
+		t.Fatalf("unexpected owner metadata: %+v", typed)
+	}
+}
+
+func TestProjectPathCannotBeSharedWithinSameProfile(t *testing.T) {
+	root := t.TempDir()
+	svc := New(filepath.Join(root, "registry.json"))
+	if _, err := svc.CreateProfile("Personal", filepath.Join(root, "profile")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.AddProject("second", "Repo2", projectPath, []string{"codex"}, nil); err == nil {
+	projectPath := filepath.Join(root, "repo")
+	if _, addErrs := svc.AddProject("personal", "First", projectPath, []string{"codex"}, nil); len(addErrs) > 0 {
+		t.Fatalf("first add: %v", addErrs)
+	}
+
+	_, addErrs := svc.AddProject("personal", "Second", projectPath, []string{"codex"}, nil)
+
+	if len(addErrs) == 0 {
 		t.Fatal("expected ownership conflict")
+	}
+	var typed ProjectPathOwnedError
+	if !errors.As(addErrs[0], &typed) {
+		t.Fatalf("expected ProjectPathOwnedError, got %T: %v", addErrs[0], addErrs[0])
+	}
+	if typed.ProfileName != "Personal" || typed.ProjectName != "First" {
+		t.Fatalf("unexpected owner metadata: %+v", typed)
+	}
+	if typed.Path != projectPath {
+		t.Fatalf("expected path %q, got %q", projectPath, typed.Path)
+	}
+}
+
+// TestEnsureProjectPathAvailable_AccumulatesAcrossMultipleProfiles
+// ensures that when the same path is owned by projects in two different
+// profiles, AddProject (called from a third profile) reports both
+// owners in a single error slice.
+func TestEnsureProjectPathAvailable_AccumulatesAcrossMultipleProfiles(t *testing.T) {
+	root := t.TempDir()
+	svc := New(filepath.Join(root, "registry.json"))
+	if _, err := svc.CreateProfile("First", filepath.Join(root, "first")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.CreateProfile("Second", filepath.Join(root, "second")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.CreateProfile("Third", filepath.Join(root, "third")); err != nil {
+		t.Fatal(err)
+	}
+	projectPath := filepath.Join(root, "repo")
+	if _, addErrs := svc.AddProject("first", "Owner1", projectPath, []string{"codex"}, nil); len(addErrs) > 0 {
+		t.Fatalf("first add: %v", addErrs)
+	}
+	if _, addErrs := svc.AddProject("second", "Owner2", projectPath, []string{"codex"}, nil); len(addErrs) == 0 {
+		t.Fatal("expected second add to fail because First already owns the path")
+	}
+
+	// Now manually create a project file in Second's profile so both
+	// First and Second own the path. (AddProject won't let us, by
+	// design, so we sidestep it for the test fixture only.)
+	mustCreateProjectFile(t, filepath.Join(root, "second", "projects", "owner2.json"),
+		`{"id":"owner2","name":"Owner2","path":"`+projectPath+`","enabled_agents":["codex"]}`)
+
+	_, addErrs := svc.AddProject("third", "Owner3", projectPath, []string{"codex"}, nil)
+	if len(addErrs) < 2 {
+		t.Fatalf("expected at least 2 conflicts, got %d: %+v", len(addErrs), addErrs)
+	}
+	owners := map[string]bool{}
+	for _, e := range addErrs {
+		var typed ProjectPathOwnedError
+		if errors.As(e, &typed) {
+			owners[typed.ProfileName] = true
+		}
+	}
+	if !owners["First"] || !owners["Second"] {
+		t.Fatalf("expected both profiles in conflict set, got %v", owners)
+	}
+}
+
+func mustCreateProjectFile(t *testing.T, path, body string) {
+	t.Helper()
+	if err := writeFileEnsureDir(path, body); err != nil {
+		t.Fatal(err)
 	}
 }

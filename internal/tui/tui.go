@@ -16,6 +16,11 @@ import (
 // one surfaces as "go back" in the menu stack.
 var errBack = errors.New("back")
 
+// errAlreadyReported is returned by Run* flows that have already printed a
+// styled error block via RenderErrors. reportAction recognizes it and only
+// pauses, without re-rendering the underlying error.
+var errAlreadyReported = errors.New("already reported")
+
 // runForm wraps huh.NewForm so every prompt in the TUI treats Esc as abort, not
 // just ctrl+c. Huh's default keymap only binds ctrl+c to Quit; users expect Esc
 // to back out of a menu, so we widen the binding here once for all callers.
@@ -66,7 +71,8 @@ func mainMenu(service *app.Service) error {
 	case "project":
 		return enterSubmenu(projectMenu(service))
 	case "doctor":
-		return reportAction(RunDoctor(service))
+		reportAction(RunDoctor(service))
+		return nil
 	case "quit":
 		return errBack
 	}
@@ -85,16 +91,19 @@ func enterSubmenu(err error) error {
 // reportAction renders the result of a command flow. Successful flows pause so
 // their stdout output stays on screen until the user dismisses it; errors are
 // printed and paused the same way; aborts simply return so the menu redraws
-// without an extra prompt.
-func reportAction(err error) error {
+// without an extra prompt. Error rendering is delegated to RenderError so
+// every typed domain error gets the same icon-plus-color treatment. The
+// returned value is always nil because the menu loop expects flow control
+// only via huh.ErrUserAborted / errBack.
+func reportAction(err error) {
 	if errors.Is(err, errBack) || errors.Is(err, huh.ErrUserAborted) {
-		return nil
+		return
 	}
-	if err != nil {
-		fmt.Printf("\nerror: %v\n", err)
+	if err != nil && !errors.Is(err, errAlreadyReported) {
+		fmt.Print("\n")
+		fmt.Print(RenderError(err))
 	}
 	pause()
-	return nil
 }
 
 // profileMenu lists the profile-level actions. A Back option is the explicit

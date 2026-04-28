@@ -5,7 +5,6 @@
 package asset
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -84,10 +83,7 @@ type Manifest struct {
 	// CompatibleAgents restricts which enabled agents the asset will render
 	// for. Empty means "every enabled agent" (see SupportsAgent). Names must
 	// match values in project.Manifest.EnabledAgents (codex, claude-code,
-	// cursor, opencode).
-	//
-	// FIX: This should be a concrete type (eg: CompatibleAgent), that enumerates all the possible
-	// options instead of a simple string
+	// cursor, opencode). See task 0009 for typed-value follow-up.
 	CompatibleAgents []string `json:"compatible_agents,omitempty"`
 	// ExclusiveGroup marks the asset as a member of a mutually-exclusive set:
 	// at most one selected asset per group may render for a given project.
@@ -125,13 +121,12 @@ type Asset struct {
 // inspect agent-specific projection semantics.
 func (m Manifest) Validate() error {
 	if m.ID == "" || m.Name == "" {
-		return fmt.Errorf("asset id and name are required")
+		return ErrAssetIDNameRequired
 	}
 	switch m.Type {
 	case TypeSkill, TypeAgentsDoc, TypeSettings, TypeMCP, TypeRule, TypeHook:
 	default:
-		// FIX: return error object instead of string (@see task#0005)
-		return fmt.Errorf("unsupported asset type: %s", m.Type)
+		return UnsupportedAssetTypeError{Type: m.Type}
 	}
 	return nil
 }
@@ -162,10 +157,9 @@ func Init(root string, manifest Manifest) (string, error) {
 		return "", err
 	}
 
+	// Per-type starter content is currently inline; task 0010 tracks
+	// extracting this into a strategy + template package.
 	switch manifest.Type {
-	// TODO: This is only temporary. We need to create a new module that contains strategies for each Type plus the accompanying
-	// template. We need to figure out how we can include template files into this project. Check `../../../agentfiles-old/` that
-	// has an example solution for this. Than we just load the template for the type here, and render it into the folder.
 	case TypeSkill:
 		body := []byte("---\nname: " + manifest.Name + "\ndescription: " + manifest.Description + "\n---\n\nDescribe the skill here.\n")
 		if err := os.WriteFile(filepath.Join(dir, config.SkillStarterFileName), body, 0o644); err != nil {

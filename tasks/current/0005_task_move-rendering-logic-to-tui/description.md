@@ -1,7 +1,7 @@
 ---
 id: 0005
 type: task
-status: pending
+status: in-review
 topics: go, tui
 ---
 
@@ -49,3 +49,7 @@ What we win with all this is that the TUI only receives metadata and it can rend
 appealing format. In case of single errors it should use an appropriate color, and an icon.
 In case of multiple errors it should be colored based on the severity of the error, should contain icons and should
 be presented in a list of tabular format (whichever conveys the errors better)
+
+## Plan
+
+[plan.md](./plan.md)

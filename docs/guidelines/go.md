@@ -54,11 +54,14 @@ state := map[string]any{
 
 ## Return Actionable Errors
 
-Errors should explain what failed and why the caller should care.
+Errors should explain what failed and why the caller should care. For
+domain failures the preferred form is a typed error struct rather than an
+ad-hoc `fmt.Errorf` string — see [`errors.md`](./errors.md) for the full
+convention, including loop accumulation via `errors.Join`.
 
 ```go
 // Do
-return fmt.Errorf("selected asset not found: %s", id)
+return AssetNotFoundError{ID: id}
 ```
 
 ```go

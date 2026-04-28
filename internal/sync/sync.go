@@ -4,7 +4,6 @@
 package sync
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -12,6 +11,7 @@ import (
 	"time"
 
 	"github.com/addamsson/agentfiles/internal/config"
+	"github.com/addamsson/agentfiles/internal/errs"
 	"github.com/addamsson/agentfiles/internal/fsutil"
 	"github.com/addamsson/agentfiles/internal/profile"
 	"github.com/addamsson/agentfiles/internal/project"
@@ -80,11 +80,14 @@ type Preview struct {
 }
 
 // Plan compares the desired outputs with the current repository state. This is
-// where create/update/drift/delete-candidate classification happens.
+// where create/update/drift/delete-candidate classification happens. Domain
+// failures from render.Build are wrapped in errs.Errors so callers can use
+// errs.Collect to walk the typed leaves; infrastructure failures (hashing,
+// state load) bubble up as plain errors.
 func Plan(p *profile.Profile, proj *project.Manifest) (*Preview, error) {
-	rendered, err := render.Build(p, proj)
-	if err != nil {
-		return nil, err
+	rendered, renderErrs := render.Build(p, proj)
+	if len(renderErrs) > 0 {
+		return nil, errs.Errors(renderErrs)
 	}
 	state, _ := loadState(proj.Path)
 	desired := map[string]string{}
@@ -229,19 +232,4 @@ func detectDeleteCandidates(projectPath string, desired map[string]string, state
 	}
 	slices.Sort(list)
 	return list, nil
-}
-
-// FormatPreview renders the preview into a compact CLI-friendly text summary.
-// FIX: task#0005
-func FormatPreview(preview *Preview) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "Project: %s\n", preview.ProjectPath)
-	if len(preview.Changes) == 0 {
-		b.WriteString("No changes.\n")
-		return b.String()
-	}
-	for _, change := range preview.Changes {
-		fmt.Fprintf(&b, "- [%s] %s: %s\n", change.Kind, change.Path, change.Reason)
-	}
-	return b.String()
 }

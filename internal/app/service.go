@@ -4,12 +4,12 @@
 package app
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
 	"github.com/addamsson/agentfiles/internal/asset"
 	"github.com/addamsson/agentfiles/internal/config"
+	"github.com/addamsson/agentfiles/internal/errs"
 	"github.com/addamsson/agentfiles/internal/fsutil"
 	"github.com/addamsson/agentfiles/internal/profile"
 	"github.com/addamsson/agentfiles/internal/project"
@@ -99,21 +99,31 @@ func (s *Service) LoadProfile(ref string) (*profile.Profile, error) {
 	return profile.Load(profileRef.Path)
 }
 
-// AddProject creates a per-profile project manifest.
+// AddProject creates a per-profile project manifest. Domain failures
+// (path collisions, unknown asset ids) are accumulated and returned as a
+// slice of typed domain errors so the caller can display every problem
+// at once. A non-empty slice means the project was not saved.
 //
 // A project manifest does not store rendered files. It stores only the project
 // path plus the asset/agent selection used later by render + sync.
-func (s *Service) AddProject(profileRef, name, path string, agents, assetIDs []string) (*project.Manifest, error) {
+func (s *Service) AddProject(profileRef, name, path string, agents, assetIDs []string) (*project.Manifest, []errs.DomainError) {
 	loaded, err := s.LoadProfile(profileRef)
 	if err != nil {
-		return nil, err
+		return nil, []errs.DomainError{wrapInternal(err)}
 	}
 	path, err = fsutil.ToAbsolute(path)
 	if err != nil {
-		return nil, err
+		return nil, []errs.DomainError{wrapInternal(err)}
 	}
-	if err := s.ensureProjectPathAvailable(path, loaded.Manifest.ID); err != nil {
-		return nil, err
+	var domainErrs []errs.DomainError
+	domainErrs = append(domainErrs, s.ensureProjectPathAvailable(path, loaded)...)
+	for _, assetID := range assetIDs {
+		if loaded.Assets[assetID] == nil {
+			domainErrs = append(domainErrs, AssetNotFoundError{AssetID: assetID})
+		}
+	}
+	if len(domainErrs) > 0 {
+		return nil, domainErrs
 	}
 	manifest := &project.Manifest{
 		ID:               slug(name),
@@ -123,15 +133,8 @@ func (s *Service) AddProject(profileRef, name, path string, agents, assetIDs []s
 		SelectedAssetIDs: assetIDs,
 		CreatedAt:        time.Now().UTC(),
 	}
-	// FIX: task#0005: Accumulate errors into an error list and return it
-	// instead of returning an error message
-	for _, assetID := range assetIDs {
-		if loaded.Assets[assetID] == nil {
-			return nil, fmt.Errorf("unknown asset: %s", assetID)
-		}
-	}
 	if err := project.Save(loaded.Root, manifest); err != nil {
-		return nil, err
+		return nil, []errs.DomainError{wrapInternal(err)}
 	}
 	return manifest, nil
 }
@@ -144,8 +147,7 @@ func (s *Service) InitAsset(profileRef string, manifest asset.Manifest) (string,
 		return "", err
 	}
 	if loaded.Assets[manifest.ID] != nil {
-		// FIX: task#0005 return metadata for error instead of hard-coded error message
-		return "", fmt.Errorf("asset already exists: %s", manifest.ID)
+		return "", AssetExistsError{AssetID: manifest.ID}
 	}
 	return asset.Init(loaded.Root, manifest)
 }
@@ -159,8 +161,7 @@ func (s *Service) Plan(profileRef, projectID string) (*llmsync.Preview, error) {
 	}
 	proj := loaded.Projects[projectID]
 	if proj == nil {
-		// FIX: task#0005 return metadata for error instead of hard-coded error message
-		return nil, fmt.Errorf("project not found: %s", projectID)
+		return nil, ProjectNotFoundError{ProjectID: projectID}
 	}
 	return llmsync.Plan(loaded, proj)
 }
@@ -179,27 +180,51 @@ func (s *Service) Apply(profileRef, projectID string, deleteCandidates bool) (*l
 }
 
 // ensureProjectPathAvailable enforces the ownership rule that one repository
-// path may belong to only one profile. Without this check, two profiles could
-// fight over the same generated files.
-func (s *Service) ensureProjectPathAvailable(projectPath, activeProfileID string) error {
+// path may belong to only one project. Without this check, two projects could
+// fight over the same generated files and the same .agentfiles/state.json.
+// Both same-profile and cross-profile conflicts are reported; all conflicts
+// are accumulated so the caller learns about every owning project in one
+// pass. Project iteration is sorted so the returned slice is deterministic.
+func (s *Service) ensureProjectPathAvailable(projectPath string, active *profile.Profile) []errs.DomainError {
+	var conflicts []errs.DomainError
+	for _, proj := range active.ProjectList() {
+		if proj.Path == projectPath {
+			conflicts = append(conflicts, ProjectPathOwnedError{
+				Path:        projectPath,
+				ProfileName: active.Manifest.Name,
+				ProjectName: proj.Name,
+			})
+		}
+	}
 	reg, err := s.Registry.Load()
 	if err != nil {
-		return err
+		return append(conflicts, wrapInternal(err))
 	}
 	for _, profileRef := range reg.Profiles {
+		if profileRef.ID == active.Manifest.ID {
+			continue
+		}
 		loaded, err := profile.Load(profileRef.Path)
 		if err != nil {
 			continue
 		}
-		// FIX: task#0005 accumulate error metadata (eg: {Path, Profile}) as opposed to rendering
-		// and return all of them instead of failing fast on the first one.
-		for _, proj := range loaded.Projects {
-			if proj.Path == projectPath && profileRef.ID != activeProfileID {
-				return fmt.Errorf("project path already owned by profile %s", profileRef.Name)
+		for _, proj := range loaded.ProjectList() {
+			if proj.Path == projectPath {
+				conflicts = append(conflicts, ProjectPathOwnedError{
+					Path:        projectPath,
+					ProfileName: profileRef.Name,
+					ProjectName: proj.Name,
+				})
 			}
 		}
 	}
-	return nil
+	return conflicts
+}
+
+// wrapInternal turns a non-domain error (filesystem, registry I/O) into a
+// DomainError so AddProject's slice return stays uniform.
+func wrapInternal(err error) errs.DomainError {
+	return InternalError{Err: err}
 }
 
 // slug creates a stable file/id friendly name from user-facing input.

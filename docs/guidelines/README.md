@@ -11,6 +11,7 @@ Use these files when you want to understand how to model the domain, how to auth
 - [Clean Code](./clean_code.md)
 - [Documentation](./documentation.md)
 - [Domain Model](./domain_model.md)
+- [Errors](./errors.md)
 - [Git](./git.md)
 - [Go](./go.md)
 - [Security](./security.md)

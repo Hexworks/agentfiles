@@ -9,7 +9,6 @@ import (
 	"github.com/addamsson/agentfiles/internal/asset"
 	"github.com/addamsson/agentfiles/internal/doctor"
 	"github.com/addamsson/agentfiles/internal/registry"
-	llmsync "github.com/addamsson/agentfiles/internal/sync"
 	"github.com/charmbracelet/huh"
 )
 
@@ -167,9 +166,11 @@ func RunProjectAdd(service *app.Service) error {
 	if err := runForm(huh.NewGroup(fields...)); err != nil {
 		return err
 	}
-	manifest, err := service.AddProject(profileID, name, path, agents, assetIDs)
-	if err != nil {
-		return err
+	manifest, addErrs := service.AddProject(profileID, name, path, agents, assetIDs)
+	if len(addErrs) > 0 {
+		fmt.Print("\n")
+		fmt.Print(RenderErrors(addErrs))
+		return errAlreadyReported
 	}
 	fmt.Printf("added project %s at %s\n", manifest.Name, manifest.Path)
 	return nil
@@ -185,7 +186,7 @@ func RunProjectPlan(service *app.Service) error {
 	if err != nil {
 		return err
 	}
-	fmt.Print(llmsync.FormatPreview(preview))
+	fmt.Print(RenderPreview(preview))
 	return nil
 }
 
@@ -200,7 +201,7 @@ func RunProjectApply(service *app.Service) error {
 	if err != nil {
 		return err
 	}
-	fmt.Print(llmsync.FormatPreview(preview))
+	fmt.Print(RenderPreview(preview))
 	var deleteCandidates bool
 	if len(preview.DeleteCandidates) > 0 {
 		if err := runForm(huh.NewGroup(
@@ -241,11 +242,13 @@ func RunDoctor(service *app.Service) error {
 	if err != nil {
 		return err
 	}
-	out, err := doctor.CheckProfile(loaded)
-	if err != nil {
-		return err
+	report, checkErrs := doctor.CheckProfile(loaded)
+	fmt.Print(RenderReport(report))
+	if len(checkErrs) > 0 {
+		fmt.Print("\n")
+		fmt.Print(RenderErrors(checkErrs))
+		return errAlreadyReported
 	}
-	fmt.Print(out)
 	return nil
 }
 

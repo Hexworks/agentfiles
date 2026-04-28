@@ -151,3 +151,56 @@ The authoritative location for reusable content and selection state. In
 ## Project Ownership
 
 The rule that one target project path may belong to only one profile.
+
+## Profile Health Report
+
+The structured result of a profile health check produced by
+`doctor.CheckProfile`. It contains the profile name plus one
+`ProjectStatus` per project, each with the project's name and the list of
+pending changes (empty when the project is clean). Doctor never formats
+output; the TUI renders the report. Often shortened to "report" in code.
+
+## Project Status
+
+The per-project entry inside a Profile Health Report. Carries the
+project's display name plus the list of pending project changes. An
+empty `Changes` slice means the project is clean.
+
+## Project Change
+
+The doctor-owned representation of one pending diff entry inside a
+ProjectStatus: `{Path, Kind, Reason}`. Doctor exposes its own type so
+callers can read a report without importing `internal/sync`. The
+underlying values mirror `sync.FileChange` but the boundary is explicit.
+
+## Change Kind
+
+The classification of a pending change inside a Preview or Project
+Status. One of `create`, `update`, `drift`, or `delete_candidate`. The
+sync layer owns `sync.ChangeKind`; doctor mirrors it as
+`doctor.ChangeKind` to keep its API independent.
+
+## File Change
+
+The sync-layer entry that pairs a target path with its `ChangeKind` and
+a short reason string. Produced inside `sync.Preview.Changes` and
+converted into `doctor.ProjectChange` by doctor's report builder.
+
+## Severity
+
+The classification of a domain failure into `info`, `warning`, or
+`error`. Severity is part of the domain (not presentation) because it
+answers "is this a hard error or a recoverable warning" — a question
+about the kind of failure, not its rendering. Every typed domain error
+implements `Severity() errs.Severity`; the TUI consumes the result to
+pick icon and color.
+
+## Typed Domain Error
+
+A struct value (e.g. `render.AssetNotFoundError`,
+`app.ProjectPathOwnedError`) returned in place of an ad-hoc `fmt.Errorf`
+string. Each type implements both `Error()` and `Severity()` so it
+satisfies `errs.DomainError`. Accumulator functions return
+`[]errs.DomainError` directly; non-accumulator functions return
+`error` and let `errs.Collect` flatten domain leaves. See
+[`docs/guidelines/errors.md`](./guidelines/errors.md).

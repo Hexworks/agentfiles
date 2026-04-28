@@ -33,7 +33,7 @@ Domain packages are kept separable by design — do not blur them:
 - `project` — per-project manifest (target path + selected agents + selected asset ids). Lives inside a profile's `projects/`.
 - `render` — **read-only**. Builds desired files from profile+project. Calls `surfaces.IsAllowed` to gate projection targets against the safety fence (`AGENTS.md`, `.claude`, `.cursor`, `.codex`, `.opencode`, `.mcp.json`). Resolves `exclusive_group` conflicts and `compatible_agents` filters.
 - `sync` — compares render plan vs. repo, classifies as `create`/`update`/`drift`/`delete_candidate`, writes files, and rewrites `<repo>/.agentfiles/state.json` (hashes of managed files). Imported as `llmsync` in `internal/app` to avoid clashing with stdlib `sync`.
-- `doctor` — read-only health check across every project in a profile.
+- `doctor` — read-only health check across every project in a profile. Returns a `*Report` struct (no string formatting); the TUI renders it.
 - `app` — thin orchestration layer called by the TUI. Contains no business logic.
 - `tui` — the only user interface. Menus + `huh` forms. `Esc` and `ctrl+c` both bound to Quit (see `runForm` in `tui/tui.go`) so Esc backs out one level.
 - `fsutil` — shared path/IO helpers.
@@ -51,17 +51,19 @@ Domain packages are kept separable by design — do not blur them:
 
 No CLI subcommands exist (see `docs/adr/0006`). The binary opens the menu; every input flows through `huh` forms. If adding a new operation, wire it into `internal/tui/` submenus and back it with a method on `app.Service`.
 
-## Open refactor markers
+## Errors and rendering
 
-Several `FIX: task#0005` comments still exist across the domain packages. They reference a ticket under `tasks/current/`:
-
-- `task#0005` — replace hard-coded error strings with structured error types (per go_guidelines: implement `Error()` when returning non-string error values).
-
-When touching those sites, prefer resolving the marker over adding new ones.
+Domain packages return data and typed errors. User-facing strings are
+produced in `internal/tui/` (`RenderPreview`, `RenderReport`, `RenderError`).
+When adding a new failure mode, declare a struct in the package's
+`errors.go` with an `Error()` method instead of using `fmt.Errorf`. Loops
+should accumulate via `errors.Join` rather than short-circuit on the first
+failure. Background: ADR 0007, `docs/guidelines/errors.md`.
 
 ## Guidelines referenced from docs/
 
 - `docs/guidelines/go_guidelines.md` — keep packages cohesive, explicit structs over `map[string]any`, actionable errors, I/O at edges (render computes, sync writes).
+- `docs/guidelines/errors.md` — typed-error structs per package + `errors.Join` accumulation in loops; the TUI introspects with `errors.As` and renders with severity/icon/color.
 - `docs/guidelines/domain_model_guidelines.md` — registry/profile/asset/project/render/sync must remain separable; stable ids; model compatibility/exclusivity in manifests not ad-hoc checks.
 - `docs/guidelines/sync_and_safety_guidelines.md` — the source of the invariants above.
 - `docs/guidelines/asset_authoring_guidelines.md` — `asset.json` must have id/name/type; generic types use explicit `projections` whose targets stay inside managed surfaces.
