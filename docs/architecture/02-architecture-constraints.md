@@ -1,33 +1,45 @@
 # 2. Architecture Constraints
 
 The current implementation is shaped by a small set of explicit constraints.
-These constraints are important because they limit design freedom and explain
-why some simpler or more dynamic options were not chosen.
+These constraints limit design freedom and explain why some simpler or more
+dynamic options were not chosen.
 
-## Local-First Execution
+## Technical
 
-`agentfiles` is a terminal UI application. It runs on a developer machine,
-opens a full-screen TUI on launch, and operates directly on the local
-filesystem. There is no non-interactive invocation path.
+### Local-First Execution
 
-## Git-Friendly Persistence
+`agentfiles` is a terminal UI application that runs on a developer machine
+and operates directly on the local filesystem. No remote service, no
+background daemon. See section 7 for the deployment picture.
 
-Profiles are stored as plain folders with JSON manifests and asset files. There
-is no database and no remote service in the current system.
+### Git-Friendly Persistence
 
-## Known Managed Surfaces Only
+Profiles are stored as plain folders with JSON manifests and asset files.
+No database is used; section 3 covers the persistence layout.
 
-Rendering is restricted to recognized agent file locations such as `AGENTS.md`,
-`.claude/`, `.cursor/`, `.codex/`, `.opencode/`, and `.mcp.json`. Arbitrary
-output paths are intentionally not part of the current safety model.
+### Known Managed Surfaces Only
 
-## Single Profile Ownership Per Project Path
+Rendering is restricted to recognized agent file locations such as
+`AGENTS.md`, `.claude/`, `.cursor/`, `.codex/`, `.opencode/`, and
+`.mcp.json`. Arbitrary output paths are intentionally not part of the
+current safety model.
+
+## Organizational
+
+### Single Profile Ownership Per Project Path
 
 A repository path may belong to only one profile. This avoids conflicting
-ownership and ambiguous synchronization behavior.
+ownership and ambiguous synchronization behavior. The constraint is
+enforced at project registration time.
 
-## Generated Files Are Not The Source Of Truth
+### Generated Files Are Not The Source Of Truth
 
-Project files are materialized outputs. The current implementation detects drift
+Project files are materialized outputs. The implementation detects drift
 but does not import project edits back into profile assets.
 
+## Conventions
+
+### TUI-Only Entry Point
+
+There is no non-interactive invocation path. Every command flows through
+the TUI menu. The rationale and consequences are recorded in ADR 0006.

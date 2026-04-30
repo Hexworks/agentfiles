@@ -10,27 +10,17 @@ clear source-of-truth model. Instead of treating project files as the primary
 representation, `agentfiles` treats profile content as authoritative and generated
 project files as outputs that can be planned, inspected, and applied.
 
-## Primary Goals
+## Quality Goals
 
-### Safety
+The four most important quality attributes are listed in priority order. Each
+maps to a measurable scenario in [section 10](./10-quality-requirements.md).
 
-Generated files must be predictable. The user should see drift and recognized
-deletion candidates before applying changes.
-
-### Traceability
-
-The system should make it obvious where generated files came from, which
-profile/project produced them, and what changed between runs.
-
-### Maintainability
-
-The domain model should stay explicit: registry, profiles, assets, projects,
-rendering, and sync are separate concerns with clear ownership.
-
-### Git-Friendly Storage
-
-Profiles must live in normal folders with normal files so they can be committed
-and reviewed with standard Git workflows.
+| Priority | Goal                  | Concrete expectation                                                                                          |
+| -------- | --------------------- | ------------------------------------------------------------------------------------------------------------- |
+| 1        | Safety                | Drift and recognized deletion candidates appear in the preview before any overwrite happens.                  |
+| 2        | Traceability          | After every apply, managed state records which profile and project produced each managed file.                |
+| 3        | Maintainability       | Registry, profile, asset, project, render, and sync remain separable; new asset types fit without collapsing them. |
+| 4        | Git-Friendly Storage  | Profiles are plain folders with JSON manifests; standard Git workflows can review and version them.           |
 
 ## Stakeholders
 
@@ -39,4 +29,4 @@ and reviewed with standard Git workflows.
 | Workspace maintainer | Manage reusable LLM setup assets in one place |
 | Project maintainer | Apply only the assets needed for a specific repository |
 | Profile owner | Keep profile data isolated, inspectable, and versionable |
-
+| Agent operator | Consume the rendered AGENTS.md, `.claude/`, `.cursor/`, `.codex/`, and `.opencode/` outputs in their tool of choice |

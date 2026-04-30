@@ -7,7 +7,8 @@ current vocabulary, and the reason past decisions were made.
 
 The project uses several complementary documentation forms. `arc42` pages
 capture architecture views, ADRs capture important decisions, guidelines capture
-working conventions, and the glossary captures shared domain language.
+working conventions, and the glossary captures shared domain language. The
+authoring conventions for arc42 chapters live in [`arc42.md`](./arc42.md).
 
 ## Update The Right Artifact
 

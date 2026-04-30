@@ -29,6 +29,41 @@ subcommand paths.
 
 ## Scenario: Apply A Project
 
+The apply flow is the most complex runtime path because it mutates the
+target repository. The sequence below shows the order of operations and the
+gating prompts.
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant TUI as tui
+    participant App as app
+    participant Render as render
+    participant Sync as sync
+    participant FS as Filesystem
+
+    User->>TUI: Project → Apply (pick profile + project)
+    TUI->>App: Plan(profile, project)
+    App->>Render: Build(profile, project)
+    Render-->>App: desired files + typed errors
+    App->>Sync: Plan(desired, repo)
+    Sync->>FS: read managed files + state.json
+    Sync-->>App: Preview(creates/updates/drift/delete-candidates)
+    App-->>TUI: Preview
+    TUI-->>User: render preview
+    User->>TUI: confirm (and optionally opt-in delete)
+    TUI->>App: Apply(preview, deleteCandidates)
+    App->>Sync: Write(preview)
+    Sync->>FS: write managed files
+    alt deleteCandidates == true
+        Sync->>FS: remove recognized unmanaged files
+    end
+    Sync->>FS: rewrite .agentfiles/state.json
+    Sync-->>App: result
+    App-->>TUI: ok | error
+    TUI-->>User: render result
+```
+
 1. The user reaches the "project apply" form and picks a profile and project.
 2. A preview is generated and displayed first.
 3. If delete candidates exist, the form asks whether to remove them.
@@ -37,3 +72,14 @@ subcommand paths.
 6. If the user opted to delete candidates, recognized unmanaged files are
    removed.
 7. `.agentfiles/state.json` is updated with new managed-file hashes.
+
+## Scenario: Run Doctor For A Profile
+
+1. The user reaches the "doctor" form and picks a profile.
+2. The doctor package iterates every project owned by that profile.
+3. For each project, doctor runs a render plan and a sync plan, capturing
+   any failures as `[]errs.DomainError` without aborting the run.
+4. Doctor returns a `*doctor.Report` with one `ProjectStatus` per project.
+5. The TUI renders the report; broken and healthy projects appear in the
+   same view so the user can act on the failing ones without losing
+   context.

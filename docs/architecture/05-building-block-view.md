@@ -3,7 +3,41 @@
 The implementation is split into small packages around the domain model and the
 main workflow.
 
-## Top-Level Building Blocks
+## Level 1: Package Dependency Overview
+
+```mermaid
+flowchart TD
+    cmdaf["cmd/af"] --> tui
+    tui --> app
+    app --> render
+    app --> sync
+    app --> doctor
+    render --> profile
+    render --> project
+    render --> asset
+    render --> registry
+    render --> surfaces
+    sync --> surfaces
+    sync --> fsutil
+    doctor --> sync
+    doctor --> render
+    profile --> asset
+    profile --> project
+    asset --> config
+    project --> config
+    registry --> config
+    surfaces --> config
+
+    classDef leaf fill:#eef,stroke:#88a;
+    class config,errs,fsutil leaf;
+```
+
+`config`, `errs`, and `fsutil` are leaf packages that the rest of the
+codebase reads from but that import nothing internal. They are highlighted
+in blue above to make the dependency direction visible. The TUI layer
+imports `app`; nothing else does.
+
+## Level 2: Package Responsibilities
 
 ### `config`
 
@@ -50,6 +84,11 @@ satisfies `error`, and a `Collect` helper that flattens both
 deliberately leaf-only — it imports nothing internal — so any domain
 package can depend on it without risking an import cycle.
 
+### `fsutil`
+
+Path, JSON, and content-hashing helpers shared by the rest of the codebase.
+Like `errs` and `config`, it is a leaf package with no internal imports.
+
 ### `render`
 
 Builds a project plan by resolving selected assets and projecting them into
@@ -77,14 +116,11 @@ report.
 
 ### `app`
 
-Coordinates the higher-level operations used by the TUI, including profile
-creation, project ownership checks, planning, and apply. Accumulator-shape
-calls (`AddProject`, `ensureProjectPathAvailable`) return
-`[]errs.DomainError`; non-accumulator calls (`Plan`, `Apply`) wrap render
-slices in `errs.Errors` and return a single `error`. Typed errors include
-`AssetNotFoundError`, `AssetExistsError`, `ProjectNotFoundError`,
-`ProjectPathOwnedError`, and `InternalError` for non-domain failures.
-See [`docs/guidelines/errors.md`].
+Coordinates the higher-level operations used by the TUI: profile creation,
+project ownership checks, planning, and apply. Accumulator-shape calls
+return `[]errs.DomainError`; non-accumulator calls wrap render slices in
+`errs.Errors` and return a single `error`. Typed-error conventions live in
+[`docs/guidelines/errors.md`](../guidelines/errors.md).
 
 ### `tui`
 
@@ -108,4 +144,3 @@ The binary entry point. It parses the single `--registry` flag with the
 standard-library `flag` package and calls `tui.Run`. There is no Cobra
 command tree and no intermediate routing package — `af` always opens the
 TUI.
-
