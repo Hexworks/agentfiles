@@ -3,8 +3,6 @@
 package registry
 
 import (
-	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -12,6 +10,7 @@ import (
 	"time"
 
 	"github.com/addamsson/agentfiles/internal/config"
+	"github.com/addamsson/agentfiles/internal/errs"
 	"github.com/addamsson/agentfiles/internal/fsutil"
 )
 
@@ -60,7 +59,7 @@ func NewStore(path string) *Store {
 
 // Load returns the current registry contents. Missing registry files are treated
 // as an empty registry so first-time use does not need special handling.
-func (s *Store) Load() (*Registry, error) {
+func (s *Store) Load() (*Registry, errs.DomainError) {
 	if !fsutil.Exists(s.Path) {
 		return &Registry{Version: Version, Profiles: []ProfileRef{}}, nil
 	}
@@ -79,7 +78,7 @@ func (s *Store) Load() (*Registry, error) {
 
 // Save sorts profiles by name before writing so the registry remains stable and
 // diff-friendly in Git.
-func (s *Store) Save(reg *Registry) error {
+func (s *Store) Save(reg *Registry) errs.DomainError {
 	reg.Version = Version
 	slices.SortFunc(reg.Profiles, func(a, b ProfileRef) int {
 		return strings.Compare(a.Name, b.Name)
@@ -89,20 +88,20 @@ func (s *Store) Save(reg *Registry) error {
 
 // Add appends a profile reference after checking the registry-wide uniqueness
 // rules for id, display name, and filesystem path.
-func (s *Store) Add(ref ProfileRef) error {
+func (s *Store) Add(ref ProfileRef) errs.DomainError {
 	reg, err := s.Load()
 	if err != nil {
 		return err
 	}
 	for _, existing := range reg.Profiles {
 		if existing.ID == ref.ID {
-			return fmt.Errorf("profile id already exists: %s", ref.ID)
+			return ProfileIDExistsError{ID: ref.ID}
 		}
 		if strings.EqualFold(existing.Name, ref.Name) {
-			return fmt.Errorf("profile name already exists: %s", ref.Name)
+			return ProfileNameExistsError{Name: ref.Name}
 		}
 		if existing.Path == ref.Path {
-			return fmt.Errorf("profile path already exists: %s", ref.Path)
+			return ProfilePathExistsError{Path: ref.Path}
 		}
 	}
 	reg.Profiles = append(reg.Profiles, ref)
@@ -111,7 +110,7 @@ func (s *Store) Add(ref ProfileRef) error {
 
 // Touch updates the last-opened timestamp for one profile. The timestamp is
 // operational metadata only; it does not affect rendering behavior.
-func (s *Store) Touch(profileID string) error {
+func (s *Store) Touch(profileID string) errs.DomainError {
 	reg, err := s.Load()
 	if err != nil {
 		return err
@@ -122,12 +121,12 @@ func (s *Store) Touch(profileID string) error {
 			return s.Save(reg)
 		}
 	}
-	return errors.New("profile not found")
+	return ProfileNotFoundError{Ref: profileID}
 }
 
 // Resolve finds a profile by any user-facing identifier the TUI accepts:
 // id, name, or exact path.
-func (s *Store) Resolve(ref string) (*ProfileRef, error) {
+func (s *Store) Resolve(ref string) (*ProfileRef, errs.DomainError) {
 	reg, err := s.Load()
 	if err != nil {
 		return nil, err
@@ -138,5 +137,5 @@ func (s *Store) Resolve(ref string) (*ProfileRef, error) {
 			return &copy, nil
 		}
 	}
-	return nil, fmt.Errorf("profile not found: %s", ref)
+	return nil, ProfileNotFoundError{Ref: ref}
 }

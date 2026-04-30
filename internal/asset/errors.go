@@ -41,3 +41,23 @@ func (e UnsupportedAssetTypeError) Error() string {
 func (UnsupportedAssetTypeError) Severity() errs.Severity {
 	return errs.SeverityError
 }
+
+// AssetWalkError reports a failure encountered while walking an asset
+// directory in RelativeFiles. RelPath is asset-relative so absolute
+// paths inside the user's profile root never reach the user.
+type AssetWalkError struct {
+	AssetDir string
+	Err      error
+}
+
+func (e AssetWalkError) Error() string {
+	return fmt.Sprintf("walk asset directory %s: %s", e.AssetDir, e.Err.Error())
+}
+
+func (AssetWalkError) Severity() errs.Severity {
+	return errs.SeverityError
+}
+
+func (e AssetWalkError) Unwrap() error {
+	return e.Err
+}

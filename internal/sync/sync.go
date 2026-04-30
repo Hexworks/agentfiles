@@ -80,16 +80,22 @@ type Preview struct {
 }
 
 // Plan compares the desired outputs with the current repository state. This is
-// where create/update/drift/delete-candidate classification happens. Domain
-// failures from render.Build are wrapped in errs.Errors so callers can use
-// errs.Collect to walk the typed leaves; infrastructure failures (hashing,
-// state load) bubble up as plain errors.
-func Plan(p *profile.Profile, proj *project.Manifest) (*Preview, error) {
+// where create/update/drift/delete-candidate classification happens. Every
+// failure mode (render leaves, hashing, state load, walk) is returned as an
+// errs.DomainError so the TUI can render severity, icon, and color uniformly.
+func Plan(p *profile.Profile, proj *project.Manifest) (*Preview, errs.DomainError) {
 	rendered, renderErrs := render.Build(p, proj)
 	if len(renderErrs) > 0 {
 		return nil, errs.Errors(renderErrs)
 	}
-	state, _ := loadState(proj.Path)
+	state, stateErr := loadState(proj.Path)
+	if stateErr != nil {
+		// "never applied" is the common case; treat it as no prior state.
+		if _, missing := stateErr.(StateMissingError); !missing {
+			return nil, stateErr
+		}
+		state = nil
+	}
 	desired := map[string]string{}
 	var changes []FileChange
 	for _, file := range rendered.Files {
@@ -99,9 +105,9 @@ func Plan(p *profile.Profile, proj *project.Manifest) (*Preview, error) {
 			changes = append(changes, FileChange{Path: file.Path, Kind: ChangeCreate, Reason: "file missing"})
 			continue
 		}
-		currentHash, err := fsutil.HashFile(abs)
-		if err != nil {
-			return nil, err
+		currentHash, hashErr := fsutil.HashFile(abs)
+		if hashErr != nil {
+			return nil, hashErr
 		}
 		if currentHash == desired[file.Path] {
 			continue
@@ -112,9 +118,9 @@ func Plan(p *profile.Profile, proj *project.Manifest) (*Preview, error) {
 		}
 		changes = append(changes, FileChange{Path: file.Path, Kind: ChangeUpdate, Reason: "content differs"})
 	}
-	deleteCandidates, err := detectDeleteCandidates(proj.Path, desired, state)
-	if err != nil {
-		return nil, err
+	deleteCandidates, detectErrs := detectDeleteCandidates(proj.Path, desired, state)
+	if len(detectErrs) > 0 {
+		return nil, errs.Errors(detectErrs)
 	}
 	for _, candidate := range deleteCandidates {
 		changes = append(changes, FileChange{Path: candidate, Kind: ChangeDelete, Reason: "recognized llm file not selected"})
@@ -136,18 +142,19 @@ func Plan(p *profile.Profile, proj *project.Manifest) (*Preview, error) {
 // Apply materializes the preview into the repository and then records a new
 // ManagedState snapshot. Preview generation and file writing are separated so
 // the user can inspect changes first.
-func Apply(preview *Preview, deleteCandidates bool) error {
+func Apply(preview *Preview, deleteCandidates bool) errs.DomainError {
+	var domainErrs []errs.DomainError
 	for _, file := range preview.Files {
 		abs := filepath.Join(preview.ProjectPath, filepath.FromSlash(file.Path))
 		if err := fsutil.WriteFile(abs, file.Body, file.Mode); err != nil {
-			return err
+			domainErrs = append(domainErrs, err)
 		}
 	}
 	if deleteCandidates {
 		for _, path := range preview.DeleteCandidates {
 			abs := filepath.Join(preview.ProjectPath, filepath.FromSlash(path))
 			if err := os.Remove(abs); err != nil && !os.IsNotExist(err) {
-				return err
+				domainErrs = append(domainErrs, DeleteError{Path: abs, Err: err})
 			}
 		}
 	}
@@ -161,14 +168,25 @@ func Apply(preview *Preview, deleteCandidates bool) error {
 	for _, file := range preview.Files {
 		state.ManagedFiles[file.Path] = fsutil.HashBytes(file.Body)
 	}
-	return fsutil.WriteJSON(filepath.Join(preview.ProjectPath, config.StateDirName, config.StateFileName), state)
+	if err := fsutil.WriteJSON(filepath.Join(preview.ProjectPath, config.StateDirName, config.StateFileName), state); err != nil {
+		domainErrs = append(domainErrs, err)
+	}
+	if len(domainErrs) == 0 {
+		return nil
+	}
+	if len(domainErrs) == 1 {
+		return domainErrs[0]
+	}
+	return errs.Errors(domainErrs)
 }
 
 // loadState reads the previous managed snapshot from the target repository.
-func loadState(projectPath string) (*ManagedState, error) {
+// A missing snapshot is reported as StateMissingError (info-severity) so
+// callers can distinguish first-time applies from corrupt state files.
+func loadState(projectPath string) (*ManagedState, errs.DomainError) {
 	path := filepath.Join(projectPath, config.StateDirName, config.StateFileName)
 	if !fsutil.Exists(path) {
-		return nil, os.ErrNotExist
+		return nil, StateMissingError{Path: path}
 	}
 	var state ManagedState
 	if err := fsutil.ReadJSON(path, &state); err != nil {
@@ -182,7 +200,7 @@ func loadState(projectPath string) (*ManagedState, error) {
 
 // detectDeleteCandidates looks for recognized LLM-tooling files that are inside
 // managed surfaces but not part of the new desired state.
-func detectDeleteCandidates(projectPath string, desired map[string]string, state *ManagedState) ([]string, error) {
+func detectDeleteCandidates(projectPath string, desired map[string]string, state *ManagedState) ([]string, []errs.DomainError) {
 	candidates := map[string]bool{}
 	if state != nil {
 		for path := range state.ManagedFiles {
@@ -191,6 +209,7 @@ func detectDeleteCandidates(projectPath string, desired map[string]string, state
 			}
 		}
 	}
+	var domainErrs []errs.DomainError
 	// .agentfiles is intentionally outside surfaces.Roots(), so the walk
 	// below never enters the managed-state directory; no skip check needed.
 	for _, root := range surfaces.Roots() {
@@ -200,7 +219,8 @@ func detectDeleteCandidates(projectPath string, desired map[string]string, state
 		}
 		info, err := os.Stat(abs)
 		if err != nil {
-			return nil, err
+			domainErrs = append(domainErrs, StatError{Path: abs, Err: err})
+			continue
 		}
 		if !info.IsDir() {
 			rel := fsutil.ToRelative(projectPath, abs)
@@ -209,7 +229,7 @@ func detectDeleteCandidates(projectPath string, desired map[string]string, state
 			}
 			continue
 		}
-		err = filepath.WalkDir(abs, func(path string, d os.DirEntry, err error) error {
+		walkErr := filepath.WalkDir(abs, func(path string, d os.DirEntry, err error) error {
 			if err != nil {
 				return err
 			}
@@ -222,8 +242,8 @@ func detectDeleteCandidates(projectPath string, desired map[string]string, state
 			}
 			return nil
 		})
-		if err != nil {
-			return nil, err
+		if walkErr != nil {
+			domainErrs = append(domainErrs, SurfaceWalkError{Root: abs, Err: walkErr})
 		}
 	}
 	var list []string
@@ -231,5 +251,5 @@ func detectDeleteCandidates(projectPath string, desired map[string]string, state
 		list = append(list, path)
 	}
 	slices.Sort(list)
-	return list, nil
+	return list, domainErrs
 }

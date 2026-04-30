@@ -67,9 +67,10 @@ func collect(err error, out *[]DomainError) {
 }
 
 // Errors is a slice of DomainError values that itself satisfies the
-// `error` interface. It is the return shape for accumulator functions
-// that want to expose every issue at once and still hand a single value
-// to callers that only check `if err != nil`.
+// DomainError interface. It is the return shape for accumulator
+// functions that want to expose every issue at once while still
+// handing a single DomainError-typed value to callers that propagate
+// errors through the standard `error` plumbing.
 type Errors []DomainError
 
 // Error joins each underlying message with a newline so the value still
@@ -86,6 +87,20 @@ func (es Errors) Error() string {
 		out += "\n" + e.Error()
 	}
 	return out
+}
+
+// Severity returns the highest severity present in the slice. An empty
+// slice degrades to SeverityInfo because it represents "no failure".
+// This makes Errors itself a DomainError so wrappers can keep returning
+// a single domain value even when several leaves are involved.
+func (es Errors) Severity() Severity {
+	highest := SeverityInfo
+	for _, e := range es {
+		if s := e.Severity(); s > highest {
+			highest = s
+		}
+	}
+	return highest
 }
 
 // Unwrap exposes the underlying domain errors so errors.As / errors.Is

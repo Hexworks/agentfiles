@@ -12,6 +12,7 @@ import (
 
 	"github.com/addamsson/agentfiles/internal/asset"
 	"github.com/addamsson/agentfiles/internal/config"
+	"github.com/addamsson/agentfiles/internal/errs"
 	"github.com/addamsson/agentfiles/internal/fsutil"
 	"github.com/addamsson/agentfiles/internal/project"
 )
@@ -40,10 +41,10 @@ type Profile struct {
 
 // Init scaffolds a brand-new profile root with the expected folder layout.
 // The created directories mirror the current set of first-class asset types.
-func Init(root, name string) (*Manifest, error) {
-	root, err := fsutil.ToAbsolute(root)
-	if err != nil {
-		return nil, err
+func Init(root, name string) (*Manifest, errs.DomainError) {
+	root, absErr := fsutil.ToAbsolute(root)
+	if absErr != nil {
+		return nil, absErr
 	}
 	manifest := &Manifest{
 		Version:   Version,
@@ -70,10 +71,10 @@ func Init(root, name string) (*Manifest, error) {
 
 // Load reads profile.json and then scans assets/ and projects/ to build the
 // complete in-memory profile model.
-func Load(root string) (*Profile, error) {
-	root, err := fsutil.ToAbsolute(root)
-	if err != nil {
-		return nil, err
+func Load(root string) (*Profile, errs.DomainError) {
+	root, absErr := fsutil.ToAbsolute(root)
+	if absErr != nil {
+		return nil, absErr
 	}
 	var manifest Manifest
 	if err := fsutil.ReadJSON(filepath.Join(root, config.ProfileManifestFileName), &manifest); err != nil {
@@ -96,9 +97,10 @@ func Load(root string) (*Profile, error) {
 
 // scanAssets walks the assets tree and loads every directory that contains an
 // asset.json file. Each asset id must be unique within one profile.
-func scanAssets(loaded *Profile) error {
+func scanAssets(loaded *Profile) errs.DomainError {
 	assetsRoot := filepath.Join(loaded.Root, config.AssetsDirName)
-	return filepath.WalkDir(assetsRoot, func(path string, d os.DirEntry, err error) error {
+	var domainErr errs.DomainError
+	walkErr := filepath.WalkDir(assetsRoot, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -112,25 +114,34 @@ func scanAssets(loaded *Profile) error {
 		if !fsutil.Exists(manifestPath) {
 			return nil
 		}
-		a, err := asset.Load(path)
-		if err != nil {
-			return err
+		a, loadErr := asset.Load(path)
+		if loadErr != nil {
+			domainErr = loadErr
+			return filepath.SkipAll
 		}
 		if _, exists := loaded.Assets[a.ID]; exists {
-			return DuplicateAssetIDError{ID: a.ID}
+			domainErr = DuplicateAssetIDError{ID: a.ID}
+			return filepath.SkipAll
 		}
 		loaded.Assets[a.ID] = a
 		return filepath.SkipDir
 	})
+	if domainErr != nil {
+		return domainErr
+	}
+	if walkErr != nil {
+		return AssetsScanError{Root: assetsRoot, Err: walkErr}
+	}
+	return nil
 }
 
 // scanProjects loads all project manifests from the profile's projects/
 // directory and normalizes them before exposing them to the rest of the app.
-func scanProjects(loaded *Profile) error {
+func scanProjects(loaded *Profile) errs.DomainError {
 	projectsRoot := filepath.Join(loaded.Root, config.ProjectsDirName)
 	entries, err := os.ReadDir(projectsRoot)
 	if err != nil {
-		return err
+		return ProjectsReadDirError{Root: projectsRoot, Err: err}
 	}
 	for _, entry := range entries {
 		// Task 0012 tracks extracting this filter into a named helper.
@@ -139,14 +150,14 @@ func scanProjects(loaded *Profile) error {
 		}
 		var manifest project.Manifest
 		path := filepath.Join(projectsRoot, entry.Name())
-		if err := fsutil.ReadJSON(path, &manifest); err != nil {
-			return err
+		if readErr := fsutil.ReadJSON(path, &manifest); readErr != nil {
+			return readErr
 		}
-		if err := manifest.Normalize(); err != nil {
-			return err
+		if normErr := manifest.Normalize(); normErr != nil {
+			return normErr
 		}
-		if err := manifest.Validate(); err != nil {
-			return err
+		if valErr := manifest.Validate(); valErr != nil {
+			return valErr
 		}
 		if _, exists := loaded.Projects[manifest.ID]; exists {
 			return DuplicateProjectIDError{ID: manifest.ID}

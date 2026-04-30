@@ -5,8 +5,6 @@
 package doctor
 
 import (
-	"fmt"
-
 	"github.com/addamsson/agentfiles/internal/errs"
 	"github.com/addamsson/agentfiles/internal/profile"
 	llmsync "github.com/addamsson/agentfiles/internal/sync"
@@ -51,26 +49,6 @@ type ProjectStatus struct {
 // IsClean reports whether the project has no pending changes.
 func (s ProjectStatus) IsClean() bool {
 	return len(s.Changes) == 0
-}
-
-// ProjectCheckError reports a per-project plan failure encountered while
-// building the report. Err preserves the underlying cause so callers can
-// inspect domain leaves with errs.Collect.
-type ProjectCheckError struct {
-	ProjectName string
-	Err         error
-}
-
-func (e ProjectCheckError) Error() string {
-	return fmt.Sprintf("project %s: %s", e.ProjectName, e.Err.Error())
-}
-
-func (ProjectCheckError) Severity() errs.Severity {
-	return errs.SeverityError
-}
-
-func (e ProjectCheckError) Unwrap() error {
-	return e.Err
 }
 
 // CheckProfile runs a sync plan for every project owned by the profile and

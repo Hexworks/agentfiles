@@ -216,7 +216,7 @@ func addSkillOutputs(files map[string]RenderedFile, a *asset.Asset, enabledAgent
 	}
 	relFiles, listErr := asset.RelativeFiles(a.Dir)
 	if listErr != nil {
-		return []errs.DomainError{AssetReadError{AssetID: a.ID, RelPath: ".", Op: "walk", Err: listErr}}
+		return []errs.DomainError{listErr}
 	}
 	skillRoots := map[string]string{
 		"codex":       ".codex/skills",

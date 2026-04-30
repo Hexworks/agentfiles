@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/addamsson/agentfiles/internal/config"
+	"github.com/addamsson/agentfiles/internal/errs"
 	"github.com/addamsson/agentfiles/internal/fsutil"
 )
 
@@ -119,7 +120,7 @@ type Asset struct {
 
 // Validate checks only the domain-level shape of the manifest. It does not
 // inspect agent-specific projection semantics.
-func (m Manifest) Validate() error {
+func (m Manifest) Validate() errs.DomainError {
 	if m.ID == "" || m.Name == "" {
 		return ErrAssetIDNameRequired
 	}
@@ -132,7 +133,7 @@ func (m Manifest) Validate() error {
 }
 
 // Load reads and validates one asset directory.
-func Load(dir string) (*Asset, error) {
+func Load(dir string) (*Asset, errs.DomainError) {
 	var manifest Manifest
 	if err := fsutil.ReadJSON(filepath.Join(dir, config.AssetManifestFileName), &manifest); err != nil {
 		return nil, err
@@ -145,7 +146,7 @@ func Load(dir string) (*Asset, error) {
 
 // Init scaffolds a new asset directory with a starter file layout that matches
 // the chosen type.
-func Init(root string, manifest Manifest) (string, error) {
+func Init(root string, manifest Manifest) (string, errs.DomainError) {
 	if err := manifest.Validate(); err != nil {
 		return "", err
 	}
@@ -162,15 +163,15 @@ func Init(root string, manifest Manifest) (string, error) {
 	switch manifest.Type {
 	case TypeSkill:
 		body := []byte("---\nname: " + manifest.Name + "\ndescription: " + manifest.Description + "\n---\n\nDescribe the skill here.\n")
-		if err := os.WriteFile(filepath.Join(dir, config.SkillStarterFileName), body, 0o644); err != nil {
+		if err := fsutil.WriteFile(filepath.Join(dir, config.SkillStarterFileName), body, 0o644); err != nil {
 			return "", err
 		}
 	case TypeAgentsDoc:
-		if err := os.WriteFile(filepath.Join(dir, config.AgentsDocStarterFileName), []byte("# "+manifest.Name+"\n"), 0o644); err != nil {
+		if err := fsutil.WriteFile(filepath.Join(dir, config.AgentsDocStarterFileName), []byte("# "+manifest.Name+"\n"), 0o644); err != nil {
 			return "", err
 		}
 	case TypeSettings:
-		if err := os.WriteFile(filepath.Join(dir, config.SettingsStarterFileName), []byte("# codex settings\n"), 0o644); err != nil {
+		if err := fsutil.WriteFile(filepath.Join(dir, config.SettingsStarterFileName), []byte("# codex settings\n"), 0o644); err != nil {
 			return "", err
 		}
 	}
@@ -194,9 +195,9 @@ func SupportsAgent(a *Asset, agent string) bool {
 // RelativeFiles returns all non-hidden content files inside an asset directory.
 // asset.json is intentionally excluded because it is metadata, not renderable
 // content.
-func RelativeFiles(root string) ([]string, error) {
+func RelativeFiles(root string) ([]string, errs.DomainError) {
 	var files []string
-	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	walkErr := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -210,5 +211,8 @@ func RelativeFiles(root string) ([]string, error) {
 		files = append(files, rel)
 		return nil
 	})
-	return files, err
+	if walkErr != nil {
+		return nil, AssetWalkError{AssetDir: root, Err: walkErr}
+	}
+	return files, nil
 }

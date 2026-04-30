@@ -39,14 +39,14 @@ func New(registryPath string) *Service {
 // CreateProfile initializes a new profile folder on disk and registers it in
 // the global profile registry. The profile folder is the authoritative source
 // of truth; project files are generated later from its contents.
-func (s *Service) CreateProfile(name, path string) (*registry.ProfileRef, error) {
-	path, err := fsutil.ToAbsolute(path)
-	if err != nil {
-		return nil, err
+func (s *Service) CreateProfile(name, path string) (*registry.ProfileRef, errs.DomainError) {
+	path, absErr := fsutil.ToAbsolute(path)
+	if absErr != nil {
+		return nil, absErr
 	}
-	manifest, err := profile.Init(path, name)
-	if err != nil {
-		return nil, err
+	manifest, initErr := profile.Init(path, name)
+	if initErr != nil {
+		return nil, initErr
 	}
 	ref := registry.ProfileRef{
 		ID:           manifest.ID,
@@ -66,10 +66,10 @@ func (s *Service) CreateProfile(name, path string) (*registry.ProfileRef, error)
 // RegisterProfile adds an already-existing profile folder to the global
 // registry. This is the "adopt existing local folder" path as opposed to
 // CreateProfile's "scaffold a fresh one" path.
-func (s *Service) RegisterProfile(path string) (*registry.ProfileRef, error) {
-	loaded, err := profile.Load(path)
-	if err != nil {
-		return nil, err
+func (s *Service) RegisterProfile(path string) (*registry.ProfileRef, errs.DomainError) {
+	loaded, loadErr := profile.Load(path)
+	if loadErr != nil {
+		return nil, loadErr
 	}
 	ref := registry.ProfileRef{
 		ID:           loaded.Manifest.ID,
@@ -88,7 +88,7 @@ func (s *Service) RegisterProfile(path string) (*registry.ProfileRef, error) {
 
 // LoadProfile resolves a user-facing profile reference (id, name, or path),
 // updates its last-opened timestamp, and returns the fully loaded profile model.
-func (s *Service) LoadProfile(ref string) (*profile.Profile, error) {
+func (s *Service) LoadProfile(ref string) (*profile.Profile, errs.DomainError) {
 	profileRef, err := s.Registry.Resolve(ref)
 	if err != nil {
 		return nil, err
@@ -107,13 +107,13 @@ func (s *Service) LoadProfile(ref string) (*profile.Profile, error) {
 // A project manifest does not store rendered files. It stores only the project
 // path plus the asset/agent selection used later by render + sync.
 func (s *Service) AddProject(profileRef, name, path string, agents, assetIDs []string) (*project.Manifest, []errs.DomainError) {
-	loaded, err := s.LoadProfile(profileRef)
-	if err != nil {
-		return nil, []errs.DomainError{wrapInternal(err)}
+	loaded, loadErr := s.LoadProfile(profileRef)
+	if loadErr != nil {
+		return nil, []errs.DomainError{loadErr}
 	}
-	path, err = fsutil.ToAbsolute(path)
-	if err != nil {
-		return nil, []errs.DomainError{wrapInternal(err)}
+	path, absErr := fsutil.ToAbsolute(path)
+	if absErr != nil {
+		return nil, []errs.DomainError{absErr}
 	}
 	var domainErrs []errs.DomainError
 	domainErrs = append(domainErrs, s.ensureProjectPathAvailable(path, loaded)...)
@@ -134,14 +134,14 @@ func (s *Service) AddProject(profileRef, name, path string, agents, assetIDs []s
 		CreatedAt:        time.Now().UTC(),
 	}
 	if err := project.Save(loaded.Root, manifest); err != nil {
-		return nil, []errs.DomainError{wrapInternal(err)}
+		return nil, []errs.DomainError{err}
 	}
 	return manifest, nil
 }
 
 // InitAsset scaffolds a new asset inside the selected profile. The asset type
 // determines the starter files that get created in the new asset directory.
-func (s *Service) InitAsset(profileRef string, manifest asset.Manifest) (string, error) {
+func (s *Service) InitAsset(profileRef string, manifest asset.Manifest) (string, errs.DomainError) {
 	loaded, err := s.LoadProfile(profileRef)
 	if err != nil {
 		return "", err
@@ -154,7 +154,7 @@ func (s *Service) InitAsset(profileRef string, manifest asset.Manifest) (string,
 
 // Plan builds a sync preview for one project. This is the read-only half of the
 // pipeline: load profile -> render desired files -> compare with the repo.
-func (s *Service) Plan(profileRef, projectID string) (*llmsync.Preview, error) {
+func (s *Service) Plan(profileRef, projectID string) (*llmsync.Preview, errs.DomainError) {
 	loaded, err := s.LoadProfile(profileRef)
 	if err != nil {
 		return nil, err
@@ -168,7 +168,7 @@ func (s *Service) Plan(profileRef, projectID string) (*llmsync.Preview, error) {
 
 // Apply executes the write half of the pipeline by first building a preview and
 // then asking the sync package to materialize the desired files.
-func (s *Service) Apply(profileRef, projectID string, deleteCandidates bool) (*llmsync.Preview, error) {
+func (s *Service) Apply(profileRef, projectID string, deleteCandidates bool) (*llmsync.Preview, errs.DomainError) {
 	preview, err := s.Plan(profileRef, projectID)
 	if err != nil {
 		return nil, err
@@ -198,14 +198,14 @@ func (s *Service) ensureProjectPathAvailable(projectPath string, active *profile
 	}
 	reg, err := s.Registry.Load()
 	if err != nil {
-		return append(conflicts, wrapInternal(err))
+		return append(conflicts, err)
 	}
 	for _, profileRef := range reg.Profiles {
 		if profileRef.ID == active.Manifest.ID {
 			continue
 		}
-		loaded, err := profile.Load(profileRef.Path)
-		if err != nil {
+		loaded, loadErr := profile.Load(profileRef.Path)
+		if loadErr != nil {
 			continue
 		}
 		for _, proj := range loaded.ProjectList() {
@@ -219,12 +219,6 @@ func (s *Service) ensureProjectPathAvailable(projectPath string, active *profile
 		}
 	}
 	return conflicts
-}
-
-// wrapInternal turns a non-domain error (filesystem, registry I/O) into a
-// DomainError so AddProject's slice return stays uniform.
-func wrapInternal(err error) errs.DomainError {
-	return InternalError{Err: err}
 }
 
 // slug creates a stable file/id friendly name from user-facing input.

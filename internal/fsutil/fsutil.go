@@ -1,17 +1,21 @@
 // Package fsutil gathers the small filesystem and hashing helpers shared by the
 // rest of the codebase. It keeps path handling, JSON I/O, and content hashing
 // consistent so higher layers do not have to repeat the same boilerplate.
+//
+// Every fallible helper returns an errs.DomainError so the rest of the
+// codebase can keep its "errors are domain values" contract end-to-end.
 package fsutil
 
 import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/addamsson/agentfiles/internal/errs"
 )
 
 // ExpandHome resolves a leading "~" or "~/" in path against the current user's
@@ -33,8 +37,11 @@ func ExpandHome(path string) string {
 // read, write, and execute permission (7), while group and others have read
 // and execute but not write (5) — the standard mode for user-owned directories
 // that should be traversable by everyone but only modifiable by the owner.
-func EnsureDir(path string) error {
-	return os.MkdirAll(path, 0o755)
+func EnsureDir(path string) errs.DomainError {
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		return EnsureDirError{Path: path, Err: err}
+	}
+	return nil
 }
 
 // Exists reports whether anything exists at path. Any stat error is treated as
@@ -47,36 +54,45 @@ func Exists(path string) bool {
 
 // ReadJSON reads the file at path and decodes its contents into v.
 // TODO: make this a generic function (@see task#0001)
-func ReadJSON(path string, v any) error {
+func ReadJSON(path string, v any) errs.DomainError {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return err
+		return ReadJSONError{Path: path, Err: err}
 	}
-	return json.Unmarshal(data, v)
+	if err := json.Unmarshal(data, v); err != nil {
+		return ReadJSONError{Path: path, Err: err}
+	}
+	return nil
 }
 
 // WriteJSON marshals v as pretty-printed JSON with a trailing newline and
 // writes it to path, creating parent directories as needed.
 // TODO: make this a generic function (@see task#0001)
-func WriteJSON(path string, v any) error {
-	if err := EnsureDir(filepath.Dir(path)); err != nil {
-		return err
+func WriteJSON(path string, v any) errs.DomainError {
+	if dirErr := EnsureDir(filepath.Dir(path)); dirErr != nil {
+		return dirErr
 	}
 	data, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
-		return err
+		return WriteJSONError{Path: path, Err: err}
 	}
 	data = append(data, '\n')
-	return os.WriteFile(path, data, 0o644)
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return WriteJSONError{Path: path, Err: err}
+	}
+	return nil
 }
 
 // WriteFile writes data to path with the given mode, creating parent
 // directories as needed.
-func WriteFile(path string, data []byte, mode fs.FileMode) error {
-	if err := EnsureDir(filepath.Dir(path)); err != nil {
-		return err
+func WriteFile(path string, data []byte, mode fs.FileMode) errs.DomainError {
+	if dirErr := EnsureDir(filepath.Dir(path)); dirErr != nil {
+		return dirErr
 	}
-	return os.WriteFile(path, data, mode)
+	if err := os.WriteFile(path, data, mode); err != nil {
+		return WriteFileError{Path: path, Err: err}
+	}
+	return nil
 }
 
 // HashBytes returns the hex-encoded SHA-256 digest of data.
@@ -86,10 +102,10 @@ func HashBytes(data []byte) string {
 }
 
 // HashFile returns the hex-encoded SHA-256 digest of the file at path.
-func HashFile(path string) (string, error) {
+func HashFile(path string) (string, errs.DomainError) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return "", err
+		return "", HashFileError{Path: path, Err: err}
 	}
 	return HashBytes(data), nil
 }
@@ -108,10 +124,14 @@ func ToRelative(base, target string) string {
 // ToAbsolute expands "~" and resolves path to an absolute form. It returns an
 // error for the empty string so callers cannot silently operate on the current
 // working directory.
-func ToAbsolute(path string) (string, error) {
+func ToAbsolute(path string) (string, errs.DomainError) {
 	path = ExpandHome(path)
 	if path == "" {
-		return "", errors.New("path is empty")
+		return "", ErrPathEmpty
 	}
-	return filepath.Abs(path)
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", AbsPathError{Path: path, Err: err}
+	}
+	return abs, nil
 }

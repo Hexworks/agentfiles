@@ -256,19 +256,18 @@ func RunDoctor(service *app.Service) error {
 // the id keeps the caller working with the stable identifier rather than a
 // display string.
 func selectProfile(service *app.Service, title, description string) (string, error) {
-	reg, err := service.Registry.Load()
-	if err != nil {
-		return "", err
+	reg, loadErr := service.Registry.Load()
+	if loadErr != nil {
+		return "", loadErr
 	}
 	if len(reg.Profiles) == 0 {
 		return "", errors.New("no profiles registered; create one first")
 	}
 	opts := profileOptions(reg.Profiles)
 	var id string
-	err = runForm(huh.NewGroup(
+	if err := runForm(huh.NewGroup(
 		huh.NewSelect[string]().Title(title).Description(description).Options(opts...).Value(&id),
-	))
-	if err != nil {
+	)); err != nil {
 		return "", err
 	}
 	return id, nil
@@ -280,9 +279,9 @@ func selectProfileAndProject(service *app.Service) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
-	loaded, err := service.LoadProfile(profileID)
-	if err != nil {
-		return "", "", err
+	loaded, loadErr := service.LoadProfile(profileID)
+	if loadErr != nil {
+		return "", "", loadErr
 	}
 	projects := loaded.ProjectList()
 	if len(projects) == 0 {
@@ -293,10 +292,9 @@ func selectProfileAndProject(service *app.Service) (string, string, error) {
 		opts = append(opts, huh.NewOption(fmt.Sprintf("%s (%s)", p.Name, p.Path), p.ID))
 	}
 	var projectID string
-	err = runForm(huh.NewGroup(
+	if err := runForm(huh.NewGroup(
 		huh.NewSelect[string]().Title("Project").Description("Project to plan/apply").Options(opts...).Value(&projectID),
-	))
-	if err != nil {
+	)); err != nil {
 		return "", "", err
 	}
 	return profileID, projectID, nil

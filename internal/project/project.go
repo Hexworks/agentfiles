@@ -4,12 +4,12 @@
 package project
 
 import (
-	"fmt"
 	"path/filepath"
 	"slices"
 	"time"
 
 	"github.com/addamsson/agentfiles/internal/config"
+	"github.com/addamsson/agentfiles/internal/errs"
 	"github.com/addamsson/agentfiles/internal/fsutil"
 )
 
@@ -25,19 +25,19 @@ type Manifest struct {
 }
 
 // Validate checks only the core project invariants.
-func (m *Manifest) Validate() error {
+func (m *Manifest) Validate() errs.DomainError {
 	if m.ID == "" || m.Name == "" || m.Path == "" {
-		return fmt.Errorf("project id, name, and path are required")
+		return ErrProjectFieldsRequired
 	}
 	if len(m.EnabledAgents) == 0 {
-		return fmt.Errorf("at least one agent must be enabled")
+		return ErrNoEnabledAgents
 	}
 	return nil
 }
 
 // Normalize transforms all paths to absolute and fixes ordering so
 // the manifest stays stable in storage and comparisons.
-func (m *Manifest) Normalize() error {
+func (m *Manifest) Normalize() errs.DomainError {
 	abs, err := fsutil.ToAbsolute(m.Path)
 	if err != nil {
 		return err
@@ -50,7 +50,7 @@ func (m *Manifest) Normalize() error {
 
 // Save writes the project manifest into the owning profile's projects/
 // directory.
-func Save(profileRoot string, manifest *Manifest) error {
+func Save(profileRoot string, manifest *Manifest) errs.DomainError {
 	if err := manifest.Normalize(); err != nil {
 		return err
 	}

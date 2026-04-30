@@ -6,25 +6,6 @@ import (
 	"github.com/addamsson/agentfiles/internal/errs"
 )
 
-// InternalError wraps a non-domain failure (filesystem read/write,
-// registry I/O) in a DomainError so accumulator-shape returns stay
-// uniform. The underlying error is preserved for errors.Unwrap.
-type InternalError struct {
-	Err error
-}
-
-func (e InternalError) Error() string {
-	return e.Err.Error()
-}
-
-func (InternalError) Severity() errs.Severity {
-	return errs.SeverityError
-}
-
-func (e InternalError) Unwrap() error {
-	return e.Err
-}
-
 // AssetNotFoundError reports an asset id passed to AddProject that is not
 // present in the selected profile. The render package emits a value of
 // the same name when a stored project manifest references a missing
