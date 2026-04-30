@@ -1,7 +1,7 @@
 ---
 id: 0002
 type: feature
-status: Pending
+status: pending
 ---
 
 # Use wizard instead of forms.

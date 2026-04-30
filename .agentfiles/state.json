@@ -1,0 +1,16 @@
+{
+  "profile_id": "addamsson",
+  "project_id": "agentfiles",
+  "generator_version": "1.0.0",
+  "last_applied_at": "2026-04-30T13:19:15.159325497Z",
+  "managed_files": {
+    ".claude/skills/af.task.implement/SKILL.md": "a30e54d1bf518960d5f0fad6e1d26c9d958a1cd42132a2cbf8243af8f0b5377b",
+    ".claude/skills/af.task.implement/changelog-template.md": "5f103bf4b49285ce0ec53ab82c72cc095105095ffbfd878fd9261417addf8e7a",
+    ".claude/skills/af.task.review/SKILL.md": "bbb5642879692d06e38564267f47b8348d19dc37c08bf5ee80cfce00f6eb5e77",
+    ".claude/skills/af.task.review/review-template.md": "3a93c69852cfe9449186a1db444acc7e6eb596d7dad92d500f55b6053c47fe22",
+    ".codex/skills/af.task.implement/SKILL.md": "a30e54d1bf518960d5f0fad6e1d26c9d958a1cd42132a2cbf8243af8f0b5377b",
+    ".codex/skills/af.task.implement/changelog-template.md": "5f103bf4b49285ce0ec53ab82c72cc095105095ffbfd878fd9261417addf8e7a",
+    ".codex/skills/af.task.review/SKILL.md": "bbb5642879692d06e38564267f47b8348d19dc37c08bf5ee80cfce00f6eb5e77",
+    ".codex/skills/af.task.review/review-template.md": "3a93c69852cfe9449186a1db444acc7e6eb596d7dad92d500f55b6053c47fe22"
+  }
+}

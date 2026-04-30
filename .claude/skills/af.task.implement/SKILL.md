@@ -1,5 +1,5 @@
 ---
-name: implement-task
+name: af.task.implement
 description: Use when the user invokes /implement-task <task-number> (e.g. /implement-task 0001) to plan and implement a task from the project's tasks/ folder. Locates the task directory, validates frontmatter, asks clarifying questions, writes a plan inside the task directory, awaits approval, implements the work, then writes a changelog entry. Project-specific to repos that follow the tasks/{backlog,current,done}/ convention with directory-per-task layout.
 ---
 

@@ -1,5 +1,5 @@
 ---
-name: review-task
+name: af.task.review
 description: Use when the user invokes /review-task <task-number> (e.g. /review-task 0001) to review the implementation of a task that is currently in `in-review` state. Reads the task directory (description, plan, review notes), the changelog, and guidelines, dispatches parallel subagents for security/clean-code/clean-architecture/SOLID/DDD/testing/Go reviews, writes a consolidated review file inside the task directory, awaits user choice from solution checklists, applies the chosen fixes, runs the build/test/lint quality gate, and commits the changes.
 ---
 
