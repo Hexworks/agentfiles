@@ -1,7 +1,7 @@
 ---
 id: 0005
 type: task
-status: in-review
+status: done
 topics: go, tui
 ---
 
