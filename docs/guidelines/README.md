@@ -12,6 +12,7 @@ Use these files when you want to understand how to model the domain, how to auth
 - [Documentation](./documentation.md)
 - [Domain Model](./domain_model.md)
 - [Errors](./errors.md)
+- [External Tools](./external_tools.md)
 - [Git](./git.md)
 - [Go](./go.md)
 - [Security](./security.md)
