@@ -45,7 +45,7 @@ type ProjectPlan struct {
 // Errors are accumulated rather than short-circuited: every missing asset id,
 // every exclusive_group conflict, and every per-asset render failure is
 // returned together so the TUI can list them in one go.
-func Build(p *profile.Profile, proj *project.Manifest) (*ProjectPlan, []errs.DomainError) {
+func Build(p *profile.Profile, proj *project.Project) (*ProjectPlan, []errs.DomainError) {
 	selected, resolveErrs := resolveAssets(p, proj)
 
 	var domainErrs []errs.DomainError
@@ -108,7 +108,7 @@ func dedupSorted(ids []string) []string {
 // resolveAssets turns the selected asset ids from the project manifest into
 // the loaded asset objects from the profile. Missing ids are accumulated and
 // returned together so the caller can list every missing selection at once.
-func resolveAssets(p *profile.Profile, proj *project.Manifest) ([]*asset.Asset, []errs.DomainError) {
+func resolveAssets(p *profile.Profile, proj *project.Project) ([]*asset.Asset, []errs.DomainError) {
 	var selected []*asset.Asset
 	var domainErrs []errs.DomainError
 	for _, id := range proj.SelectedAssetIDs {

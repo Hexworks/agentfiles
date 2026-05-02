@@ -106,7 +106,7 @@ func (s *Service) LoadProfile(ref string) (*profile.Profile, errs.DomainError) {
 //
 // A project manifest does not store rendered files. It stores only the project
 // path plus the asset/agent selection used later by render + sync.
-func (s *Service) AddProject(profileRef, name, path string, agents, assetIDs []string) (*project.Manifest, []errs.DomainError) {
+func (s *Service) AddProject(profileRef, name, path string, agents, assetIDs []string) (*project.Project, []errs.DomainError) {
 	loaded, loadErr := s.LoadProfile(profileRef)
 	if loadErr != nil {
 		return nil, []errs.DomainError{loadErr}
@@ -125,7 +125,7 @@ func (s *Service) AddProject(profileRef, name, path string, agents, assetIDs []s
 	if len(domainErrs) > 0 {
 		return nil, domainErrs
 	}
-	manifest := &project.Manifest{
+	manifest := &project.Project{
 		ID:               slug(name),
 		Name:             name,
 		Path:             path,

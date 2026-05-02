@@ -54,7 +54,7 @@ func TestPlanDetectsDriftAndDeleteCandidate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	preview, err := Plan(loaded, &project.Manifest{
+	preview, err := Plan(loaded, &project.Project{
 		ID:               "app",
 		Name:             "app",
 		Path:             projectRoot,

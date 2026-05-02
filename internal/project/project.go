@@ -13,9 +13,9 @@ import (
 	"github.com/addamsson/agentfiles/internal/fsutil"
 )
 
-// Manifest stores the project-specific part of the model:
+// Project stores the project-specific part of the model:
 // where the repo lives, which agents are enabled, and which assets were chosen.
-type Manifest struct {
+type Project struct {
 	ID               string    `json:"id"`
 	Name             string    `json:"name"`
 	Path             string    `json:"path"`
@@ -25,7 +25,7 @@ type Manifest struct {
 }
 
 // Validate checks only the core project invariants.
-func (m *Manifest) Validate() errs.DomainError {
+func (m *Project) Validate() errs.DomainError {
 	if m.ID == "" || m.Name == "" || m.Path == "" {
 		return ErrProjectFieldsRequired
 	}
@@ -37,7 +37,7 @@ func (m *Manifest) Validate() errs.DomainError {
 
 // Normalize transforms all paths to absolute and fixes ordering so
 // the manifest stays stable in storage and comparisons.
-func (m *Manifest) Normalize() errs.DomainError {
+func (m *Project) Normalize() errs.DomainError {
 	abs, err := fsutil.ToAbsolute(m.Path)
 	if err != nil {
 		return err
@@ -50,7 +50,7 @@ func (m *Manifest) Normalize() errs.DomainError {
 
 // Save writes the project manifest into the owning profile's projects/
 // directory.
-func Save(profileRoot string, manifest *Manifest) errs.DomainError {
+func Save(profileRoot string, manifest *Project) errs.DomainError {
 	if err := manifest.Normalize(); err != nil {
 		return err
 	}

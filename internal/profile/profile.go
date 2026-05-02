@@ -36,7 +36,7 @@ type Profile struct {
 	Root     string
 	Manifest Manifest
 	Assets   map[string]*asset.Asset
-	Projects map[string]*project.Manifest
+	Projects map[string]*project.Project
 }
 
 // Init scaffolds a brand-new profile root with the expected folder layout.
@@ -84,7 +84,7 @@ func Load(root string) (*Profile, errs.DomainError) {
 		Root:     root,
 		Manifest: manifest,
 		Assets:   map[string]*asset.Asset{},
-		Projects: map[string]*project.Manifest{},
+		Projects: map[string]*project.Project{},
 	}
 	if err := scanAssets(loaded); err != nil {
 		return nil, err
@@ -148,7 +148,7 @@ func scanProjects(loaded *Profile) errs.DomainError {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
 			continue
 		}
-		var manifest project.Manifest
+		var manifest project.Project
 		path := filepath.Join(projectsRoot, entry.Name())
 		if readErr := fsutil.ReadJSON(path, &manifest); readErr != nil {
 			return readErr
@@ -169,12 +169,12 @@ func scanProjects(loaded *Profile) errs.DomainError {
 
 // ProjectList returns projects sorted by display name, which keeps the
 // TUI presentation stable.
-func (l *Profile) ProjectList() []*project.Manifest {
-	var list []*project.Manifest
+func (l *Profile) ProjectList() []*project.Project {
+	var list []*project.Project
 	for _, p := range l.Projects {
 		list = append(list, p)
 	}
-	slices.SortFunc(list, func(a, b *project.Manifest) int {
+	slices.SortFunc(list, func(a, b *project.Project) int {
 		return strings.Compare(a.Name, b.Name)
 	})
 	return list

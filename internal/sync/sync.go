@@ -83,7 +83,7 @@ type Preview struct {
 // where create/update/drift/delete-candidate classification happens. Every
 // failure mode (render leaves, hashing, state load, walk) is returned as an
 // errs.DomainError so the TUI can render severity, icon, and color uniformly.
-func Plan(p *profile.Profile, proj *project.Manifest) (*Preview, errs.DomainError) {
+func Plan(p *profile.Profile, proj *project.Project) (*Preview, errs.DomainError) {
 	rendered, renderErrs := render.Build(p, proj)
 	if len(renderErrs) > 0 {
 		return nil, errs.Errors(renderErrs)
