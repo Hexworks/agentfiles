@@ -7,6 +7,7 @@ Use these files when you want to understand how to model the domain, how to auth
 ## Available Guidelines
 
 - [Asset Authoring](./asset_authoring.md)
+- [Charm](./charm.md)
 - [Clean Architecture](./clean_architecture.md)
 - [Clean Code](./clean_code.md)
 - [Documentation](./documentation.md)
