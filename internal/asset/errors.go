@@ -3,7 +3,7 @@ package asset
 import (
 	"fmt"
 
-	"github.com/addamsson/agentfiles/internal/errs"
+	"github.com/hexworks/agentfiles/internal/errs"
 )
 
 // AssetIDNameRequiredError reports a manifest whose id or name field is

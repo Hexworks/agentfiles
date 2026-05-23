@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/addamsson/agentfiles/internal/doctor"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/hexworks/agentfiles/internal/doctor"
 )
 
 // RenderReport returns the user-facing string representation of a doctor

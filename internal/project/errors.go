@@ -1,6 +1,6 @@
 package project
 
-import "github.com/addamsson/agentfiles/internal/errs"
+import "github.com/hexworks/agentfiles/internal/errs"
 
 // ProjectFieldsRequiredError reports a project manifest with one or more
 // missing required identity fields (id, name, path).

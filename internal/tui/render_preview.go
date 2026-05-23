@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	llmsync "github.com/addamsson/agentfiles/internal/sync"
 	"github.com/charmbracelet/lipgloss"
+	llmsync "github.com/hexworks/agentfiles/internal/sync"
 )
 
 // RenderPreview returns the user-facing string representation of a sync

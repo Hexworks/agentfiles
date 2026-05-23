@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/addamsson/agentfiles/internal/errs"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/hexworks/agentfiles/internal/errs"
 )
 
 // RenderError formats a single error value for display. errs.Collect

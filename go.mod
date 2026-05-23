@@ -1,4 +1,4 @@
-module github.com/addamsson/agentfiles
+module github.com/hexworks/agentfiles
 
 go 1.26.1
 

@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/addamsson/agentfiles/internal/asset"
-	"github.com/addamsson/agentfiles/internal/config"
+	"github.com/hexworks/agentfiles/internal/asset"
+	"github.com/hexworks/agentfiles/internal/config"
 )
 
 func TestAddProject_AccumulatesUnknownAssets(t *testing.T) {

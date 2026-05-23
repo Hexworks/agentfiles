@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/addamsson/agentfiles/internal/config"
-	"github.com/addamsson/agentfiles/internal/profile"
+	"github.com/hexworks/agentfiles/internal/config"
+	"github.com/hexworks/agentfiles/internal/profile"
 )
 
 func TestCheckProfile_CleanProjectHasEmptyChanges(t *testing.T) {

@@ -3,7 +3,7 @@ package sync
 import (
 	"fmt"
 
-	"github.com/addamsson/agentfiles/internal/errs"
+	"github.com/hexworks/agentfiles/internal/errs"
 )
 
 // StateMissingError reports that no managed-state snapshot exists at

@@ -3,7 +3,7 @@ package profile
 import (
 	"fmt"
 
-	"github.com/addamsson/agentfiles/internal/errs"
+	"github.com/hexworks/agentfiles/internal/errs"
 )
 
 // DuplicateAssetIDError reports an asset id that appears in more than one

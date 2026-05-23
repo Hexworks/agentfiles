@@ -5,9 +5,9 @@
 package doctor
 
 import (
-	"github.com/addamsson/agentfiles/internal/errs"
-	"github.com/addamsson/agentfiles/internal/profile"
-	llmsync "github.com/addamsson/agentfiles/internal/sync"
+	"github.com/hexworks/agentfiles/internal/errs"
+	"github.com/hexworks/agentfiles/internal/profile"
+	llmsync "github.com/hexworks/agentfiles/internal/sync"
 )
 
 // ChangeKind classifies a single project change. Doctor owns its own

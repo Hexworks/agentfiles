@@ -3,7 +3,7 @@ package registry
 import (
 	"fmt"
 
-	"github.com/addamsson/agentfiles/internal/errs"
+	"github.com/hexworks/agentfiles/internal/errs"
 )
 
 // ProfileIDExistsError reports an attempt to add a profile whose id is

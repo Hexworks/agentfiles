@@ -6,9 +6,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/addamsson/agentfiles/internal/app"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/huh"
+	"github.com/hexworks/agentfiles/internal/app"
 )
 
 // errBack is used to unwind one menu level. Huh returns ErrUserAborted when the

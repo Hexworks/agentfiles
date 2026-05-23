@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/addamsson/agentfiles/internal/doctor"
+	"github.com/hexworks/agentfiles/internal/doctor"
 )
 
 func TestRenderReport_CleanProjectShowsCleanLine(t *testing.T) {

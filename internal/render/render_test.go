@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/addamsson/agentfiles/internal/asset"
-	"github.com/addamsson/agentfiles/internal/config"
-	"github.com/addamsson/agentfiles/internal/profile"
-	"github.com/addamsson/agentfiles/internal/project"
+	"github.com/hexworks/agentfiles/internal/asset"
+	"github.com/hexworks/agentfiles/internal/config"
+	"github.com/hexworks/agentfiles/internal/profile"
+	"github.com/hexworks/agentfiles/internal/project"
 )
 
 func TestBuildSkillAndAgentsDoc(t *testing.T) {

@@ -10,13 +10,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/addamsson/agentfiles/internal/config"
-	"github.com/addamsson/agentfiles/internal/errs"
-	"github.com/addamsson/agentfiles/internal/fsutil"
-	"github.com/addamsson/agentfiles/internal/profile"
-	"github.com/addamsson/agentfiles/internal/project"
-	"github.com/addamsson/agentfiles/internal/render"
-	"github.com/addamsson/agentfiles/internal/surfaces"
+	"github.com/hexworks/agentfiles/internal/config"
+	"github.com/hexworks/agentfiles/internal/errs"
+	"github.com/hexworks/agentfiles/internal/fsutil"
+	"github.com/hexworks/agentfiles/internal/profile"
+	"github.com/hexworks/agentfiles/internal/project"
+	"github.com/hexworks/agentfiles/internal/render"
+	"github.com/hexworks/agentfiles/internal/surfaces"
 )
 
 // GeneratorVersion is stamped into the managed state so future format changes

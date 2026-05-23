@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/addamsson/agentfiles/internal/app"
-	"github.com/addamsson/agentfiles/internal/registry"
-	"github.com/addamsson/agentfiles/internal/tui"
+	"github.com/hexworks/agentfiles/internal/app"
+	"github.com/hexworks/agentfiles/internal/registry"
+	"github.com/hexworks/agentfiles/internal/tui"
 )
 
 func main() {

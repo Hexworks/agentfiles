@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/addamsson/agentfiles/internal/config"
+	"github.com/hexworks/agentfiles/internal/config"
 )
 
 func TestScanAssets_DuplicateIDReturnsTypedError(t *testing.T) {

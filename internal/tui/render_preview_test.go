@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/addamsson/agentfiles/internal/render"
-	llmsync "github.com/addamsson/agentfiles/internal/sync"
+	"github.com/hexworks/agentfiles/internal/render"
+	llmsync "github.com/hexworks/agentfiles/internal/sync"
 )
 
 func TestRenderPreview_NoChangesShowsCleanLine(t *testing.T) {

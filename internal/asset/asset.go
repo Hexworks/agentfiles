@@ -10,9 +10,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/addamsson/agentfiles/internal/config"
-	"github.com/addamsson/agentfiles/internal/errs"
-	"github.com/addamsson/agentfiles/internal/fsutil"
+	"github.com/hexworks/agentfiles/internal/config"
+	"github.com/hexworks/agentfiles/internal/errs"
+	"github.com/hexworks/agentfiles/internal/fsutil"
 )
 
 // Type identifies the category of an asset and selects the render rules that

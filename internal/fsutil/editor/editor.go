@@ -76,7 +76,7 @@ func Resolve() string {
 }
 
 // shellQuote wraps s in single quotes and escapes any embedded single
-// quotes using the standard '\'' idiom, producing a token that POSIX sh
+// quotes using the standard '\” idiom, producing a token that POSIX sh
 // will treat as a single literal argument.
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"

@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/addamsson/agentfiles/internal/asset"
-	"github.com/addamsson/agentfiles/internal/config"
-	"github.com/addamsson/agentfiles/internal/errs"
-	"github.com/addamsson/agentfiles/internal/fsutil"
-	"github.com/addamsson/agentfiles/internal/project"
+	"github.com/hexworks/agentfiles/internal/asset"
+	"github.com/hexworks/agentfiles/internal/config"
+	"github.com/hexworks/agentfiles/internal/errs"
+	"github.com/hexworks/agentfiles/internal/fsutil"
+	"github.com/hexworks/agentfiles/internal/project"
 )
 
 // Version is the current profile manifest schema version written to

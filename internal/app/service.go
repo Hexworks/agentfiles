@@ -7,14 +7,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/addamsson/agentfiles/internal/asset"
-	"github.com/addamsson/agentfiles/internal/config"
-	"github.com/addamsson/agentfiles/internal/errs"
-	"github.com/addamsson/agentfiles/internal/fsutil"
-	"github.com/addamsson/agentfiles/internal/profile"
-	"github.com/addamsson/agentfiles/internal/project"
-	"github.com/addamsson/agentfiles/internal/registry"
-	llmsync "github.com/addamsson/agentfiles/internal/sync"
+	"github.com/hexworks/agentfiles/internal/asset"
+	"github.com/hexworks/agentfiles/internal/config"
+	"github.com/hexworks/agentfiles/internal/errs"
+	"github.com/hexworks/agentfiles/internal/fsutil"
+	"github.com/hexworks/agentfiles/internal/profile"
+	"github.com/hexworks/agentfiles/internal/project"
+	"github.com/hexworks/agentfiles/internal/registry"
+	llmsync "github.com/hexworks/agentfiles/internal/sync"
 )
 
 // Service is the thin application layer used by the TUI.

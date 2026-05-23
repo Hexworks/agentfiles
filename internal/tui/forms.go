@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/addamsson/agentfiles/internal/app"
-	"github.com/addamsson/agentfiles/internal/asset"
-	"github.com/addamsson/agentfiles/internal/doctor"
-	"github.com/addamsson/agentfiles/internal/registry"
 	"github.com/charmbracelet/huh"
+	"github.com/hexworks/agentfiles/internal/app"
+	"github.com/hexworks/agentfiles/internal/asset"
+	"github.com/hexworks/agentfiles/internal/doctor"
+	"github.com/hexworks/agentfiles/internal/registry"
 )
 
 // supportedAssetTypes mirrors the asset.Type constants so the select list is

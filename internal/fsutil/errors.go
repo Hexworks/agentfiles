@@ -3,7 +3,7 @@ package fsutil
 import (
 	"fmt"
 
-	"github.com/addamsson/agentfiles/internal/errs"
+	"github.com/hexworks/agentfiles/internal/errs"
 )
 
 // PathEmptyError reports a call site that handed an empty path to a

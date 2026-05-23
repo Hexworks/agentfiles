@@ -3,7 +3,7 @@ package app
 import (
 	"fmt"
 
-	"github.com/addamsson/agentfiles/internal/errs"
+	"github.com/hexworks/agentfiles/internal/errs"
 )
 
 // AssetNotFoundError reports an asset id passed to AddProject that is not

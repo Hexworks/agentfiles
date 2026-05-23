@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/addamsson/agentfiles/internal/app"
-	"github.com/addamsson/agentfiles/internal/errs"
-	"github.com/addamsson/agentfiles/internal/render"
+	"github.com/hexworks/agentfiles/internal/app"
+	"github.com/hexworks/agentfiles/internal/errs"
+	"github.com/hexworks/agentfiles/internal/render"
 )
 
 func TestRenderError_TypedErrorRendersWithIcon(t *testing.T) {

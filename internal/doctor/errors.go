@@ -3,7 +3,7 @@ package doctor
 import (
 	"fmt"
 
-	"github.com/addamsson/agentfiles/internal/errs"
+	"github.com/hexworks/agentfiles/internal/errs"
 )
 
 // ProjectCheckError reports a per-project plan failure encountered while

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/addamsson/agentfiles/internal/errs"
+	"github.com/hexworks/agentfiles/internal/errs"
 )
 
 // ExclusiveGroupConflictError reports two or more selected assets that share a

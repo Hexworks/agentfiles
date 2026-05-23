@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/addamsson/agentfiles/internal/config"
-	"github.com/addamsson/agentfiles/internal/errs"
-	"github.com/addamsson/agentfiles/internal/fsutil"
+	"github.com/hexworks/agentfiles/internal/config"
+	"github.com/hexworks/agentfiles/internal/errs"
+	"github.com/hexworks/agentfiles/internal/fsutil"
 )
 
 // Version is the current registry file schema version written by Save.
