@@ -6,8 +6,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/huh"
+	"charm.land/bubbles/v2/key"
+	"charm.land/huh/v2"
 	"github.com/hexworks/agentfiles/internal/app"
 )
 

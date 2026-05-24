@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/huh"
+	"charm.land/huh/v2"
 	"github.com/hexworks/agentfiles/internal/app"
 	"github.com/hexworks/agentfiles/internal/asset"
 	"github.com/hexworks/agentfiles/internal/doctor"

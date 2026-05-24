@@ -24,7 +24,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // FallbackEditor is used when neither $VISUAL nor $EDITOR is set.

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/hexworks/agentfiles/internal/app"
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/render"
@@ -13,7 +14,7 @@ import (
 func TestRenderError_TypedErrorRendersWithIcon(t *testing.T) {
 	err := render.AssetNotFoundError{AssetID: "review"}
 
-	out := RenderError(err)
+	out := ansi.Strip(RenderError(err))
 
 	if !strings.Contains(out, "✗") {
 		t.Fatalf("expected error icon, got %q", out)
@@ -26,7 +27,7 @@ func TestRenderError_TypedErrorRendersWithIcon(t *testing.T) {
 func TestRenderError_WarningSeverityForOwnedPath(t *testing.T) {
 	err := app.ProjectPathOwnedError{Path: "/tmp/repo", ProfileName: "Other", ProjectName: "Repo"}
 
-	out := RenderError(err)
+	out := ansi.Strip(RenderError(err))
 
 	if !strings.Contains(out, "⚠") {
 		t.Fatalf("expected warning icon, got %q", out)
@@ -39,7 +40,7 @@ func TestRenderError_JoinedErrorsRenderEachOnItsOwnLine(t *testing.T) {
 		render.AssetNotFoundError{AssetID: "missing"},
 	)
 
-	out := RenderError(err)
+	out := ansi.Strip(RenderError(err))
 
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
 	if len(lines) != 2 {
@@ -53,7 +54,7 @@ func TestRenderError_JoinedErrorsRenderEachOnItsOwnLine(t *testing.T) {
 func TestRenderError_UnknownErrorFallsBackToErrorIcon(t *testing.T) {
 	err := errors.New("something else")
 
-	out := RenderError(err)
+	out := ansi.Strip(RenderError(err))
 
 	if !strings.Contains(out, "✗") {
 		t.Fatalf("expected error icon for unknown error, got %q", out)
@@ -70,10 +71,10 @@ func TestRenderError_NilReturnsEmptyString(t *testing.T) {
 }
 
 func TestRenderErrors_RendersSliceOfDomainErrors(t *testing.T) {
-	out := RenderErrors([]errs.DomainError{
+	out := ansi.Strip(RenderErrors([]errs.DomainError{
 		render.AssetNotFoundError{AssetID: "a"},
 		app.ProjectPathOwnedError{Path: "/p", ProfileName: "X", ProjectName: "Y"},
-	})
+	}))
 
 	if !strings.Contains(out, "✗") || !strings.Contains(out, "⚠") {
 		t.Fatalf("expected both icons, got %q", out)

@@ -70,7 +70,7 @@ inside `internal/fsutil/fsutil.go`, because:
 
 - The dependency surface is different. `fsutil` is a leaf utility on
   top of `os`, `encoding/json`, and `crypto/sha256`. The editor package
-  imports `os/exec` and `github.com/charmbracelet/bubbletea`, neither of
+  imports `os/exec` and `charm.land/bubbletea/v2`, neither of
   which the rest of `fsutil` should pull in transitively.
 - The contract is different. `fsutil` helpers return `errs.DomainError`
   directly. The editor package returns a `tea.Cmd` whose result lands

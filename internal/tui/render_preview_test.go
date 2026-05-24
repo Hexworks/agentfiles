@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/hexworks/agentfiles/internal/render"
 	llmsync "github.com/hexworks/agentfiles/internal/sync"
 )
@@ -11,7 +12,7 @@ import (
 func TestRenderPreview_NoChangesShowsCleanLine(t *testing.T) {
 	preview := &llmsync.Preview{ProjectPath: "/tmp/repo"}
 
-	out := RenderPreview(preview)
+	out := ansi.Strip(RenderPreview(preview))
 
 	if !strings.Contains(out, "Project: /tmp/repo") {
 		t.Fatalf("missing project header: %q", out)
@@ -33,7 +34,7 @@ func TestRenderPreview_ListsEachChangeWithIcon(t *testing.T) {
 		},
 	}
 
-	out := RenderPreview(preview)
+	out := ansi.Strip(RenderPreview(preview))
 
 	for _, want := range []string{
 		"+ [create] AGENTS.md: file missing",

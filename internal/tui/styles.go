@@ -1,17 +1,17 @@
 package tui
 
-import "github.com/charmbracelet/lipgloss"
+import "charm.land/lipgloss/v2"
 
 // ANSI palette indices used across the render helpers. Keeping them
 // named means a palette change touches one constant instead of every
 // style declaration.
-const (
-	colorMuted   lipgloss.Color = "8"  // dim grey
-	colorRed     lipgloss.Color = "9"  // red
-	colorGreen   lipgloss.Color = "10" // bright green
-	colorYellow  lipgloss.Color = "11" // yellow
-	colorMagenta lipgloss.Color = "13" // magenta
-	colorCyan    lipgloss.Color = "14" // cyan
+var (
+	colorMuted   = lipgloss.Color("8")  // dim grey
+	colorRed     = lipgloss.Color("9")  // red
+	colorGreen   = lipgloss.Color("10") // bright green
+	colorYellow  = lipgloss.Color("11") // yellow
+	colorMagenta = lipgloss.Color("13") // magenta
+	colorCyan    = lipgloss.Color("14") // cyan
 )
 
 // Lipgloss styles used by the render_* helpers. Centralizing them keeps

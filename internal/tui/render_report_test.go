@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/hexworks/agentfiles/internal/doctor"
 )
 
@@ -15,7 +16,7 @@ func TestRenderReport_CleanProjectShowsCleanLine(t *testing.T) {
 		},
 	}
 
-	out := RenderReport(report)
+	out := ansi.Strip(RenderReport(report))
 
 	if !strings.Contains(out, "Profile: Personal") {
 		t.Fatalf("missing profile header: %q", out)
@@ -42,7 +43,7 @@ func TestRenderReport_DirtyProjectListsChanges(t *testing.T) {
 		},
 	}
 
-	out := RenderReport(report)
+	out := ansi.Strip(RenderReport(report))
 
 	if !strings.Contains(out, "~ update AGENTS.md") {
 		t.Fatalf("missing update line: %q", out)
@@ -69,7 +70,7 @@ func TestRenderReport_MixedCleanAndDirtyProjects(t *testing.T) {
 		},
 	}
 
-	out := RenderReport(report)
+	out := ansi.Strip(RenderReport(report))
 
 	if !strings.Contains(out, "[app-clean]") {
 		t.Fatalf("missing clean project header: %q", out)
