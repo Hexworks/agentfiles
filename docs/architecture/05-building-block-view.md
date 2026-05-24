@@ -27,9 +27,10 @@ flowchart TD
     project --> config
     registry --> config
     surfaces --> config
+    tui --> tui_components_modal["tui/components/modal"]
 
     classDef leaf fill:#eef,stroke:#88a;
-    class config,errs,fsutil leaf;
+    class config,errs,fsutil,tui_components_modal leaf;
 ```
 
 `config`, `errs`, and `fsutil` are leaf packages that the rest of the
@@ -137,6 +138,23 @@ The TUI is also the only place that turns domain values into styled text.
 `RenderPreview`, `RenderReport`, and `RenderError` consume sync, doctor, and
 typed-error values respectively, applying lipgloss styles defined once in
 `internal/tui/styles.go`. ADR 0007 captures the rationale.
+
+### `tui/components/modal`
+
+A reusable Bubble Tea overlay component. It wraps any `Content`
+(anything with `Init`/`Update`/`View`/`Resolution`), centers it as a
+`lipgloss.Layer` via the v2 compositor, and resolves through a typed
+`modal.ResolvedMsg{ID, Confirmed, Value}`. `modal.NewForm` adapts a
+`*huh.Form` into a `Content`, calling a caller-supplied `extract` closure
+on completion so `*huh.Form` does not leak past the modal boundary.
+
+The package is a **leaf**: it imports only `charm.land/{bubbletea,
+lipgloss,huh}/v2` and nothing from `internal/`. That keeps it free of
+cycle risk so any future `internal/tui` flow can pull it in. Themed
+borders come from `internal/tui/styles.go` (`modalStyle`) passed in via
+`modal.WithStyle`, not from inside the package itself. The
+`components/<name>/` layout is the home for future reusable widgets
+(picker, confirm dialog, …) that follow the same leaf contract.
 
 ### `cmd/af`
 

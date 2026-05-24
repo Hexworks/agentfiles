@@ -6,10 +6,13 @@ import (
 )
 
 // formContent adapts a [huh.Form] to the [Content] interface. The form's
-// own State drives the modal's resolution: StateCompleted -> confirmed,
-// StateAborted -> cancelled.
+// own State drives the modal's resolution: StateCompleted -> Confirmed,
+// StateAborted -> Cancelled. On Confirmed, extract is called to convert the
+// form into a caller-defined payload, so *huh.Form does not leak out of this
+// package.
 type formContent struct {
-	form *huh.Form
+	form    *huh.Form
+	extract func(*huh.Form) any
 }
 
 func (f *formContent) Init() tea.Cmd { return f.form.Init() }
@@ -24,21 +27,29 @@ func (f *formContent) Update(msg tea.Msg) (Content, tea.Cmd) {
 
 func (f *formContent) View() string { return f.form.View() }
 
-func (f *formContent) Done() (done, confirmed bool, value any) {
+func (f *formContent) Resolution() (ResolutionState, any) {
 	switch f.form.State {
 	case huh.StateCompleted:
-		return true, true, f.form
+		return Confirmed, f.extract(f.form)
 	case huh.StateAborted:
-		return true, false, nil
+		return Cancelled, nil
 	default:
-		return false, false, nil
+		return Active, nil
 	}
 }
 
-// NewForm constructs a Modal that hosts a huh form. When the form completes
-// the modal resolves with Confirmed=true and Value set to the *huh.Form
-// (read field values via form.GetString(key) etc.). When the user aborts
-// the form (esc by default) the modal resolves with Confirmed=false.
-func NewForm(id string, form *huh.Form, opts ...Option) *Modal {
-	return New(id, &formContent{form: form}, opts...)
+// NewForm constructs a Modal that hosts a huh form. extract is called once,
+// on successful completion, to convert the form into the payload delivered
+// through [ResolvedMsg].Value — define a typed result struct in the calling
+// package and read fields off the form inside extract, so *huh.Form does not
+// leave this package.
+//
+// extract must be non-nil; the simplest implementation that preserves the
+// previous "value is the form itself" behavior is
+// func(f *huh.Form) any { return f }.
+func NewForm(id string, form *huh.Form, extract func(*huh.Form) any, opts ...Option) *Modal {
+	if extract == nil {
+		panic("modal: nil extract")
+	}
+	return New(id, &formContent{form: form, extract: extract}, opts...)
 }

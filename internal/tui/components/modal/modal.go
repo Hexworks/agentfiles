@@ -9,11 +9,14 @@
 // Lifecycle:
 //
 //  1. Construct a Modal with [New] (or [NewForm] for a huh.Form).
-//  2. The parent owns the modal as an optional field (nil = closed).
-//  3. On every parent Update, if the field is non-nil forward the message
+//  2. Call [Modal.Init] once on open and batch its command into the parent's
+//     return — that is what kicks off any startup work the content needs
+//     (cursor blink, initial focus, …).
+//  3. The parent owns the modal as an optional field (nil = closed).
+//  4. On every parent Update, if the field is non-nil forward the message
 //     to Modal.Update only, then watch the returned command for a [ResolvedMsg].
-//  4. On ResolvedMsg, inspect Confirmed and Value, then clear the field.
-//  5. On every parent View, if the field is non-nil call Modal.Render to
+//  5. On ResolvedMsg, inspect Confirmed and Value, then clear the field.
+//  6. On every parent View, if the field is non-nil call Modal.Render to
 //     composite it over the background string.
 package modal
 
@@ -22,22 +25,39 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
+// ResolutionState enumerates the three states a [Content] can be in. It
+// replaces an earlier two-bool encoding so illegal combinations cannot be
+// expressed.
+type ResolutionState int
+
+const (
+	// Active means the content has not yet resolved; the modal stays open.
+	Active ResolutionState = iota
+	// Confirmed means the user completed the content successfully; the
+	// modal will emit a [ResolvedMsg] with Confirmed=true.
+	Confirmed
+	// Cancelled means the user dismissed the content; the modal will emit a
+	// [ResolvedMsg] with Confirmed=false and Value=nil.
+	Cancelled
+)
+
 // Content is anything that can live inside a [Modal]. It mirrors the standard
-// Bubble Tea model lifecycle plus a [Content.Done] check that lets the modal
-// know when to resolve.
+// Bubble Tea model lifecycle plus a [Content.Resolution] check that lets the
+// modal know when to resolve.
 type Content interface {
 	Init() tea.Cmd
 	Update(tea.Msg) (Content, tea.Cmd)
 	View() string
-	// Done reports whether the content has resolved. When done is true the
-	// modal will emit a [ResolvedMsg] carrying confirmed and value. A
-	// cancelled resolution should return (true, false, nil).
-	Done() (done bool, confirmed bool, value any)
+	// Resolution reports the current state of the content. When state is
+	// [Confirmed] the modal will emit a [ResolvedMsg] carrying value; when
+	// state is [Cancelled] the modal emits a ResolvedMsg with Confirmed=false
+	// and Value=nil regardless of what value is returned here.
+	Resolution() (state ResolutionState, value any)
 }
 
-// ResolvedMsg is dispatched once when the modal's [Content] reports done.
-// Parents should clear their modal field on receipt and react to Confirmed /
-// Value as appropriate.
+// ResolvedMsg is dispatched once when the modal's [Content] reports a terminal
+// state. Parents should clear their modal field on receipt and react to
+// Confirmed / Value as appropriate.
 type ResolvedMsg struct {
 	ID        string
 	Confirmed bool
@@ -57,33 +77,43 @@ type Modal struct {
 type Option func(*Modal)
 
 // WithStyle wraps the content with the given lipgloss style (typically a
-// bordered, padded box). Defaults to a rounded border with single-cell
-// padding.
+// bordered, padded box). Defaults to a near-monochrome rounded border with
+// single-cell padding; pass a themed style here to integrate the modal with
+// the rest of the app's palette.
 func WithStyle(s lipgloss.Style) Option {
 	return func(m *Modal) { m.style = s }
 }
 
-// WithZ sets the z-index of the modal layer. Defaults to 10. Higher values
-// render on top of lower ones when multiple modals are stacked.
+// WithZ sets the z-index of the modal layer. The default is 0; callers that
+// stack multiple modals must set a distinct z explicitly so the compositor
+// can order them.
 func WithZ(z int) Option {
 	return func(m *Modal) { m.z = z }
 }
 
-// defaultStyle is a rounded-border dialog box. Callers can override via
-// [WithStyle].
-var defaultStyle = lipgloss.NewStyle().
-	Border(lipgloss.RoundedBorder()).
-	BorderForeground(lipgloss.Color("#874BFD")).
-	Padding(1, 2)
+// defaultStyle returns a fresh, palette-neutral rounded-border style. The
+// background color is left to the compositor and the foreground is unset so
+// the modal inherits the terminal's defaults; callers that want a themed
+// border pass [WithStyle].
+func defaultStyle() lipgloss.Style {
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		Padding(1, 2)
+}
 
 // New constructs a Modal for the given Content. The id is used to identify
 // the modal in [ResolvedMsg] (and as the layer ID for hit testing).
+//
+// content must be non-nil; passing nil panics at construction rather than
+// deferring the nil-pointer dereference into Update or View.
 func New(id string, content Content, opts ...Option) *Modal {
+	if content == nil {
+		panic("modal: nil content")
+	}
 	m := &Modal{
 		id:      id,
 		content: content,
-		style:   defaultStyle,
-		z:       10,
+		style:   defaultStyle(),
 	}
 	for _, opt := range opts {
 		opt(m)
@@ -91,10 +121,8 @@ func New(id string, content Content, opts ...Option) *Modal {
 	return m
 }
 
-// ID returns the modal's identifier.
 func (m *Modal) ID() string { return m.id }
 
-// Init returns the underlying content's initial command.
 func (m *Modal) Init() tea.Cmd {
 	return m.content.Init()
 }
@@ -108,11 +136,18 @@ func (m *Modal) Update(msg tea.Msg) (*Modal, tea.Cmd) {
 	}
 	var cmd tea.Cmd
 	m.content, cmd = m.content.Update(msg)
-	done, confirmed, value := m.content.Done()
-	if !done {
+	state, value := m.content.Resolution()
+	if state == Active {
 		return m, cmd
 	}
 	m.resolved = true
+	confirmed := state == Confirmed
+	if !confirmed {
+		value = nil
+	}
+	// id is aliased because the closure outlives Update; capturing m.id
+	// through m would read whatever the field holds when the cmd actually
+	// runs.
 	id := m.id
 	resolveCmd := func() tea.Msg {
 		return ResolvedMsg{ID: id, Confirmed: confirmed, Value: value}
@@ -120,6 +155,7 @@ func (m *Modal) Update(msg tea.Msg) (*Modal, tea.Cmd) {
 	if cmd == nil {
 		return m, resolveCmd
 	}
+	// Independent: ResolvedMsg and any follow-up from content may interleave.
 	return m, tea.Batch(cmd, resolveCmd)
 }
 
@@ -132,6 +168,9 @@ func (m *Modal) View() string {
 // Layer returns the modal as a positioned lipgloss layer, centered within a
 // canvas of size (parentW, parentH). Use this when assembling your own layer
 // tree; for the simple "background + one modal" case prefer [Modal.Render].
+//
+// If the rendered content exceeds the parent canvas, the layer is clamped to
+// the top-left corner rather than positioned at a negative coordinate.
 func (m *Modal) Layer(parentW, parentH int) *lipgloss.Layer {
 	view := m.View()
 	w := lipgloss.Width(view)

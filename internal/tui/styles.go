@@ -29,6 +29,13 @@ var (
 	errorStyle = lipgloss.NewStyle().Foreground(colorRed).Bold(true)
 	warnStyle  = lipgloss.NewStyle().Foreground(colorYellow)
 	infoStyle  = lipgloss.NewStyle().Foreground(colorCyan)
+
+	// modalStyle is the themed border for components/modal callers. Pass it
+	// via modal.WithStyle so the modal package itself stays palette-free.
+	modalStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(colorCyan).
+			Padding(1, 2)
 )
 
 // safe strips ASCII control characters from a manifest-sourced string
