@@ -2,7 +2,11 @@
 id: 0002
 type: feature
 status: pending
+depends_on: 0014
 ---
+
+> [!IMPORTANT]
+> This task depends on #0014 that creates the wizard component.
 
 # Use wizards for dynamic forms
 
