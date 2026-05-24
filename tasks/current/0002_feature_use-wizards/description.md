@@ -4,7 +4,7 @@ type: feature
 status: pending
 ---
 
-# Use wizard instead of forms.
+# Use wizards for dynamic forms
 
 Currently we have forms on the TUI so for example if the new asset creation option is selected we see all form fields at once.
 
@@ -32,3 +32,5 @@ All forms need to be refactored to wizards, and the fields that we ask need to b
 2. Path (can we use a path selector component?)
 3. Agents
 4. Assets
+
+Note that _huh_ already supports this use case ([conditional forms](https://github.com/charmbracelet/huh/blob/main/examples/conditional/main.go)).
