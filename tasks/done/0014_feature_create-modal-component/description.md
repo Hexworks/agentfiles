@@ -1,7 +1,7 @@
 ---
 id: 0014
 type: feature
-status: in-review
+status: done
 topics: go, tui, charm
 ---
 
