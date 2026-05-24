@@ -1,8 +1,9 @@
 ---
 id: 0002
 type: feature
-status: pending
+status: wont-do
 depends_on: 0014
+superseded_by: 0015
 ---
 
 > [!IMPORTANT]

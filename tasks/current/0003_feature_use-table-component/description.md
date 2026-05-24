@@ -1,8 +1,9 @@
 ---
 id: 0003
 type: feature
-status: Pending
+status: wont-do
 depends_on: 0005
+superseded_by: 0015
 ---
 
 # Use a table component when viewing tabular data
