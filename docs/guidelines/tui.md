@@ -46,20 +46,19 @@ Domain and application packages should never import `internal/tui`.
 
 ## Local Charm Stack
 
-Use the versions and import paths currently pinned in `go.mod` as the source of
-truth. At the time this guideline was written, the project uses:
+Use the versions and import paths pinned in `go.mod` as the source of truth.
+The project is on the Charm v2 line:
 
-- `github.com/charmbracelet/huh` for menus, prompts, and forms.
-- `github.com/charmbracelet/bubbletea` underneath `huh` and for any future
-  custom model/update/view screens.
-- `github.com/charmbracelet/bubbles` for reusable Bubble Tea components such as
-  key bindings, tables, lists, viewports, spinners, text inputs, and help.
-- `github.com/charmbracelet/lipgloss` for terminal styling, layout, measuring,
-  and ANSI-aware rendering.
+- `charm.land/huh/v2` for menus, prompts, and forms.
+- `charm.land/bubbletea/v2` underneath `huh` and for any future custom
+  model/update/view screens.
+- `charm.land/bubbles/v2` for reusable Bubble Tea components such as key
+  bindings, tables, lists, viewports, spinners, text inputs, and help.
+- `charm.land/lipgloss/v2` for terminal styling, layout, measuring, and
+  ANSI-aware rendering.
 
-Charm's latest documentation may show `charm.land/.../v2` import paths. Do not
-copy those paths into this repo unless the task is explicitly upgrading the
-Charm dependencies and the migration is handled as its own change.
+See [`charm.md`](./charm.md) for v2-specific patterns (alt-screen on `tea.View`,
+the split keyboard/mouse message types, no global Lip Gloss renderer).
 
 ## Use `huh` For Forms
 
@@ -370,9 +369,9 @@ Before finishing a TUI change, check:
 
 ## References
 
-- [Charm Huh package documentation](https://pkg.go.dev/github.com/charmbracelet/huh)
-- [Charm Bubble Tea package documentation](https://pkg.go.dev/github.com/charmbracelet/bubbletea)
+- [Charm Huh package documentation](https://pkg.go.dev/charm.land/huh/v2)
+- [Charm Bubble Tea package documentation](https://pkg.go.dev/charm.land/bubbletea/v2)
 - [Charm Bubble Tea commands guidance](https://charm.land/blog/commands-in-bubbletea/)
 - [Charm Bubbles README](https://github.com/charmbracelet/bubbles)
-- [Charm Lip Gloss package documentation](https://pkg.go.dev/github.com/charmbracelet/lipgloss)
+- [Charm Lip Gloss package documentation](https://pkg.go.dev/charm.land/lipgloss/v2)
 - [Don't Make Me Think summary](https://howtoes.blog/2025/06/07/dont-make-me-think-a-book-summary/)

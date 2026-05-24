@@ -22,12 +22,12 @@ captured there.
 | `lipgloss`  | Styling and layout: borders, color, ANSI-aware measurement, join      |
 | `huh`       | Form builder for "ask a few questions" flows                          |
 
-Use the import paths pinned in `go.mod`. The current versions are the v2 paths
-(`charm.land/bubbletea/v2`, `charm.land/bubbles/v2`, `charm.land/lipgloss/v2`,
-`charm.land/huh/v2`). Do not paste v1 examples (`github.com/charmbracelet/...`
-without `/v2`) without porting them; v2 splits keyboard and mouse messages,
-moves alt-screen and mouse mode into `tea.View`, and removes the global
-Lipgloss renderer. See each library's `UPGRADE_GUIDE_V2.md` for the full diff.
+Imports use the v2 module paths: `charm.land/bubbletea/v2`,
+`charm.land/bubbles/v2`, `charm.land/lipgloss/v2`, `charm.land/huh/v2`. Older
+examples on the web still show v1 (`github.com/charmbracelet/...` without
+`/v2`); port them before copying. v2 splits keyboard and mouse messages, moves
+alt-screen and mouse mode into `tea.View`, and removes the global Lipgloss
+renderer.
 
 ## Application Shell
 
@@ -302,6 +302,144 @@ Don't:
 - forward `tab` to a focused textarea before the parent has had a chance to
   consume it
 - hold focus state inside more than one place; the parent owns it
+```
+
+## Modal Overlays
+
+Some flows are short, focused interventions on top of the current screen
+(confirm a delete, run a wizard, pick a profile). Render those as
+**modals**: layered over the background, taking exclusive focus, dismissed
+only when they resolve. Reference: `bubbletea/examples/clickable/main.go:225-256`.
+
+A modal differs from a sub-view in three ways:
+
+1. It draws on top of the current screen rather than replacing it.
+2. It owns input while open — the background is inert.
+3. It resolves with a typed message carrying a value (confirmed) or
+   nothing (cancelled), then disappears.
+
+### Layering With The Compositor
+
+`lipgloss.Layer` is not just a string. It carries `(x, y, z)` coordinates
+and a slice of child layers. `lipgloss.Compositor` flattens that tree, sorts
+by z-index, and renders to the single string `tea.View.Content` expects.
+
+```go
+func (m model) View() tea.View {
+    bg := m.body()
+    v := tea.NewView(bg)
+    v.AltScreen = true
+    if m.modal != nil {
+        v.SetContent(m.modal.Render(bg, m.width, m.height))
+    }
+    return v
+}
+```
+
+Internally, `Render` builds a layer tree and composes it; higher z renders
+on top:
+
+```go
+root := lipgloss.NewLayer(background).ID("modal-background")
+root.AddLayers(modalLayer.Z(10))
+return lipgloss.NewCompositor(root).Render()
+```
+
+When the overlay needs mouse interaction, give every clickable layer a
+stable ID and route hits with `Compositor.Hit(x, y)`. See the `clickable`
+example for the full pattern (declare `tea.View.MouseMode` and translate
+hits into typed messages from `tea.View.OnMouse`).
+
+### Focus Stealing
+
+While a modal is open, the root model routes **every** message to it and
+returns. No background view sees the message, so its key bindings, tables,
+and text inputs go inert without any per-component `SetEnabled(false)` work.
+
+```go
+func (m root) Update(msg tea.Msg) (root, tea.Cmd) {
+    // Global handlers (ctrl+c, WindowSizeMsg, ResolvedMsg) first.
+
+    if m.modal != nil {
+        var cmd tea.Cmd
+        m.modal, cmd = m.modal.Update(msg)
+        return m, cmd
+    }
+
+    // Normal background routing.
+}
+```
+
+Keep `tea.WindowSizeMsg`, `ctrl+c`, and the modal's resolution message at
+the very top of `Update`, *above* the focus-stealing branch. The background
+dimensions still need to update under the modal (it re-centers on the next
+render) and the user must always be able to abort.
+
+### Resolution Contract
+
+A modal must signal completion as a typed message — never as a mutated
+field the parent polls. The parent reacts to the message, reads the
+payload, and clears its modal field:
+
+```go
+type ModalResolvedMsg struct {
+    ID        string
+    Confirmed bool
+    Value     any
+}
+
+case ModalResolvedMsg:
+    if msg.Confirmed {
+        m.apply(msg.Value.(*huh.Form))
+    }
+    m.modal = nil
+```
+
+`Confirmed=false` (cancel) is a no-op on the parent. The `Value` field
+carries the typed payload the caller needs — for a `huh.Form` modal, that
+is the form itself, so the parent can read fields via `form.GetString(key)`
+and friends.
+
+### Embedded huh Forms In Modals
+
+The most common modal hosts a `huh.Form`. Map its terminal states to the
+resolution contract:
+
+| huh.Form state       | Modal result          |
+| -------------------- | --------------------- |
+| `huh.StateCompleted` | Confirmed, Value=form |
+| `huh.StateAborted`   | Cancelled (esc)       |
+
+Gotcha: a `huh.NewConfirm` field with `Affirmative`/`Negative` buttons
+submits the form on **either** button — both transition the form to
+`StateCompleted`. To distinguish "save" from "cancel" the parent must read
+the bool with `form.GetBool(key)` in the resolved handler. Treating
+`StateCompleted` alone as "save" silently saves whatever the user filled
+in even when they clicked the negative button.
+
+```text
+Do:
+- treat the modal as opaque from the background's perspective: open it,
+  wait for ResolvedMsg, react to the payload
+- give every modal a stable ID so the parent can route its ResolvedMsg
+- center the modal against the parent's current width and height; recompute
+  on every WindowSizeMsg
+- match the cross-entity key convention: esc cancels, enter confirms when
+  the choice is unambiguous
+- render the modal with a visible border or contrast background so it reads
+  as separate from the layer below
+- read huh.Confirm choices via form.GetBool(key), not via form.State alone
+```
+
+```text
+Don't:
+- forward keys to the background "just in case" — focus stealing must be
+  total or it isn't focus stealing
+- use a modal for long-lived state; if the user revisits it, it belongs on
+  its own view
+- stack modals deeper than two layers without a strong reason
+- pull the open/close decision into the modal itself; the parent owns the
+  lifecycle and the resolution payload
 ```
 
 ## Key Bindings — Consistent and Visible
@@ -686,6 +824,9 @@ Before finishing a Charm-layer change, check:
    `errs.DomainError`?
 10. Are styles defined once and shared, with adaptive colors driven by the
     detected background?
+11. For screens that use a modal: does the parent route messages to the
+    modal before any background dispatch, clear the modal field on its
+    typed resolve message, and re-center the modal on `WindowSizeMsg`?
 
 ## References
 
