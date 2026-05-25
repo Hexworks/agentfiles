@@ -86,6 +86,17 @@ func (s *Service) RegisterProfile(path string) (*registry.ProfileRef, errs.Domai
 	return &ref, nil
 }
 
+// ListProfiles returns every profile reference in the registry. The registry
+// persists entries sorted by display name, so the returned slice is already
+// stable without an additional sort here.
+func (s *Service) ListProfiles() ([]registry.ProfileRef, errs.DomainError) {
+	reg, err := s.Registry.Load()
+	if err != nil {
+		return nil, err
+	}
+	return reg.Profiles, nil
+}
+
 // LoadProfile resolves a user-facing profile reference (id, name, or path),
 // updates its last-opened timestamp, and returns the fully loaded profile model.
 func (s *Service) LoadProfile(ref string) (*profile.Profile, errs.DomainError) {
