@@ -2,7 +2,7 @@
   "profile_id": "addamsson",
   "project_id": "agentfiles",
   "generator_version": "1.0.0",
-  "last_applied_at": "2026-04-30T13:19:15.159325497Z",
+  "last_applied_at": "2026-05-27T20:52:20.118397977Z",
   "managed_files": {
     ".claude/skills/af.task.implement/SKILL.md": "a30e54d1bf518960d5f0fad6e1d26c9d958a1cd42132a2cbf8243af8f0b5377b",
     ".claude/skills/af.task.implement/changelog-template.md": "5f103bf4b49285ce0ec53ab82c72cc095105095ffbfd878fd9261417addf8e7a",
