@@ -97,7 +97,7 @@ LDFLAGS   := -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(
 # .PHONY tells make: "these targets are commands, not files — always run them
 # regardless of whether a file with that name exists."
 
-.PHONY: build test lint fmt clean run play
+.PHONY: build test lint fmt clean run play example
 
 
 # ─── Targets ─────────────────────────────────────────────────────────────────
@@ -195,6 +195,27 @@ run: build
 
 
 play:
-	go run ./cmd/playground/main
+	go run ./cmd/playground
+
+# example: Run a single TUI component's standalone demo program.
+#
+# Each component under internal/tui/components/<name>/ has a main.go file
+# tagged `//go:build ignore` (so it stays out of the normal package build).
+# `make example <name>` runs that file directly:
+#
+#   make example mnemonic   ← runs internal/tui/components/mnemonic/main.go
+#   make example modal      ← runs internal/tui/components/modal/main.go
+#
+# The component name is taken from the second goal on the command line via
+# $(MAKECMDGOALS). The catchall `%:` rule below makes the bare component
+# name a no-op target so Make does not error out trying to build a file
+# named after it. The catchall only matches goals that have no explicit
+# rule, so it never shadows real targets like `build` or `test`.
+
+example:
+	@go run ./internal/tui/components/$(filter-out $@,$(MAKECMDGOALS))/main.go
+
+%:
+	@:
 
 all: clean fmt lint test build
