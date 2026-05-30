@@ -64,14 +64,22 @@ type ResolvedMsg struct {
 	Value     any
 }
 
-// Modal wraps a [Content] for rendering as a centered overlay layer.
+// Modal wraps a [Content] for rendering as an overlay layer. By default the
+// modal centers on its parent canvas; callers that want explicit placement
+// (e.g. anchor the dialog below the widget that opened it) pass
+// [WithAnchor].
 type Modal struct {
 	id       string
 	content  Content
 	style    lipgloss.Style
 	z        int
 	resolved bool
+	anchor   *anchorPoint
 }
+
+// anchorPoint stores an absolute top-left placement target supplied by
+// [WithAnchor]. nil means "center on parent".
+type anchorPoint struct{ x, y int }
 
 // Option configures a [Modal] at construction time.
 type Option func(*Modal)
@@ -89,6 +97,18 @@ func WithStyle(s lipgloss.Style) Option {
 // can order them.
 func WithZ(z int) Option {
 	return func(m *Modal) { m.z = z }
+}
+
+// WithAnchor places the modal at an explicit top-left coordinate in the
+// parent canvas, overriding the default centering. Coordinates are clamped
+// so the rendered modal stays within bounds: if the requested anchor would
+// push the modal off the right or bottom edge, [Modal.Layer] shifts it back
+// just enough to fit.
+//
+// Use this to attach the modal to a specific UI element, e.g. open a
+// confirmation directly below the button that triggered it.
+func WithAnchor(x, y int) Option {
+	return func(m *Modal) { m.anchor = &anchorPoint{x: x, y: y} }
 }
 
 // defaultStyle returns a fresh, palette-neutral rounded-border style. The
@@ -175,8 +195,20 @@ func (m *Modal) Layer(parentW, parentH int) *lipgloss.Layer {
 	view := m.View()
 	w := lipgloss.Width(view)
 	h := lipgloss.Height(view)
-	x := (parentW - w) / 2
-	y := (parentH - h) / 2
+	var x, y int
+	if m.anchor != nil {
+		x = m.anchor.x
+		y = m.anchor.y
+		if maxX := parentW - w; x > maxX {
+			x = maxX
+		}
+		if maxY := parentH - h; y > maxY {
+			y = maxY
+		}
+	} else {
+		x = (parentW - w) / 2
+		y = (parentH - h) / 2
+	}
 	if x < 0 {
 		x = 0
 	}
