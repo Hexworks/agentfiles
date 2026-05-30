@@ -46,11 +46,12 @@ func DefaultStyles() Styles {
 
 // Button is a mnemonic-bound, label-rendered action trigger.
 type Button struct {
-	label    string
-	mnemonic rune
-	action   Action
-	binding  key.Binding
-	styles   Styles
+	label      string
+	mnemonic   rune
+	action     Action
+	binding    key.Binding
+	bindingKey string // set via [WithBindingKey]; empty falls back to the lowercased mnemonic
+	styles     Styles
 }
 
 // Option configures a [Button] at construction time.
@@ -59,6 +60,15 @@ type Option func(*Button)
 // WithStyles overrides the default rendering palette.
 func WithStyles(s Styles) Option {
 	return func(b *Button) { b.styles = s }
+}
+
+// WithBindingKey overrides the key string the button's [Button.Binding]
+// listens for. By default the binding matches the lowercased mnemonic rune;
+// pass this option when the activating key sequence differs from the
+// displayed mnemonic — for example a modifier-prefixed shortcut like
+// `ctrl+1` whose visible indicator is still `[1]`.
+func WithBindingKey(key string) Option {
+	return func(b *Button) { b.bindingKey = key }
 }
 
 // New constructs a Button. The mnemonic must be a single rune that appears in
@@ -79,15 +89,19 @@ func New(label string, mnemonic rune, action Action, opts ...Option) *Button {
 		label:    label,
 		mnemonic: mnemonic,
 		action:   action,
-		binding: key.NewBinding(
-			key.WithKeys(keyLabel),
-			key.WithHelp(keyLabel, label),
-		),
-		styles: DefaultStyles(),
+		styles:   DefaultStyles(),
 	}
 	for _, opt := range opts {
 		opt(b)
 	}
+	bindKey := b.bindingKey
+	if bindKey == "" {
+		bindKey = keyLabel
+	}
+	b.binding = key.NewBinding(
+		key.WithKeys(bindKey),
+		key.WithHelp(bindKey, label),
+	)
 	return b
 }
 
