@@ -242,6 +242,8 @@ The following context actions are available to selected rows in this table:
 - Pressing `d` (mnemonic) will open a [Confirmation](#confirmation) dialog with a command
   that deletes the selected `Project`
 
+The following mockup shows how the Profile View Screen should look like.
+
 ```
                                           ┌───────────────────────────┐                                         
                                           │Table caption displayed    │                                         
