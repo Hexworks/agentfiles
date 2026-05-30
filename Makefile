@@ -97,7 +97,7 @@ LDFLAGS   := -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(
 # .PHONY tells make: "these targets are commands, not files — always run them
 # regardless of whether a file with that name exists."
 
-.PHONY: build test lint fmt clean run
+.PHONY: build test lint fmt clean run play
 
 
 # ─── Targets ─────────────────────────────────────────────────────────────────
@@ -193,5 +193,8 @@ clean:
 run: build
 	$(BUILD_DIR)/$(BINARY) $(ARGS)
 
+
+play:
+	go run ./cmd/playground/main
 
 all: clean fmt lint test build
