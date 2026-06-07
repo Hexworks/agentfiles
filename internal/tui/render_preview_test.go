@@ -39,7 +39,7 @@ func TestRenderPreview_ListsEachChangeWithIcon(t *testing.T) {
 	for _, want := range []string{
 		"+ [create] AGENTS.md: file missing",
 		"~ [update] .claude/settings.local.json: content differs",
-		"- [delete_candidate] .codex/old.txt: recognized llm file not selected",
+		"- [delete] .codex/old.txt: recognized llm file not selected",
 		"! [drift] CLAUDE.md: managed file changed locally",
 	} {
 		if !strings.Contains(out, want) {

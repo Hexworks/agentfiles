@@ -10,12 +10,14 @@ import (
 
 	"github.com/hexworks/agentfiles/internal/config"
 	"github.com/hexworks/agentfiles/internal/errs"
-	"github.com/hexworks/agentfiles/internal/fsutil"
+	"github.com/hexworks/agentfiles/internal/utils"
 )
 
-// Project stores the project-specific part of the model:
+// Manifest stores the project-specific part of the model:
 // where the repo lives, which agents are enabled, and which assets were chosen.
-type Project struct {
+// NOTE: that we don't have a separate Project type as there is no separation between
+// persisted and runtime state (everything is persisted).
+type Manifest struct {
 	ID               string    `json:"id"`
 	Name             string    `json:"name"`
 	Path             string    `json:"path"`
@@ -25,7 +27,7 @@ type Project struct {
 }
 
 // Validate checks only the core project invariants.
-func (m *Project) Validate() errs.DomainError {
+func (m *Manifest) Validate() errs.DomainError {
 	if m.ID == "" || m.Name == "" || m.Path == "" {
 		return ErrProjectFieldsRequired
 	}
@@ -37,8 +39,8 @@ func (m *Project) Validate() errs.DomainError {
 
 // Normalize transforms all paths to absolute and fixes ordering so
 // the manifest stays stable in storage and comparisons.
-func (m *Project) Normalize() errs.DomainError {
-	abs, err := fsutil.ToAbsolute(m.Path)
+func (m *Manifest) Normalize() errs.DomainError {
+	abs, err := utils.ToAbsolute(m.Path)
 	if err != nil {
 		return err
 	}
@@ -50,7 +52,7 @@ func (m *Project) Normalize() errs.DomainError {
 
 // Save writes the project manifest into the owning profile's projects/
 // directory.
-func Save(profileRoot string, manifest *Project) errs.DomainError {
+func Save(profileRoot string, manifest *Manifest) errs.DomainError {
 	if err := manifest.Normalize(); err != nil {
 		return err
 	}
@@ -58,5 +60,5 @@ func Save(profileRoot string, manifest *Project) errs.DomainError {
 		return err
 	}
 	path := filepath.Join(profileRoot, config.ProjectsDirName, manifest.ID+".json")
-	return fsutil.WriteJSON(path, manifest)
+	return utils.WriteJSON(path, manifest)
 }

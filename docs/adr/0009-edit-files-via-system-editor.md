@@ -52,7 +52,7 @@ that the rest of their environment already respects.
 ## Decision
 
 Editor invocation is owned by a single, narrow package:
-`internal/fsutil/editor`. The package exports two symbols:
+`internal/tui/editor`. The package exports two symbols:
 
 - `func Open(path string) tea.Cmd` — returns a Bubble Tea command that
   suspends the program, runs the editor against an absolute version of
@@ -65,21 +65,16 @@ The package always invokes the editor through `sh -c`, with the file
 path resolved to an absolute form and shell-quoted via the standard
 `'\''` idiom. Editor selection follows `$VISUAL` → `$EDITOR` → `vi`.
 
-The package is deliberately placed under `internal/fsutil/editor/`, not
-inside `internal/fsutil/fsutil.go`, because:
+The package lives under `internal/tui/editor/` because the TUI is the
+only consumer and the contract is shaped for it:
 
-- The dependency surface is different. `fsutil` is a leaf utility on
-  top of `os`, `encoding/json`, and `crypto/sha256`. The editor package
-  imports `os/exec` and `charm.land/bubbletea/v2`, neither of
-  which the rest of `fsutil` should pull in transitively.
-- The contract is different. `fsutil` helpers return `errs.DomainError`
-  directly. The editor package returns a `tea.Cmd` whose result lands
-  asynchronously as `FinishedMsg`; the caller chooses how to surface
-  any failure inside its TUI flow.
-
-The TUI is still the only consumer. `internal/fsutil/editor` does not
-import the TUI, but only the TUI (and the demo program currently in
-`cmd/af/main.go`) imports it.
+- The dependency surface fits the TUI. The package imports `os/exec`
+  and `charm.land/bubbletea/v2`; leaf utilities like `internal/utils`
+  should not pull either in transitively.
+- The contract is asynchronous. `utils` helpers return
+  `errs.DomainError` directly, while the editor package returns a
+  `tea.Cmd` whose result lands as `FinishedMsg`; the caller chooses how
+  to surface any failure inside its TUI flow.
 
 ## Consequences
 

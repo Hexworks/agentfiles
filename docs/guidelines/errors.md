@@ -32,7 +32,7 @@ When a failure originates in an imported package (`os`,
 `encoding/json`, `path/filepath`, third-party libs), declare a typed
 error in the package's `errors.go` with the appropriate
 `Severity()` and an `Unwrap()` that preserves the underlying value.
-Example: `fsutil.ReadJSONError{Path, Err}`.
+Example: `utils.ReadJSONError{Path, Err}`.
 
 ### Propagating Domain Errors
 
@@ -41,7 +41,7 @@ already returns `errs.DomainError`, do not re-wrap it. Just propagate:
 
 ```go
 func (m *Manifest) Normalize() errs.DomainError {
-    abs, err := fsutil.ToAbsolute(m.Path)
+    abs, err := utils.ToAbsolute(m.Path)
     if err != nil {
         return err // already a DomainError
     }
@@ -149,7 +149,7 @@ if len(renderErrs) > 0 {
 ```
 
 There is no escape hatch for plain `error`. Helpers like
-`fsutil.HashFile` and `fsutil.ReadJSON` return `errs.DomainError`
+`utils.HashFile` and `utils.ReadJSON` return `errs.DomainError`
 directly, so the rest of the stack does not need to invent
 "wrapInternal" shims to lift `os` errors back into the domain
 vocabulary. Callers that want the typed leaves call `errs.Collect`,

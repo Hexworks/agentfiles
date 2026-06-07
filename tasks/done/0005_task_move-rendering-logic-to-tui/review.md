@@ -463,7 +463,7 @@ Concepts users will see in error output but cannot look up:
 
 - `ProjectStatus` (referenced from `Report` glossary entry but never defined)
 - `Severity` (the user-visible classification driving every error icon and color)
-- `Change Kind` / `File Change` (`create`/`update`/`drift`/`delete_candidate` are the primary user-facing vocabulary in previews)
+- `Change Kind` / `File Change` (`create`/`update`/`drift`/`delete` are the primary user-facing vocabulary in previews)
 
 The `Report` entry itself is also a generic noun; if a future feature
 emits any other structured summary the vocabulary will drift.

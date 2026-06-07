@@ -1,10 +1,4 @@
-// Package fsutil gathers the small filesystem and hashing helpers shared by the
-// rest of the codebase. It keeps path handling, JSON I/O, and content hashing
-// consistent so higher layers do not have to repeat the same boilerplate.
-//
-// Every fallible helper returns an errs.DomainError so the rest of the
-// codebase can keep its "errors are domain values" contract end-to-end.
-package fsutil
+package utils
 
 import (
 	"crypto/sha256"

@@ -7,7 +7,7 @@ process — most commonly the user's text editor. This guideline describes how
 those handoffs should be implemented so they stay safe, predictable, and easy to
 test, and so the TUI keeps owning the user experience around them.
 
-The reference implementation is `internal/fsutil/editor`, which opens the system
+The reference implementation is `internal/tui/editor`, which opens the system
 editor from a Bubble Tea program. The decision to extract it into its own
 package is recorded in ADR [0009](../adr/0009-edit-files-via-system-editor.md).
 
@@ -42,7 +42,7 @@ terminal automatically, so the wrapper just produces the command and the
 finished message.
 
 ```go
-// internal/fsutil/editor/editor.go
+// internal/tui/editor/editor.go
 func Open(path string) tea.Cmd {
     if abs, err := filepath.Abs(path); err == nil {
         path = abs

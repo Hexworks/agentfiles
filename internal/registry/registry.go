@@ -11,7 +11,7 @@ import (
 
 	"github.com/hexworks/agentfiles/internal/config"
 	"github.com/hexworks/agentfiles/internal/errs"
-	"github.com/hexworks/agentfiles/internal/fsutil"
+	"github.com/hexworks/agentfiles/internal/utils"
 )
 
 // Version is the current registry file schema version written by Save.
@@ -22,9 +22,12 @@ const Version = 1
 // It intentionally does not contain the whole profile model; it only provides
 // enough information to discover and resolve a profile folder quickly.
 type ProfileRef struct {
-	ID           string    `json:"id"`
-	Name         string    `json:"name"`
-	Path         string    `json:"path"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Path string `json:"path"`
+	// Source tells where the profileRef came from.
+	// currently only valid value is "local" as we don't support
+	// other sources yet
 	Source       string    `json:"source"`
 	ManagedBy    string    `json:"managed_by"`
 	CreatedAt    time.Time `json:"created_at"`
@@ -60,11 +63,11 @@ func NewStore(path string) *Store {
 // Load returns the current registry contents. Missing registry files are treated
 // as an empty registry so first-time use does not need special handling.
 func (s *Store) Load() (*Registry, errs.DomainError) {
-	if !fsutil.Exists(s.Path) {
+	if !utils.Exists(s.Path) {
 		return &Registry{Version: Version, Profiles: []ProfileRef{}}, nil
 	}
 	var reg Registry
-	if err := fsutil.ReadJSON(s.Path, &reg); err != nil {
+	if err := utils.ReadJSON(s.Path, &reg); err != nil {
 		return nil, err
 	}
 	if reg.Version == 0 {
@@ -83,7 +86,7 @@ func (s *Store) Save(reg *Registry) errs.DomainError {
 	slices.SortFunc(reg.Profiles, func(a, b ProfileRef) int {
 		return strings.Compare(a.Name, b.Name)
 	})
-	return fsutil.WriteJSON(s.Path, reg)
+	return utils.WriteJSON(s.Path, reg)
 }
 
 // Add appends a profile reference after checking the registry-wide uniqueness

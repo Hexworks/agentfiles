@@ -10,8 +10,8 @@ ADR [0007](./0007-rendering-belongs-to-tui.md) introduced
 `errs.DomainError` and moved each domain package's error catalogue into
 its own `errors.go` file. The contract was applied unevenly: render and
 app produced typed errors, but several lower-level helpers
-(`fsutil.EnsureDir`, `fsutil.WriteJSON`, `fsutil.HashFile`,
-`fsutil.ToAbsolute`, `registry.Add`, `project.Validate`,
+(`utils.EnsureDir`, `utils.WriteJSON`, `utils.HashFile`,
+`utils.ToAbsolute`, `registry.Add`, `project.Validate`,
 `profile.scanAssets`, `sync.Plan`, …) still returned plain `error`
 values built with `fmt.Errorf` or `errors.New`.
 
@@ -50,7 +50,7 @@ Consequences of the rule:
   failures can wrap them as a single value without losing severity.
   `Severity()` returns the highest severity of the slice members.
 - Helpers that previously returned plain `error`
-  (`internal/fsutil/*`, `registry.*`, `project.Validate/Normalize/Save`,
+  (`internal/utils/*`, `registry.*`, `project.Validate/Normalize/Save`,
   `profile.Init/Load/scan*`, `asset.Validate/Load/Init/RelativeFiles`,
   `sync.Plan/Apply/loadState/detectDeleteCandidates`) now declare
   `errs.DomainError` (or `[]errs.DomainError`) in their signatures.
@@ -61,7 +61,7 @@ Consequences of the rule:
   dropped — callers just propagate the value. The
   `app.InternalError`/`wrapInternal` shim that existed for that purpose
   is removed.
-- New typed errors are added in `internal/fsutil/errors.go`,
+- New typed errors are added in `internal/utils/errors.go`,
   `internal/registry/errors.go`, `internal/project/errors.go`,
   `internal/profile/errors.go`, and `internal/sync/errors.go` so the
   external libraries (`os`, `encoding/json`, `path/filepath`) that

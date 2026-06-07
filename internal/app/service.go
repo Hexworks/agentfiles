@@ -10,7 +10,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/asset"
 	"github.com/hexworks/agentfiles/internal/config"
 	"github.com/hexworks/agentfiles/internal/errs"
-	"github.com/hexworks/agentfiles/internal/fsutil"
+	"github.com/hexworks/agentfiles/internal/utils"
 	"github.com/hexworks/agentfiles/internal/profile"
 	"github.com/hexworks/agentfiles/internal/project"
 	"github.com/hexworks/agentfiles/internal/registry"
@@ -40,7 +40,7 @@ func New(registryPath string) *Service {
 // the global profile registry. The profile folder is the authoritative source
 // of truth; project files are generated later from its contents.
 func (s *Service) CreateProfile(name, path string) (*registry.ProfileRef, errs.DomainError) {
-	path, absErr := fsutil.ToAbsolute(path)
+	path, absErr := utils.ToAbsolute(path)
 	if absErr != nil {
 		return nil, absErr
 	}
@@ -106,12 +106,12 @@ func (s *Service) LoadProfile(ref string) (*profile.Profile, errs.DomainError) {
 //
 // A project manifest does not store rendered files. It stores only the project
 // path plus the asset/agent selection used later by render + sync.
-func (s *Service) AddProject(profileRef, name, path string, agents, assetIDs []string) (*project.Project, []errs.DomainError) {
+func (s *Service) AddProject(profileRef, name, path string, agents, assetIDs []string) (*project.Manifest, []errs.DomainError) {
 	loaded, loadErr := s.LoadProfile(profileRef)
 	if loadErr != nil {
 		return nil, []errs.DomainError{loadErr}
 	}
-	path, absErr := fsutil.ToAbsolute(path)
+	path, absErr := utils.ToAbsolute(path)
 	if absErr != nil {
 		return nil, []errs.DomainError{absErr}
 	}
@@ -125,7 +125,7 @@ func (s *Service) AddProject(profileRef, name, path string, agents, assetIDs []s
 	if len(domainErrs) > 0 {
 		return nil, domainErrs
 	}
-	manifest := &project.Project{
+	manifest := &project.Manifest{
 		ID:               slug(name),
 		Name:             name,
 		Path:             path,

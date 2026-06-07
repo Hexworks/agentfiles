@@ -18,7 +18,7 @@ flowchart TD
     render --> registry
     render --> surfaces
     sync --> surfaces
-    sync --> fsutil
+    sync --> utils
     doctor --> sync
     doctor --> render
     profile --> asset
@@ -30,10 +30,10 @@ flowchart TD
     tui --> tui_components_modal["tui/components/modal"]
 
     classDef leaf fill:#eef,stroke:#88a;
-    class config,errs,fsutil,tui_components_modal leaf;
+    class config,errs,utils,tui_components_modal leaf;
 ```
 
-`config`, `errs`, and `fsutil` are leaf packages that the rest of the
+`config`, `errs`, and `utils` are leaf packages that the rest of the
 codebase reads from but that import nothing internal. They are highlighted
 in blue above to make the dependency direction visible. The TUI layer
 imports `app`; nothing else does.
@@ -85,10 +85,11 @@ satisfies `error`, and a `Collect` helper that flattens both
 deliberately leaf-only — it imports nothing internal — so any domain
 package can depend on it without risking an import cycle.
 
-### `fsutil`
+### `utils`
 
-Path, JSON, and content-hashing helpers shared by the rest of the codebase.
-Like `errs` and `config`, it is a leaf package with no internal imports.
+Path, JSON, and content-hashing helpers plus small generic utilities
+(e.g. `Deduplicate`) shared by the rest of the codebase. Like `errs` and
+`config`, it is a leaf package with no internal imports.
 
 ### `render`
 

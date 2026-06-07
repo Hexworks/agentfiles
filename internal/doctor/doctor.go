@@ -10,24 +10,12 @@ import (
 	llmsync "github.com/hexworks/agentfiles/internal/sync"
 )
 
-// ChangeKind classifies a single project change. Doctor owns its own
-// vocabulary (rather than re-exporting llmsync.ChangeKind) so callers do
-// not need to import sync just to read a report.
-type ChangeKind string
-
-const (
-	ChangeCreate ChangeKind = "create"
-	ChangeUpdate ChangeKind = "update"
-	ChangeDrift  ChangeKind = "drift"
-	ChangeDelete ChangeKind = "delete_candidate"
-)
-
 // ProjectChange is the doctor-owned representation of a pending change.
 // It mirrors the fields of llmsync.FileChange that are useful to render
 // without dragging the sync vocabulary across doctor's API boundary.
 type ProjectChange struct {
 	Path   string
-	Kind   ChangeKind
+	Kind   llmsync.ChangeKind
 	Reason string
 }
 
@@ -87,16 +75,16 @@ func convertChanges(in []llmsync.FileChange) []ProjectChange {
 	return out
 }
 
-func convertKind(k llmsync.ChangeKind) ChangeKind {
+func convertKind(k llmsync.ChangeKind) llmsync.ChangeKind {
 	switch k {
 	case llmsync.ChangeCreate:
-		return ChangeCreate
+		return llmsync.ChangeCreate
 	case llmsync.ChangeUpdate:
-		return ChangeUpdate
+		return llmsync.ChangeUpdate
 	case llmsync.ChangeDrift:
-		return ChangeDrift
+		return llmsync.ChangeDrift
 	case llmsync.ChangeDelete:
-		return ChangeDelete
+		return llmsync.ChangeDelete
 	}
-	return ChangeKind(string(k))
+	return llmsync.ChangeKind(string(k))
 }

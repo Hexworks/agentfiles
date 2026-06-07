@@ -42,7 +42,7 @@ func TestBuildSkillAndAgentsDoc(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load profile: %v", err)
 	}
-	plan, buildErrs := Build(loaded, &project.Project{
+	plan, buildErrs := Build(loaded, &project.Manifest{
 		ID:               "app",
 		Name:             "app",
 		Path:             "/tmp/app",
@@ -78,7 +78,7 @@ func TestBuild_AccumulatesMissingAssets(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, buildErrs := Build(loaded, &project.Project{
+	_, buildErrs := Build(loaded, &project.Manifest{
 		ID:               "app",
 		Name:             "app",
 		Path:             "/tmp/app",
@@ -112,7 +112,7 @@ func TestResolveAssets_AccumulatesMissingIDs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	selected, resolveErrs := resolveAssets(loaded, &project.Project{
+	selected, resolveErrs := resolveAssets(loaded, &project.Manifest{
 		SelectedAssetIDs: []string{"a", "b", "c"},
 	})
 
@@ -153,7 +153,7 @@ func TestBuild_AccumulatesExclusiveGroupConflicts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, buildErrs := Build(loaded, &project.Project{
+	_, buildErrs := Build(loaded, &project.Manifest{
 		ID:               "app",
 		Name:             "app",
 		Path:             "/tmp/app",
@@ -198,7 +198,7 @@ func TestBuild_WrapsPerAssetFailureWithAssetSourceMissing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, buildErrs := Build(loaded, &project.Project{
+	_, buildErrs := Build(loaded, &project.Manifest{
 		ID:               "app",
 		Name:             "app",
 		Path:             "/tmp/app",
@@ -244,7 +244,7 @@ func TestBuild_TargetOutsideSurfacesIsTyped(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, buildErrs := Build(loaded, &project.Project{
+	_, buildErrs := Build(loaded, &project.Manifest{
 		ID:               "app",
 		Name:             "app",
 		Path:             "/tmp/app",

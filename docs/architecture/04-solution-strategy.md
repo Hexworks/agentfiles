@@ -8,7 +8,7 @@ storage file-based, and keep synchronization deterministic.
 The system is decomposed into small Go packages, one per domain concept,
 arranged so dependencies flow from delivery (the TUI) inward to the domain
 (profile, asset, project, registry). Packages near the bottom of the import
-graph (`config`, `errs`, `surfaces`, `fsutil`) hold values and helpers used
+graph (`config`, `errs`, `surfaces`, `utils`) hold values and helpers used
 by the rest. The pattern is captured in `docs/guidelines/clean_architecture.md`
 and made visible in section 5.
 

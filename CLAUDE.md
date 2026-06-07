@@ -6,14 +6,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 All via `make` at repo root:
 
-| Command | Purpose |
-| --- | --- |
-| `make build` | Compile `./cmd/af` into `./bin/af` and install to `~/.local/bin/af`. Injects version/commit/date via `-ldflags -X main.*`. |
-| `make test` | `go test ./...` |
-| `make lint` | `go vet ./...` (no golangci-lint configured) |
-| `make fmt` | `gofmt -w .` |
-| `make run ARGS="…"` | Build then run `./bin/af` with args. Only flag the binary accepts is `--registry <path>`. |
-| `make clean` | Remove `./bin/` and run `go clean`. |
+| Command             | Purpose                                                                                                                    |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `make build`        | Compile `./cmd/af` into `./bin/af` and install to `~/.local/bin/af`. Injects version/commit/date via `-ldflags -X main.*`. |
+| `make test`         | `go test ./...`                                                                                                            |
+| `make lint`         | `go vet ./...` (no golangci-lint configured)                                                                               |
+| `make fmt`          | `gofmt -w .`                                                                                                               |
+| `make run ARGS="…"` | Build then run `./bin/af` with args. Only flag the binary accepts is `--registry <path>`.                                  |
+| `make clean`        | Remove `./bin/` and run `go clean`.                                                                                        |
 
 Run a single test: `go test ./internal/sync -run TestName` (or any package path). Toolchain pinned by `mise.toml` (`go = "latest"`; repo targets Go 1.26.1 per `go.mod`).
 
@@ -32,18 +32,18 @@ Domain packages are kept separable by design — do not blur them:
 - `asset` — typed asset manifest (`asset.json`) + scaffolding. Types: `skill`, `agents_doc`, `settings`, `mcp`, `rule`, `hook`. Exposes `AllTypes()` so `profile.Init` can iterate them without duplicating the list.
 - `project` — per-project manifest (target path + selected agents + selected asset ids). Lives inside a profile's `projects/`.
 - `render` — **read-only**. Builds desired files from profile+project. Calls `surfaces.IsAllowed` to gate projection targets against the safety fence (`AGENTS.md`, `.claude`, `.cursor`, `.codex`, `.opencode`, `.mcp.json`). Resolves `exclusive_group` conflicts and `compatible_agents` filters.
-- `sync` — compares render plan vs. repo, classifies as `create`/`update`/`drift`/`delete_candidate`, writes files, and rewrites `<repo>/.agentfiles/state.json` (hashes of managed files). Imported as `llmsync` in `internal/app` to avoid clashing with stdlib `sync`.
+- `sync` — compares render plan vs. repo, classifies as `create`/`update`/`drift`/`delete`, writes files, and rewrites `<repo>/.agentfiles/state.json` (hashes of managed files). Imported as `llmsync` in `internal/app` to avoid clashing with stdlib `sync`.
 - `doctor` — read-only health check across every project in a profile. Returns a `*Report` struct (no string formatting); the TUI renders it.
 - `app` — thin orchestration layer called by the TUI. Contains no business logic.
 - `tui` — the only user interface. Menus + `huh` forms. `Esc` and `ctrl+c` both bound to Quit (see `runForm` in `tui/tui.go`) so Esc backs out one level.
-- `fsutil` — shared path/IO helpers.
+- `utils` — shared path/IO/hashing helpers and small generic utilities (e.g. `Deduplicate`).
 
 ### Critical invariants
 
 1. **Plan before apply.** Writes go through `sync.Plan` → `sync.Apply`. Do not add write paths that bypass preview.
 2. **Managed surfaces fence.** Render refuses any target where `surfaces.IsAllowed` returns false. Keep both the root list and the matcher in `internal/surfaces/surfaces.go`.
 3. **Drift vs. update.** `update` = desired content changed; `drift` = local file hash diverged from last `.agentfiles/state.json`. Never collapse them.
-4. **Delete opt-in.** `delete_candidate` is surfaced in the preview but only removed when `Apply` is called with `deleteCandidates=true`.
+4. **Delete opt-in.** `delete` is surfaced in the preview but only removed when `Apply` is called with `deleteCandidates=true`.
 5. **Single ownership.** One target repo path may belong to at most one profile. Enforced by `app.Service.ensureProjectPathAvailable`.
 6. **Source of truth.** Profile content is authoritative; repo files are outputs. Never make render read from the repo as input.
 

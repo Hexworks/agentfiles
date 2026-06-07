@@ -77,13 +77,13 @@ Example (hook asset):
 
 ```json
 {
-  "projections": [
-    {
-      "agent": "claude-code",
-      "source": "pre-tool.sh",
-      "target": ".claude/hooks/pre-tool.sh"
-    }
-  ]
+    "projections": [
+        {
+            "agent": "claude-code",
+            "source": "pre-tool.sh",
+            "target": ".claude/hooks/pre-tool.sh"
+        }
+    ]
 }
 ```
 
@@ -176,7 +176,7 @@ underlying values mirror `sync.FileChange` but the boundary is explicit.
 ## Change Kind
 
 The classification of a pending change inside a Preview or Project
-Status. One of `create`, `update`, `drift`, or `delete_candidate`. The
+Status. One of `create`, `update`, `drift`, or `delete`. The
 sync layer owns `sync.ChangeKind`; doctor mirrors it as
 `doctor.ChangeKind` to keep its API independent.
 

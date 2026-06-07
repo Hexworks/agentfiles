@@ -7,6 +7,7 @@ import (
 
 	"github.com/hexworks/agentfiles/internal/config"
 	"github.com/hexworks/agentfiles/internal/profile"
+	llmsync "github.com/hexworks/agentfiles/internal/sync"
 )
 
 func TestCheckProfile_CleanProjectHasEmptyChanges(t *testing.T) {
@@ -53,7 +54,7 @@ func TestCheckProfile_DirtyProjectListsChanges(t *testing.T) {
 	if status.IsClean() {
 		t.Fatalf("expected dirty status, got clean")
 	}
-	if len(status.Changes) != 1 || status.Changes[0].Kind != ChangeUpdate {
+	if len(status.Changes) != 1 || status.Changes[0].Kind != llmsync.ChangeUpdate {
 		t.Fatalf("expected single update, got %+v", status.Changes)
 	}
 }

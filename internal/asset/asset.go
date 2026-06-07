@@ -12,7 +12,7 @@ import (
 
 	"github.com/hexworks/agentfiles/internal/config"
 	"github.com/hexworks/agentfiles/internal/errs"
-	"github.com/hexworks/agentfiles/internal/fsutil"
+	"github.com/hexworks/agentfiles/internal/utils"
 )
 
 // Type identifies the category of an asset and selects the render rules that
@@ -63,6 +63,7 @@ type Projection struct {
 }
 
 // Manifest is the declarative description of one reusable asset.
+// This is (similar to Profile) what we save into asset.json
 //
 // The manifest answers:
 //   - what kind of asset this is
@@ -135,7 +136,7 @@ func (m Manifest) Validate() errs.DomainError {
 // Load reads and validates one asset directory.
 func Load(dir string) (*Asset, errs.DomainError) {
 	var manifest Manifest
-	if err := fsutil.ReadJSON(filepath.Join(dir, config.AssetManifestFileName), &manifest); err != nil {
+	if err := utils.ReadJSON(filepath.Join(dir, config.AssetManifestFileName), &manifest); err != nil {
 		return nil, err
 	}
 	if err := manifest.Validate(); err != nil {
@@ -145,16 +146,16 @@ func Load(dir string) (*Asset, errs.DomainError) {
 }
 
 // Init scaffolds a new asset directory with a starter file layout that matches
-// the chosen type.
+// the chosen type. Returns the directory path if successful
 func Init(root string, manifest Manifest) (string, errs.DomainError) {
 	if err := manifest.Validate(); err != nil {
 		return "", err
 	}
 	dir := filepath.Join(root, config.AssetsDirName, string(manifest.Type), manifest.ID)
-	if err := fsutil.EnsureDir(dir); err != nil {
+	if err := utils.EnsureDir(dir); err != nil {
 		return "", err
 	}
-	if err := fsutil.WriteJSON(filepath.Join(dir, config.AssetManifestFileName), manifest); err != nil {
+	if err := utils.WriteJSON(filepath.Join(dir, config.AssetManifestFileName), manifest); err != nil {
 		return "", err
 	}
 
@@ -163,15 +164,15 @@ func Init(root string, manifest Manifest) (string, errs.DomainError) {
 	switch manifest.Type {
 	case TypeSkill:
 		body := []byte("---\nname: " + manifest.Name + "\ndescription: " + manifest.Description + "\n---\n\nDescribe the skill here.\n")
-		if err := fsutil.WriteFile(filepath.Join(dir, config.SkillStarterFileName), body, 0o644); err != nil {
+		if err := utils.WriteFile(filepath.Join(dir, config.SkillStarterFileName), body, 0o644); err != nil {
 			return "", err
 		}
 	case TypeAgentsDoc:
-		if err := fsutil.WriteFile(filepath.Join(dir, config.AgentsDocStarterFileName), []byte("# "+manifest.Name+"\n"), 0o644); err != nil {
+		if err := utils.WriteFile(filepath.Join(dir, config.AgentsDocStarterFileName), []byte("# "+manifest.Name+"\n"), 0o644); err != nil {
 			return "", err
 		}
 	case TypeSettings:
-		if err := fsutil.WriteFile(filepath.Join(dir, config.SettingsStarterFileName), []byte("# codex settings\n"), 0o644); err != nil {
+		if err := utils.WriteFile(filepath.Join(dir, config.SettingsStarterFileName), []byte("# codex settings\n"), 0o644); err != nil {
 			return "", err
 		}
 	}
@@ -204,7 +205,7 @@ func RelativeFiles(root string) ([]string, errs.DomainError) {
 		if d.IsDir() {
 			return nil
 		}
-		rel := fsutil.ToRelative(root, path)
+		rel := utils.ToRelative(root, path)
 		if rel == config.AssetManifestFileName || strings.HasPrefix(rel, ".") {
 			return nil
 		}

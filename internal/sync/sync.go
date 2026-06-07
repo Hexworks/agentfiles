@@ -1,5 +1,5 @@
 // Package sync reconciles the render plan with the target repository. It
-// classifies every managed path as create/update/drift/delete_candidate and
+// classifies every managed path as create/update/drift/delete and
 // performs the writes plus managed-state snapshot on apply.
 package sync
 
@@ -12,11 +12,11 @@ import (
 
 	"github.com/hexworks/agentfiles/internal/config"
 	"github.com/hexworks/agentfiles/internal/errs"
-	"github.com/hexworks/agentfiles/internal/fsutil"
 	"github.com/hexworks/agentfiles/internal/profile"
 	"github.com/hexworks/agentfiles/internal/project"
 	"github.com/hexworks/agentfiles/internal/render"
 	"github.com/hexworks/agentfiles/internal/surfaces"
+	"github.com/hexworks/agentfiles/internal/utils"
 )
 
 // GeneratorVersion is stamped into the managed state so future format changes
@@ -28,11 +28,12 @@ const GeneratorVersion = "1.0.0"
 //   - a normal update (desired output changed)
 //   - drift (a previously managed file was edited locally)
 type ManagedState struct {
-	ProfileID        string            `json:"profile_id"`
-	ProjectID        string            `json:"project_id"`
-	GeneratorVersion string            `json:"generator_version"`
-	LastAppliedAt    time.Time         `json:"last_applied_at"`
-	ManagedFiles     map[string]string `json:"managed_files"`
+	ProfileID        string    `json:"profile_id"`
+	ProjectID        string    `json:"project_id"`
+	GeneratorVersion string    `json:"generator_version"`
+	LastAppliedAt    time.Time `json:"last_applied_at"`
+	// ManagedFiles contains the path -> hash mapping
+	ManagedFiles map[string]string `json:"managed_files"`
 }
 
 // ChangeKind classifies a single entry in a sync preview.
@@ -43,15 +44,17 @@ type ChangeKind string
 const (
 	// ChangeCreate means the file is absent and will be written.
 	ChangeCreate ChangeKind = "create"
-	// ChangeUpdate means the file exists with different content and will be
-	// overwritten.
+	// ChangeUpdate means the file exists but was updated within agentfiles
+	// the contents will change
 	ChangeUpdate ChangeKind = "update"
-	// ChangeDrift means a previously managed file was modified locally; apply
-	// would overwrite those edits.
+	// ChangeDrift means a previously managed file was modified outside of agentfiles
+	// apply would overwrite those edits.
 	ChangeDrift ChangeKind = "drift"
 	// ChangeDelete marks a recognized managed file that is no longer part of
 	// the desired plan and may be removed on apply.
-	ChangeDelete ChangeKind = "delete_candidate"
+	ChangeDelete ChangeKind = "delete"
+	// ChangeUnknown marks an unrecognized file
+	ChangeUnknown = "unknown"
 )
 
 // FileChange is one human-facing diff entry shown in previews.
@@ -69,21 +72,21 @@ type FileChange struct {
 //   - the delete candidates found in the current repo
 //   - enough metadata to write a fresh managed state on apply
 type Preview struct {
-	ProjectPath         string
-	Files               []render.RenderedFile
-	Changes             []FileChange
-	DeleteCandidates    []string
-	ManagedState        *ManagedState
-	ProfileID           string
-	ProjectID           string
-	UnmanagedRecognized []string
+	ProjectPath string
+	Files       []render.RenderedFile
+	Changes     []FileChange
+	// TODO: delete this, use Changes instead
+	DeleteCandidates []string
+	ManagedState     *ManagedState
+	ProfileID        string
+	ProjectID        string
 }
 
 // Plan compares the desired outputs with the current repository state. This is
 // where create/update/drift/delete-candidate classification happens. Every
 // failure mode (render leaves, hashing, state load, walk) is returned as an
 // errs.DomainError so the TUI can render severity, icon, and color uniformly.
-func Plan(p *profile.Profile, proj *project.Project) (*Preview, errs.DomainError) {
+func Plan(p *profile.Profile, proj *project.Manifest) (*Preview, errs.DomainError) {
 	rendered, renderErrs := render.Build(p, proj)
 	if len(renderErrs) > 0 {
 		return nil, errs.Errors(renderErrs)
@@ -99,13 +102,13 @@ func Plan(p *profile.Profile, proj *project.Project) (*Preview, errs.DomainError
 	desired := map[string]string{}
 	var changes []FileChange
 	for _, file := range rendered.Files {
-		desired[file.Path] = fsutil.HashBytes(file.Body)
+		desired[file.Path] = utils.HashBytes(file.Body)
 		abs := filepath.Join(proj.Path, filepath.FromSlash(file.Path))
-		if !fsutil.Exists(abs) {
+		if !utils.Exists(abs) {
 			changes = append(changes, FileChange{Path: file.Path, Kind: ChangeCreate, Reason: "file missing"})
 			continue
 		}
-		currentHash, hashErr := fsutil.HashFile(abs)
+		currentHash, hashErr := utils.HashFile(abs)
 		if hashErr != nil {
 			return nil, hashErr
 		}
@@ -146,7 +149,7 @@ func Apply(preview *Preview, deleteCandidates bool) errs.DomainError {
 	var domainErrs []errs.DomainError
 	for _, file := range preview.Files {
 		abs := filepath.Join(preview.ProjectPath, filepath.FromSlash(file.Path))
-		if err := fsutil.WriteFile(abs, file.Body, file.Mode); err != nil {
+		if err := utils.WriteFile(abs, file.Body, file.Mode); err != nil {
 			domainErrs = append(domainErrs, err)
 		}
 	}
@@ -166,9 +169,9 @@ func Apply(preview *Preview, deleteCandidates bool) errs.DomainError {
 		ManagedFiles:     map[string]string{},
 	}
 	for _, file := range preview.Files {
-		state.ManagedFiles[file.Path] = fsutil.HashBytes(file.Body)
+		state.ManagedFiles[file.Path] = utils.HashBytes(file.Body)
 	}
-	if err := fsutil.WriteJSON(filepath.Join(preview.ProjectPath, config.StateDirName, config.StateFileName), state); err != nil {
+	if err := utils.WriteJSON(filepath.Join(preview.ProjectPath, config.StateDirName, config.StateFileName), state); err != nil {
 		domainErrs = append(domainErrs, err)
 	}
 	if len(domainErrs) == 0 {
@@ -185,11 +188,11 @@ func Apply(preview *Preview, deleteCandidates bool) errs.DomainError {
 // callers can distinguish first-time applies from corrupt state files.
 func loadState(projectPath string) (*ManagedState, errs.DomainError) {
 	path := filepath.Join(projectPath, config.StateDirName, config.StateFileName)
-	if !fsutil.Exists(path) {
+	if !utils.Exists(path) {
 		return nil, StateMissingError{Path: path}
 	}
 	var state ManagedState
-	if err := fsutil.ReadJSON(path, &state); err != nil {
+	if err := utils.ReadJSON(path, &state); err != nil {
 		return nil, err
 	}
 	if state.ManagedFiles == nil {
@@ -214,7 +217,7 @@ func detectDeleteCandidates(projectPath string, desired map[string]string, state
 	// below never enters the managed-state directory; no skip check needed.
 	for _, root := range surfaces.Roots() {
 		abs := filepath.Join(projectPath, root)
-		if !fsutil.Exists(abs) {
+		if !utils.Exists(abs) {
 			continue
 		}
 		info, err := os.Stat(abs)
@@ -223,7 +226,7 @@ func detectDeleteCandidates(projectPath string, desired map[string]string, state
 			continue
 		}
 		if !info.IsDir() {
-			rel := fsutil.ToRelative(projectPath, abs)
+			rel := utils.ToRelative(projectPath, abs)
 			if desired[rel] == "" {
 				candidates[rel] = true
 			}
@@ -236,7 +239,7 @@ func detectDeleteCandidates(projectPath string, desired map[string]string, state
 			if d.IsDir() {
 				return nil
 			}
-			rel := fsutil.ToRelative(projectPath, path)
+			rel := utils.ToRelative(projectPath, path)
 			if desired[rel] == "" {
 				candidates[rel] = true
 			}

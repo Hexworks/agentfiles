@@ -1,6 +1,7 @@
 # Plan — task#0005: Move rendering logic to TUI + structured errors
 
 Cross-links:
+
 - Task: `tasks/current/0005_task_move-rendering-logic-to-tui/description.md`
 - New ADR: `docs/adr/0007-rendering-belongs-to-tui.md`
 - Changelog: `docs/changelog/2026-04-27_0005-move-rendering-logic-to-tui.md`
@@ -21,12 +22,12 @@ This couples domain code to presentation, blocks consistent styling (icons/color
 
 Each domain package gets an `errors.go` file with explicit error types implementing `Error()`. Loops accumulate via `errors.Join` (Go 1.20+). TUI introspects with `errors.As`.
 
-| Package | New error types (file `errors.go`) |
-|---|---|
-| `internal/asset` | `ErrAssetIDNameRequired`, `UnsupportedAssetTypeError{Type}` |
-| `internal/profile` | `DuplicateAssetIDError{ID}`, `DuplicateProjectIDError{ID}` |
-| `internal/render` | `ExclusiveGroupConflictError{Group, AssetIDs []string}`, `AssetNotFoundError{ID}`, `AssetRenderError{AssetID, Err error}`, `TargetOutsideSurfacesError{Target}` |
-| `internal/app` | `UnknownAssetError{AssetID}`, `AssetExistsError{AssetID}`, `ProjectNotFoundError{ProjectID}`, `ProjectPathOwnedError{Path, ProfileName}` |
+| Package            | New error types (file `errors.go`)                                                                                                                              |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `internal/asset`   | `ErrAssetIDNameRequired`, `UnsupportedAssetTypeError{Type}`                                                                                                     |
+| `internal/profile` | `DuplicateAssetIDError{ID}`, `DuplicateProjectIDError{ID}`                                                                                                      |
+| `internal/render`  | `ExclusiveGroupConflictError{Group, AssetIDs []string}`, `AssetNotFoundError{ID}`, `AssetRenderError{AssetID, Err error}`, `TargetOutsideSurfacesError{Target}` |
+| `internal/app`     | `UnknownAssetError{AssetID}`, `AssetExistsError{AssetID}`, `ProjectNotFoundError{ProjectID}`, `ProjectPathOwnedError{Path, ProfileName}`                        |
 
 Each `Error()` returns the previous string verbatim so existing CLI output doesn't regress when an error is printed without TUI introspection.
 
@@ -43,21 +44,21 @@ Three sites must collect errors instead of short-circuiting; they all return `er
 
 ### C. Move rendering out of `sync` and `doctor`
 
-1. **`sync.FormatPreview` → `tui.RenderPreview(*llmsync.Preview) string`.** New file `internal/tui/render_preview.go`. Style it with lipgloss: a colored bullet per change kind (create=green, update=yellow, drift=magenta, delete_candidate=red), icon prefix, project header in bold. Delete `FormatPreview` from `sync.go`. Update both call sites in `internal/tui/forms.go` (RunProjectPlan:188, RunProjectApply:203).
+1. **`sync.FormatPreview` → `tui.RenderPreview(*llmsync.Preview) string`.** New file `internal/tui/render_preview.go`. Style it with lipgloss: a colored bullet per change kind (create=green, update=yellow, drift=magenta, delete=red), icon prefix, project header in bold. Delete `FormatPreview` from `sync.go`. Update both call sites in `internal/tui/forms.go` (RunProjectPlan:188, RunProjectApply:203).
 
 2. **`doctor.CheckProfile` → returns `*Report`.** New types in `internal/doctor/doctor.go`:
-   ```go
-   type Report struct {
-       ProfileName string
-       Projects    []ProjectStatus
-   }
-   type ProjectStatus struct {
-       Name    string
-       Changes []llmsync.FileChange   // empty == clean
-   }
-   ```
-   `CheckProfile` builds the struct; no `fmt.Fprintf` left.
-   New `internal/tui/render_report.go` with `RenderReport(*doctor.Report) string`. `RunDoctor` (forms.go:235) calls it.
+    ```go
+    type Report struct {
+        ProfileName string
+        Projects    []ProjectStatus
+    }
+    type ProjectStatus struct {
+        Name    string
+        Changes []llmsync.FileChange   // empty == clean
+    }
+    ```
+    `CheckProfile` builds the struct; no `fmt.Fprintf` left.
+    New `internal/tui/render_report.go` with `RenderReport(*doctor.Report) string`. `RunDoctor` (forms.go:235) calls it.
 
 ### D. TUI error rendering
 
@@ -68,10 +69,12 @@ func RenderError(err error) string  // unwraps errors.Join, dispatches by type
 ```
 
 Behavior:
+
 - Single typed error → one-line lipgloss-styled message: icon + colored severity + message.
 - Joined errors (`errors.As(err, &interface{ Unwrap() []error })`) → list each on its own line, sorted by severity descending.
 
 Severity assignment lives in `render_errors.go`:
+
 - `error` (red, ✗): Unsupported/missing/conflict/already-exists.
 - `warning` (yellow, ⚠): TargetOutsideSurfacesError, ProjectPathOwnedError.
 - `info` (cyan, ℹ): default fallback.
@@ -122,6 +125,7 @@ Use `t.TempDir()` and stable ids per testing guidelines. New / extended tests:
 ## Files modified / created
 
 **Modified:**
+
 - `internal/sync/sync.go` (delete `FormatPreview`)
 - `internal/doctor/doctor.go` (`Report` types + struct return)
 - `internal/render/render.go` (accumulate, typed errors)
@@ -136,6 +140,7 @@ Use `t.TempDir()` and stable ids per testing guidelines. New / extended tests:
 - `docs/architecture/08-concepts.md` (if relevant)
 
 **Created:**
+
 - `internal/asset/errors.go`
 - `internal/profile/errors.go`
 - `internal/render/errors.go`
@@ -166,7 +171,8 @@ make run ARGS="--registry /tmp/agentfiles-smoke.json"
 ```
 
 Manual TUI smoke (after `make build`):
-1. Create profile → add asset (skill) → add project pointing at a temp repo with two intentionally-conflicting exclusive_group assets → run "project plan". Confirm preview shows colored bullets + icons; confirm rendered error lists *all* conflicts.
+
+1. Create profile → add asset (skill) → add project pointing at a temp repo with two intentionally-conflicting exclusive_group assets → run "project plan". Confirm preview shows colored bullets + icons; confirm rendered error lists _all_ conflicts.
 2. Run "doctor" against a profile with one clean and one drifted project. Confirm Report renders with project headers, "clean" or change list, and color severity.
 3. Force `unknown asset` and `project not found` paths via the TUI. Confirm `RenderError` produces the expected single-line styled output (not the raw `fmt.Errorf` string).
 

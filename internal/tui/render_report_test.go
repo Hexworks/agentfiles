@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/hexworks/agentfiles/internal/doctor"
+	"github.com/hexworks/agentfiles/internal/sync"
 )
 
 func TestRenderReport_CleanProjectShowsCleanLine(t *testing.T) {
@@ -36,8 +37,8 @@ func TestRenderReport_DirtyProjectListsChanges(t *testing.T) {
 			{
 				Name: "app",
 				Changes: []doctor.ProjectChange{
-					{Path: "AGENTS.md", Kind: doctor.ChangeUpdate},
-					{Path: "CLAUDE.md", Kind: doctor.ChangeDrift},
+					{Path: "AGENTS.md", Kind: sync.ChangeUpdate},
+					{Path: "CLAUDE.md", Kind: sync.ChangeDrift},
 				},
 			},
 		},
@@ -64,7 +65,7 @@ func TestRenderReport_MixedCleanAndDirtyProjects(t *testing.T) {
 			{
 				Name: "app-dirty",
 				Changes: []doctor.ProjectChange{
-					{Path: "AGENTS.md", Kind: doctor.ChangeUpdate},
+					{Path: "AGENTS.md", Kind: sync.ChangeUpdate},
 				},
 			},
 		},

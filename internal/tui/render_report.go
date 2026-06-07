@@ -6,6 +6,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"github.com/hexworks/agentfiles/internal/doctor"
+	"github.com/hexworks/agentfiles/internal/sync"
 )
 
 // RenderReport returns the user-facing string representation of a doctor
@@ -36,15 +37,15 @@ func RenderReport(report *doctor.Report) string {
 // ProjectChange kind. It mirrors changeStyle's mapping but consumes
 // doctor's vocabulary so the report renderer does not need to import
 // sync.
-func projectChangeStyle(kind doctor.ChangeKind) (string, lipgloss.Style) {
+func projectChangeStyle(kind sync.ChangeKind) (string, lipgloss.Style) {
 	switch kind {
-	case doctor.ChangeCreate:
+	case sync.ChangeCreate:
 		return "+", createStyle
-	case doctor.ChangeUpdate:
+	case sync.ChangeUpdate:
 		return "~", updateStyle
-	case doctor.ChangeDrift:
+	case sync.ChangeDrift:
 		return "!", driftStyle
-	case doctor.ChangeDelete:
+	case sync.ChangeDelete:
 		return "-", deleteStyle
 	}
 	return "?", mutedStyle

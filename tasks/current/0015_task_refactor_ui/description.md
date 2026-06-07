@@ -222,6 +222,9 @@ using the [Load Profile](#load-profile) _action_.
 On the Edit Profile Screen there are 2 tables. _Focus_ can be shifted between the tables using the
 `<tab>` key (forwards) or `<shift>+<tab>` (backwards) and with the mnemonic focus keys `1` and `2`.
 
+The UI needs to fit on the current screen. The heading, the buttons, the notifications and
+the status parts have a fixed size, so we need to calculate the tables' size based on this.
+
 #### Assets
 
 The assets table lists all the `Asset` objects within the loaded `Profile`.
@@ -302,10 +305,16 @@ The following mockup shows how the Edit Profile Screen should look like.
 
 ### Edit Asset Screen
 
+Parameters: the `id` of the `Asset`
+
+When the Edit Asset Screen is opened we load the `Asset` with the `id` that is passed to this screen
+using the [Load Asset](#load-asset) _action_.
+
 The following mockup shows the Edit Asset Screen. There are 2 columns each occupying 50%
 of the available horizontal space.
 
-The heading occupies 10% of the vertical space.
+The UI needs to fit on the current screen. The heading, the buttons, the notifications and
+the status parts have a fixed size, so we need to calculate the columns' size based on this.
 
 > [!NOTE] that fields that have a list type (eg: `[]string`) will be joined when displayed, so
 > `["foo", "bar"]` will be displayed as `foo, bar` and after editing (on `Blur()`) they will
@@ -319,7 +328,7 @@ It occupies 50% of the available horizontal space, and 90% of the available vert
 
 Pressing `1` (focus handling mnemonic button) will focus the `treetable`.
 
-Pressing `e` ("Edit" mnemonic button) opens the file for editing using the `fsutil/editor` functionality.
+Pressing `e` ("Edit" mnemonic button) opens the file for editing using the `tui/editor` functionality.
 After the editor is closed we return to the screen.
 
 > [!IMPORTANT]
@@ -400,12 +409,22 @@ Pressing `b` ("Back" mnemonic button) navigates to the [Profiles Screen](#profil
 
 ### Select Project Assets Screen
 
-The following mockup shows the Select Project Assets Screen. There are 2 tables below each other each occupying
-40% of the available vertical space.
+Parameters: the `id` of the `Asset`
 
-The heading occupies 10% of the vertical space.
+When this screen is opened we load the `Asset` with the `id` that is passed to this screen
+using the [Load Asset](#load-asset) _action_.
+
+The following mockup shows the Select Project Assets Screen. There are 2 tables below each other and they
+have the same size.
+
+The UI needs to fit on the current screen. The heading, the buttons, the notifications and
+the status parts have a fixed size, so we need to calculate the tables' size based on this.
 
 There is a "Plan" button below the "Available Assets" table that will navigate to the [Plan Project Screen](#plan-project-screen).
+
+> [!NOTE]
+> The Plan screen will use the current state that exists. Actions performed on this screen are automatically
+> saved (select/unselect)
 
 #### Selected Assets
 
@@ -463,9 +482,51 @@ The following context actions are available to selected rows in this table:
 
 ### Plan Project Screen
 
-The following mockup shows the Plan Project Screen.
+Parameters: the `id` of the `Project`
 
-The heading occupies 10% of the vertical space.
+When this screen is opened we load the `Project` with the `id` that is passed to this screen
+using the [Load Project](#load-project) _action_.
+
+The following mockup shows the Plan Project Screen. There is a single treetable on the screen.
+
+The UI needs to fit on the current screen. The heading, the buttons, the notifications and
+the status parts have a fixed size, so we need to calculate the table's size based on this.
+
+There is a "Apply" button below the "Plan Project" table that will call thej
+
+> [!NOTE]
+> The Plan screen will use the current state that exists. Actions performed on this screen are automatically
+> saved
+
+```
+┌──────────────────────────────────┐
+│Planning Project {{project.name}} │
+└──────────────────────────────────┘
+┌Changes────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ Name                               Status                       Actions                                   │
+│────────────────────────────────────────────────────────────────────────────────────────────────────────── │
+│foo/                                                                                                       │
+│└── bar/                                                                                                   │
+│    └── hello.md                    ? unknown                    [Delete]                                  │
+│.claude/                                                                                                   │
+│├── commands/                                                                                              │
+││   └── rewrite.md                  - delete                     [Keep]                                    │
+│└── skills/                                                                                                │
+│    ├── implement-task/                                                                                    │
+│    │   └── skill.md                ~ update                                                               │
+│    └── review-task/                                                                                       │
+│        ├── skill.md                + add                                                                  │
+│        └── review-template.md      ~ add                                                                  │
+│                                                                                                           │
+│                                                                                                           │
+│                                                                                                           │
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+                                                                                              [Apply] [Back]
+
+ {{ notification area (no content == invisible by default) }} ▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒
+
+ ↑/k░up░•░↓/j░down░•░e░save░•░b░back░•░n░notifications░•░s░settings░•░q quit░•░?░help░░░░░░░░░░░░░░░░░░░░░░░░
+```
 
 ## Modals
 
@@ -679,6 +740,16 @@ This _action_ registers a `Project` using the `Service` by invoking the `AddProj
 
 Parameters: `Project` object
 
+### Load Project
+
+This _action_ loads a `Project` using the given `id` from the `Service` using the `LoadProject` function.
+
+> [!NOTE] this function doesn't exist yet on `Service`, we need to add it.
+
+Parameters:
+
+- `id`: mandatory
+
 ### Update Project
 
 This _action_ overwrites the `Project` with the given `id` using the `UpdateProject` function.
@@ -701,6 +772,16 @@ This _action_ deletes the `Project` with the given `id` using the `DeleteProject
 > [!IMPORTANT]
 > This will only delete the **metadata** for the project, not the actual
 > project directory where we synchronize the agent files!
+
+Parameters:
+
+- `id`: mandatory
+
+### Load Asset
+
+This _action_ loads a `Asset` using the given `id` from the `Service` using the `LoadAsset` function.
+
+> [!NOTE] this function doesn't exist yet on `Service`, we need to add it.
 
 Parameters:
 
