@@ -18,18 +18,48 @@ introducing new dependencies.
 An _action_ is a function that invokes a backend function. It can have parameters, but it has no dependencies.
 This differentiates an _action_ from a service that we have to instantiate then refer to the instance variable.
 
-*action*s behind the scene will use a global hard-coded service instance, but they hide this detail from the
-call site. An _action_ is a function that just invokes a specific business function in a service. They return
-domain errors that we'll add to the error log when present (see below).
+*action*s are produced by an **action factory** that holds a reference to `app.Service`:
 
-*action*s can have either no parameters or `1` parameter. It is the _action_'s job to transform this into a format
-that will be accepted by the business function.
+```go
+package actions
+
+type Actions struct { svc *app.Service }
+
+func New(svc *app.Service) *Actions { return &Actions{svc: svc} }
+
+func (a *Actions) LoadProfiles() ([]*profile.Profile, errs.DomainError) { ... }
+func (a *Actions) CreateProfile(in CreateProfileInput) (*registry.ProfileRef, errs.DomainError) { ... }
+// ...
+```
+
+The factory is constructed once in `main.go` (after the Service is built) and threaded
+through the TUI; individual screens hold the `*Actions` reference, not the Service. This
+preserves dependency injection and keeps tests able to substitute fake services.
+
+An _action_ is therefore a method on the factory that invokes a specific business
+function on the service.
+
+**Return shape**: every action returns `(T, errs.DomainError)` — uniformly, including for
+side-effect-only actions. For those, `T` is `struct{}` (or any other zero-value placeholder
+agreed on at the package level). Domain errors are appended to the [Notifications](#notifications)
+list when present.
+
+*action*s can have either no parameters or exactly `1` parameter — **strict rule**. When the
+underlying Service function needs more than one input, the action wraps them in a dedicated
+input struct (e.g. `CreateProfileInput{Name, Path string}`,
+`AddProjectInput{Name, Path string; EnabledAgents, AssetIDs []string}`). The action is then
+responsible for unpacking the struct and forwarding the fields to the Service call.
+
+Form modals (see [Modals](#modals)) already return a typed value; that value is the action's
+single parameter.
 
 *action*s need to integrate with the charm ecosystem seamlessly (see the related [guidelines](/docs/guidelines/charm.md)).
 
 ## Notifications
 
-Notifications is a list of `Notification` entries. These only exist within the TUI.
+Notifications is a **ring buffer** of `Notification` entries with a cap of `500` entries.
+When a new entry is added past the cap, the oldest entry is dropped. The buffer is
+in-memory only — it does not persist across runs.
 Example:
 
 ```
@@ -46,7 +76,12 @@ Example:
   and with a `Text` that describes what action was executed successfully.
 
 `Notification`s also show up in the _notification area_ on each screen when created then removed
-after `5 seconds` (this is usually called a "Toast" message)
+after `5 seconds` (this is usually called a "Toast" message).
+
+When multiple notifications are produced within a 5-second window they are **queued**: only one
+toast is visible at a time, displayed for its full 5 seconds before the next one in the queue
+takes its place. The queue is FIFO. The persistent [Notifications Modal](#notifications-modal)
+shows every entry regardless of queue state.
 
 `Notification`s can be viewed by opening the [Notifications Modal](#notifications-modal)
 
@@ -71,6 +106,22 @@ Each screen can have any number of _Mnemonic buttons_ but the `mnemonic` has to 
 
 The `mnemonic` must be a key that is contained in `label`. Visually the `mnemonic` will have a different color
 than the rest of the `label` to highlight that the key is a mnemonic.
+
+#### Safety
+
+Uniqueness is enforced two ways:
+
+1. **Runtime helper** (`internal/tui/components/mnemonic/Set`): a registry collection
+   that screens register buttons through instead of constructing them ad-hoc. `Set.Add`
+   panics on duplicate mnemonic; `Set.View` and `Set.Match` iterate the registered
+   buttons. This catches dupes at first render of any focus / selection state.
+2. **Per-screen unit tests**: every screen ships a `*_test.go` that walks the screen
+   through each possible focus / selection state and asserts no two visible mnemonic
+   buttons share a key. Treetable rows with row-context buttons are exercised by
+   moving the cursor across all node types.
+
+A's runtime panic is good for catching dupes during dev; the tests catch them in CI
+before reaching the user.
 
 ### Modals
 
@@ -111,6 +162,33 @@ In all tables we navigate with:
 
 and the currently selected item should be visually distinct. bubbles supports this.
 
+### Treetable
+
+`internal/tui/components/treetable` already exists and supports a `Name` column +
+optional `Actions` column with row-context mnemonic buttons. It is used on
+[Edit Asset Screen](#edit-asset-screen) (files panel) as-is.
+
+The [Plan Project Screen](#plan-project-screen) needs four columns: `Name`, `Status`,
+`Current Action`, `Actions`. The treetable component must be **extended** with a new
+option so callers can inject N intermediate value columns between the `Name` column
+and the `Actions` column:
+
+```go
+type ValueColumn struct {
+    Column
+    Value func(*Node) string
+}
+
+func WithValueColumns(cols ...ValueColumn) Option
+```
+
+`Value` is called once per render per row and returns the cell text. Rendering order
+is: `Name` → injected value columns (in order) → `Actions`. The `Actions` column
+behavior (cursor-only render, mnemonic routing) is unchanged.
+
+This keeps the treetable reusable for future multi-column tree views instead of
+forking a one-off `plantable` widget.
+
 ## Screens
 
 Each screen is opened by calling a function that constructs the screen.
@@ -119,6 +197,13 @@ loading the data for the screen. These are documented (see below).
 
 _Note that_ on **all screens** there is a status bar with the current available
 key bindings. This is supported by _bubbletea_ applications out of the box.
+
+The status bar is **dynamic**: it always shows the global key bindings (see below),
+plus — when a row is selected and its table is focused — the mnemonic keys exposed
+by that row's [Mnemonic buttons](#mnemonic-buttons) (e.g. `e edit`, `d delete`).
+Screen-level buttons (e.g. `c create`, `r register`, `b back`) are visible as
+labelled buttons on the screen itself and are **not** repeated in the status bar.
+This keeps the bar from doubling as visual noise next to the button row.
 
 Key bindings that are _always available_:
 
@@ -173,11 +258,11 @@ At the bottom there is the statusbar that shows the possible key bindings:
 ┃ Choose a task
 ┃ > Profiles
 ┃   Settings
-┃   Done
+┃   Quit
 
 {{ notification area (no content == invisible by default) }}
 
-↑/k up • ↓/j down • enter/o choose • n notifications • s settings • q quit • ? help
+↑/k up • ↓/j down • enter/v choose • n notifications • s settings • q quit • ? help
 ```
 
 ### Profiles Screen
@@ -188,12 +273,18 @@ We use the bubbles table component on this screen.
 When a profile is selected in the table we add 2 _mnemonic buttons_
 
 - Pressing `e` loads the [Edit Profile Screen](#edit-profile-screen), using the selected `Profile`'s id as parameter.
-- Pressing `d` deletes the profile. It uses the confirmation modal (see below) to ask for confirmation.
+- Pressing `d` deletes the profile via a **two-step** confirmation flow:
+    1. First [Confirmation Modal](#confirmation-modal): "Are you sure you want to delete profile {{name}}?"
+       - "No" → abort, no further prompts.
+       - "Yes" → proceed to step 2.
+    2. Second [Confirmation Modal](#confirmation-modal): "Also delete profile folder on disk?"
+       - "No" → invoke [Delete Profile](#delete-profile) with `KeepFolders` (default).
+       - "Yes" → invoke [Delete Profile](#delete-profile) with `DeleteFolders`.
 
 Regardless of table selection
 
-- Pressing `c` opens the [CreateNewProfile] modal. (see below).
-- Pressing `r` opens the [RegisterProfile] modal (see below).
+- Pressing `c` opens the [Create Profile Modal](#create-profile-modal) (see below).
+- Pressing `r` opens the [Register Profile Modal](#register-profile-modal) (see below).
 
 ```
 ╭──────────╮
@@ -222,7 +313,13 @@ When the Edit Profile Screen is opened we load the `Profile` with the `id` that 
 using the [Load Profile](#load-profile) _action_.
 
 On the Edit Profile Screen there are 2 tables. _Focus_ can be shifted between the tables using the
-`<tab>` key (forwards) or `<shift>+<tab>` (backwards) and with the mnemonic focus keys `1` and `2`.
+`<tab>` key (forwards) or `<shift>+<tab>` (backwards) and with the focus mnemonic keys `1` and `2`.
+
+> [!NOTE]
+> Throughout the app, focus-mnemonic digit shortcuts use the `Ctrl` modifier
+> (`focus.WithModifier(focus.ModCtrl)`) — i.e. the displayed label is `[1]` but the
+> binding fires on `ctrl+1`. This keeps plain digits available to focused text inputs.
+> The visual `[N]` indicator stays unchanged.
 
 The UI needs to fit on the current screen. The heading, the buttons, the notifications and
 the status parts have a fixed size, so we need to calculate the tables' size based on this.
@@ -234,7 +331,7 @@ The assets table lists all the `Asset` objects within the loaded `Profile`.
 The following context actions are available to selected rows in this table:
 
 - Pressing `e` (mnemonic) will open [Edit Asset Screen](#edit-asset-screen) with the `id` of the selected `Asset`
-- Pressing `d` (mnemonic) will open a [Confirmation](#confirmation-modal) dialog with a command
+- Pressing `d` (mnemonic) will open a [Confirmation Modal](#confirmation-modal) with a command
   that deletes the selected `Asset` using the [Delete Asset](#delete-asset) _action_
 
 Below the _assets table_ there is a mnemonic button: "Create Asset". It is invoked by pressing `c`.
@@ -249,9 +346,12 @@ The projects table lists all the `Project` objects within the loaded `Profile`.
 
 The following context actions are available to selected rows in this table:
 
-- Pressing `l` (mnemonic) will open the [Select Project Assets Screen](#select-project-assets-screen) with the `id` of the selected `Project`
+- Pressing `e` (mnemonic) will open the [Edit Project Modal](#edit-project-modal) prefilled
+  with the selected `Project`'s `Name`, `Path`, and `EnabledAgents`. If confirmed,
+  the [Update Project](#update-project) _action_ is invoked with the modified `Project`.
+- Pressing `a` (mnemonic) will open the [Select Project Assets Screen](#select-project-assets-screen) with the `id` of the selected `Project`
 - Pressing `p` (mnemonic) will open the [Plan Project Screen](#plan-project-screen) with the `id` of the selected `Project`
-- Pressing `d` (mnemonic) will open a [Confirmation](#confirmation-dialog) dialog with a command
+- Pressing `d` (mnemonic) will open a [Confirmation Modal](#confirmation-modal) with a command
   that deletes the selected `Project` using the [Delete Project](#delete-project) _action_
 
 Below the _projects table_ on the left side there is a mnemonic button: "Register Project". It is invoked by pressing `r`.
@@ -286,7 +386,7 @@ The following mockup shows how the Edit Profile Screen should look like.
 │ ┌──▶[2]─Projects─◀──┴────────────────────────────────────────────────────────────────────┐  │
 │ │  │ Id       Name           Path                               Actions                  │  │
 │ │  │─────────────────────────────────────────────────────────────────────────────────────┤  │
-│ │  │ #1       My project     /home/profiles/some                [Assets] [Plan] [Delete] │  │
+│ │  │ #1       My project     /home/profiles/some           [Edit] [Assets] [Plan] [Delete] │  │
 │ │  │ #2       Other proj     /home/profiles/other                                        │  │
 │ │  │                                                                                     │  │
 │ │  │                                                                                     │  │
@@ -333,16 +433,18 @@ It occupies 50% of the available horizontal space, and 90% of the available vert
 
 Pressing `1` (focus handling mnemonic button) will focus the `treetable`.
 
-Pressing `e` ("Edit" mnemonic button) opens the file for editing using the `tui/editor` functionality.
+Pressing `o` ("Open" mnemonic button) opens the file for editing using the `tui/editor` functionality.
 After the editor is closed we return to the screen and [Update Asset](#update-asset) is called
-with the result.
+with the current in-memory `Asset`.
 
 > [!IMPORTANT]
-> We need to update the asset to recalculate the SHA. This is important because we want this change
-> to show up on the [Plan Project Screen](#plan-project-screen) as an _update_ and not as a _drift_.
+> `UpdateAsset` writes the metadata **and** walks the asset directory to refresh
+> per-file SHA — the caller does not need to recompute hashes or reload the asset
+> beforehand. This is what makes a file edit surface as `ChangeUpdate` on the
+> [Plan Project Screen](#plan-project-screen) instead of `ChangeDrift`.
 
 > [!IMPORTANT]
-> the "Edit" mnemonic button is only rendered for leaf nodes (files), not for directories
+> the "Open" mnemonic button is only rendered for leaf nodes (files), not for directories
 
 Pressing `d` ("Delete" mnemonic button) opens a _confirmation dialog_ and if "yes" is pressed it:
 
@@ -359,13 +461,18 @@ and if confirmed it
 
 #### Customize
 
-In the right column there is a _group_ named "Summary" that shows non-editable data. It occupies
-50% of the horizontal and 30% of the vertical space available.
+In the right column there is a _group_ named "Summary" that shows non-editable data
+(`Name`, `Type`). It occupies 50% of the horizontal and 30% of the vertical space available.
 
 Below it there is a _group_ named "Customize" that shows editable fields and it occupies
-50% of the horizontal and 60% of the vertical space available.
+50% of the horizontal and 60% of the vertical space available. The editable fields are:
 
-Pressing `2` (focus handling mnemonic button) will focus the "description" field.
+- `Description` (multi-line text input)
+- `Tags` (comma-separated text input)
+- `CompatibleAgents` (multi-select: `codex`, `claude-code`, `cursor`, `opencode`; empty = all)
+- `ExclusiveGroup` (single-line text input)
+
+Pressing `2` (focus handling mnemonic button) will focus the "Description" field.
 
 Whenever focus is moved away from an input field (on `Blur()`) the `Asset` object is updated.
 
@@ -388,10 +495,10 @@ Pressing `b` ("Back" mnemonic button) navigates to the [Profiles Screen](#profil
 ┌[1]─Files────────────────────────────────┼───────────┐┌────Summary───────────────────▽─────────────────────┐
 │ Name                              Actions           ││ Name                {{asset.Name}}                 │
 │─────────────────────────────────────────┼───────────││ Type                {{asset.Type}}                 │
-│ review-task/                            ▽           ││ Compatible Agents   {{asset.CompatibleAgents}}     │
-│ ├── SKILL.md                                        ││ Exclusive Group     {{asset.ExclusiveGroup}}       │
+│ review-task/                            ▽           ││                                                    │
+│ ├── SKILL.md                                        ││                                                    │
 │ ├── scripts/                                        ││                                                    │
-│ │   └── git-commit.sh             [Edit]  [Delete]  ││                                                    │
+│ │   └── git-commit.sh             [Open]  [Delete]  ││                                                    │
 │ ├── references/                                     │└────────────────────────────────────────────────────┘
 │ │   ├── good-example.md                             │┌[2]─Customize───────────────────────────────────────┐
 │ │   └── bad-example.md                              ││                     ┌────────────────────────────┐ │
@@ -419,10 +526,10 @@ Pressing `b` ("Back" mnemonic button) navigates to the [Profiles Screen](#profil
 
 ### Select Project Assets Screen
 
-Parameters: the `id` of the `Asset`
+Parameters: the `id` of the `Project`
 
-When this screen is opened we load the `Asset` with the `id` that is passed to this screen
-using the [Load Asset](#load-asset) _action_.
+When this screen is opened we load the `Project` with the `id` that is passed to this screen
+using the [Load Project](#load-project) _action_.
 
 The following mockup shows the Select Project Assets Screen. There are 2 tables below each other and they
 have the same size.
@@ -526,10 +633,16 @@ The table has the following fields:
 - Name: the path of the file (or directory)
 - Status: The `ChangeKind` of the file (only applicable for files, not directories)
 - Current Action: is the action that is currently chosen (only applicable for files, not directories)
-- Actions: contains the possible actions. These are mnemonic buttons that act as a toggle between 2 options:
-    - "Overwrite" (mnemonic `o`) and "Keep" (mnemonic `k`) for "drift"
-    - "Delete" (mnemonic `d`) and "Keep" (mnemonic `k`) for "unknown"
-      The mnemonic buttons are only present for the selected row (like in all other tables)
+- Actions: a single mnemonic button that **toggles** to the alternative — the current
+  action lives in the "Current Action" column, the button shows the other option:
+    - row `Status = drift`:
+        - `Current Action = Keep` → button `[Overwrite]` (mnemonic `o`)
+        - `Current Action = Overwrite` → button `[Keep]` (mnemonic `k`)
+    - row `Status = unknown`:
+        - `Current Action = Keep` → button `[Delete]` (mnemonic `d`)
+        - `Current Action = Delete` → button `[Keep]` (mnemonic `k`)
+  The button is only present on the selected + focused row (consistent with all other
+  tables). Pressing the button swaps `Current Action` and re-renders the row.
 
 Pressing the mnemonic button `Apply` (mnemonic `a`) constructs a list of changes and calls [Sync Project](#sync-project) with it.
 
@@ -561,6 +674,33 @@ Pressing the mnemonic button `Apply` (mnemonic `a`) constructs a list of changes
  {{ notification area (no content == invisible by default) }} ▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒
 
  ↑/k░up░•░↓/j░down░•░e░save░•░b░back░•░n░notifications░•░s░settings░•░q quit░•░?░help░░░░░░░░░░░░░░░░░░░░░░░░
+```
+
+### Settings Screen
+
+Parameters: none
+
+> [!NOTE]
+> MVP stub. The screen renders a single line of text ("Coming soon") plus a `[Back]`
+> mnemonic button (mnemonic `b`). Pressing `b` returns to the previous screen (Welcome
+> Screen if entered via the menu; whichever screen was active if entered via the global
+> `s` shortcut).
+>
+> The Welcome Screen menu entry and the global `s` binding stay in place so future work
+> can flesh the screen out without touching navigation.
+
+```
+╭──────────╮
+│ Settings │
+╰──────────╯
+
+ Coming soon.
+
+                                                                                       [Back]
+
+ {{ notification area (no content == invisible by default) }}
+
+ b░back░•░n░notifications░•░q░quit░•░?░help
 ```
 
 ## Modals
@@ -612,7 +752,10 @@ When the _Create Asset_ modal is opened it shows a _form modal_ with _1_ form gr
 containing the following fields:
 
 > [!IMPORTANT]
-> An unique ID will be generated for the `Asset`
+> A unique ID will be generated for the `Asset` by slugifying `Name` (reusing the existing
+> `slug()` helper in `internal/app/service.go`). If the resulting id collides with an
+> existing asset in the profile, the action surfaces an `AssetExistsError` and the user
+> is asked to pick a different `Name`.
 
 - `Name`
     - label: name
@@ -629,7 +772,12 @@ containing the following fields:
 - `Tags`
     - label: tags
     - description: Assign (optional) tags, eg: "git, build"
-    - requited: `false`
+    - required: `false`
+- `CompatibleAgents`
+    - label: compatible agents
+    - description: Multi-select of agents this asset renders for
+      (`codex`, `claude-code`, `cursor`, `opencode`). Empty means "all enabled agents".
+    - required: `false`
 - `ExclusiveGroup`
     - label: exclusive group
     - description: Assign (optional) exclusive group (eg: `agents_doc`)
@@ -637,13 +785,10 @@ containing the following fields:
 
 If the form is submitted an `Asset.Manifest` object is returned.
 
-### Register Project Modal
+### Edit Project Modal
 
-When the _Register Project_ modal is opened it shows a _form modal_ with _1_ form group
-containing the following fields:
-
-> [!IMPORTANT]
-> An unique ID will be generated for the `Project`
+When the _Edit Project_ modal is opened it shows a _form modal_ prefilled with the
+existing `Project`'s values, with _1_ form group containing the following fields:
 
 - `Name`
     - label: name
@@ -653,8 +798,47 @@ containing the following fields:
     - label: path
     - description: The path of the project
     - required: `true`
+- `EnabledAgents`
+    - label: enabled agents
+    - description: Multi-select of agents enabled for this project
+      (`codex`, `claude-code`, `cursor`, `opencode`). At least one required.
+    - required: `true`
 
-If the form is submitted an `Project` object is returned.
+> [!NOTE]
+> The `Project.ID` is **not** editable. `SelectedAssetIDs` are also untouched here —
+> use the [Select Project Assets Screen](#select-project-assets-screen) for that.
+
+If the form is submitted the modified `Project` object is returned.
+
+### Register Project Modal
+
+When the _Register Project_ modal is opened it shows a _form modal_ with _1_ form group
+containing the following fields:
+
+> [!IMPORTANT]
+> A unique ID will be generated for the `Project` by slugifying `Name` (reusing the existing
+> `slug()` helper in `internal/app/service.go`, matching today's `AddProject` behavior).
+> If the slug collides with an existing project in the profile, the action surfaces the
+> corresponding typed error and the user is asked to pick a different `Name`.
+
+- `Name`
+    - label: name
+    - description: The name of the project
+    - required: `true`
+- `Path`
+    - label: path
+    - description: The path of the project
+    - required: `true`
+- `EnabledAgents`
+    - label: enabled agents
+    - description: Multi-select of agents to enable for this project
+      (`codex`, `claude-code`, `cursor`, `opencode`). At least one required.
+    - required: `true`
+
+The asset selection is **not** collected here — projects are registered with no assets
+selected; the user picks them later from the [Select Project Assets Screen](#select-project-assets-screen).
+
+If the form is submitted a `Project` object is returned (with `SelectedAssetIDs` empty).
 
 ### Create File Modal
 
@@ -716,9 +900,58 @@ in temporal order (newest first) in a _bubbles_ `Table` component (see below)
 └────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
+## Service API
+
+The following functions need to exist on `app.Service`. All calls are **stateless**:
+callers pass `profileRef` explicitly (matches the current pattern). Functions return
+`(T, errs.DomainError)` (or just `errs.DomainError` for void operations).
+
+### Existing
+
+- `CreateProfile(name, path string) (*registry.ProfileRef, errs.DomainError)`
+- `RegisterProfile(path string) (*registry.ProfileRef, errs.DomainError)`
+- `LoadProfile(ref string) (*profile.Profile, errs.DomainError)`
+- `AddProject(profileRef, name, path string, agents, assetIDs []string) (*project.Manifest, []errs.DomainError)`
+- `InitAsset(profileRef string, manifest asset.Manifest) (string, errs.DomainError)`
+- `Plan(profileRef, projectID string) (*llmsync.Preview, errs.DomainError)`
+- `Apply(profileRef, projectID string, deleteCandidates bool) (*llmsync.Preview, errs.DomainError)`
+
+### New
+
+- `LoadProfiles() ([]*profile.Profile, errs.DomainError)` — returns every registered profile
+  fully loaded (assets + projects scanned). Heavy operation; the TUI caches the result for the
+  Profiles Screen lifetime.
+- `DeleteProfile(profileRef string, folderAction FolderAction) errs.DomainError` — deletes the
+  profile from the registry plus all associated assets and projects. `folderAction` controls
+  whether the on-disk profile folder is also removed (`DeleteFolders`) or kept (`KeepFolders`,
+  default).
+- `LoadAsset(profileRef, assetID string) (*asset.Asset, errs.DomainError)`
+- `UpdateAsset(profileRef string, a *asset.Asset) errs.DomainError` — overwrites the asset
+  manifest and recomputes content hashes.
+- `DeleteAsset(profileRef, assetID string) errs.DomainError` — removes the asset folder inside
+  the profile and unselects the asset id from every project in the profile. Already-synced
+  files in project repos are **not** touched (they remain orphaned).
+- `LoadProject(profileRef, projectID string) (*project.Manifest, errs.DomainError)`
+- `UpdateProject(profileRef string, p *project.Manifest) errs.DomainError` — overwrites the
+  project manifest.
+- `DeleteProject(profileRef, projectID string) errs.DomainError` — removes project metadata
+  only; the project's repo files are **not** touched.
+
+### FolderAction
+
+```go
+type FolderAction int
+
+const (
+    KeepFolders   FolderAction = iota // default
+    DeleteFolders
+)
+```
+
 ## Actions Reference
 
-The following is the list of actions available to this app.
+The following is the list of actions available to this app. Each action wraps one
+function in the [Service API](#service-api) above.
 
 ### Create Profile
 
@@ -741,8 +974,6 @@ Parameters:
 
 This _action_ loads the available `Profile` objects from the `Service` using the `LoadProfiles` function.
 
-> [!NOTE] this function doesn't exist yet on `Service`, we need to add it.
-
 Parameters: none
 
 ### Load Profile
@@ -756,8 +987,6 @@ Parameters:
 ### Delete Profile
 
 This _action_ deletes the `Profile` with the given `id` using the `DeleteProfile` function.
-
-> [!NOTE] this function doesn't exist yet on `Service`, we need to add it.
 
 > [!IMPORTANT]
 > This will also delete all the **assets** and **projects** associated with
@@ -779,8 +1008,6 @@ Parameters: `Project` object
 
 This _action_ loads a `Project` using the given `id` from the `Service` using the `LoadProject` function.
 
-> [!NOTE] this function doesn't exist yet on `Service`, we need to add it.
-
 Parameters:
 
 - `id`: mandatory
@@ -788,8 +1015,6 @@ Parameters:
 ### Update Project
 
 This _action_ overwrites the `Project` with the given `id` using the `UpdateProject` function.
-
-> [!NOTE] this function doesn't exist yet on `Service`, we need to add it.
 
 > [!IMPORTANT]
 > this will _overwrite_ the previous metadata.
@@ -801,8 +1026,6 @@ Parameters:
 ### Delete Project
 
 This _action_ deletes the `Project` with the given `id` using the `DeleteProject` function.
-
-> [!NOTE] this function doesn't exist yet on `Service`, we need to add it.
 
 > [!IMPORTANT]
 > This will only delete the **metadata** for the project, not the actual
@@ -817,8 +1040,23 @@ Parameters:
 This _action_ creates a sync plan for the `Project` with the given `id` using the `Plan` function.
 
 > [!IMPORTANT]
-> We'll need to update the sync as there are other cases that we're not handling currently besides `delete_candidate`, the `unknown` state.
-> Unknown is when there is a file in a managed directory that we didn't add.
+> `sync.Plan` must be extended to emit a new `ChangeUnknown` kind in addition to the existing
+> `create`/`update`/`drift`/`delete` kinds. An "unknown" entry is a file that lives inside a
+> managed surface (`AGENTS.md`, `.claude`, `.cursor`, `.codex`, `.opencode`, `.mcp.json`) but
+> is **not** recorded in `ManagedState.ManagedFiles` and is **not** part of the current desired
+> output.
+>
+> The current `detectDeleteCandidates` pass must be split:
+>
+> - file recorded in `ManagedState` and missing from desired → `ChangeDelete` (auto-handled)
+> - file present in managed surface, not in `ManagedState`, not in desired → `ChangeUnknown`
+>   (user decides via Plan Project Screen)
+>
+> **First-apply policy (no `ManagedState`):** treat the project as a clean slate.
+> Every desired file is classified as `ChangeCreate` (and will be written, overwriting any
+> existing file at the same path). No `ChangeUnknown` entries are emitted; existing files in
+> managed surfaces are ignored. The first successful apply writes the initial `ManagedState`,
+> after which subsequent plans can distinguish drift from unknown.
 
 Parameters:
 
@@ -826,33 +1064,52 @@ Parameters:
 
 ### Sync Project
 
-This _action_ creates applies a previously created sync plan for the `Project` using the `Apply` function.
+This _action_ applies a previously created sync plan for the `Project` using the `Apply` function.
 
 > [!IMPORTANT]
-> There is a significant change compared to how `Apply` was working up until now. During the planning phase the user now can select
-> resolutions for each asset that is not an expected change:
+> Significant change to `Apply`'s signature. During the planning phase the user selects
+> resolutions for each file that is not an automatic change:
 >
-> "drift": means a previously managed file was modified locally; apply would overwrite those edits. User should be able to choose:
+> - "drift": previously managed file was modified locally.
+>     - `ResolveOverwrite`: overwrite the local changes
+>     - `ResolveKeep` (default): leave file alone
+> - "unknown": unrecognized file in a managed surface that we never managed.
+>     - `ResolveDelete`: delete the file
+>     - `ResolveKeep` (default): leave file alone
 >
-> - overwrite: overwrite the changes
-> - keep: don't touch the changes
->
-> "unknown" marks an unrecognized file that we never managed.
->
-> - delete: delete the file
-> - keep: don't touch the file
->
-> Note that "create", "update" and "delete" have no options they will be automatically done.
+> "create", "update" and "delete" carry `ResolveAuto` and are always materialized.
+
+`sync.Apply` signature:
+
+```go
+type Resolution int
+
+const (
+    ResolveAuto      Resolution = iota // create / update / delete — always applied
+    ResolveOverwrite                    // drift only
+    ResolveKeep                         // drift or unknown — no-op
+    ResolveDelete                       // unknown only
+)
+
+type FileResolution struct {
+    Path       string
+    Resolution Resolution
+}
+
+func Apply(preview *Preview, resolutions []FileResolution) errs.DomainError
+```
+
+The UI emits a `FileResolution` entry only when the user **toggles** away from the default
+(`Keep`). Paths absent from `resolutions` keep the default behavior for their `ChangeKind`.
 
 Parameters:
 
 - `plan`: the plan that was created, mandatory
+- `resolutions`: slice of `FileResolution`, may be empty
 
 ### Load Asset
 
 This _action_ loads a `Asset` using the given `id` from the `Service` using the `LoadAsset` function.
-
-> [!NOTE] this function doesn't exist yet on `Service`, we need to add it.
 
 Parameters:
 
@@ -870,10 +1127,10 @@ Parameters:
 
 This _action_ overwrites the `Asset` with the given `id` using the `UpdateAsset` function.
 
-> [!NOTE] this function doesn't exist yet on `Service`, we need to add it.
-
 > [!IMPORTANT]
-> this will _overwrite_ the previous metadata.
+> `UpdateAsset` _overwrites_ the previous manifest AND re-walks the asset directory to
+> refresh per-file SHA values. Callers therefore do not need to reload the asset before
+> calling this action even if only file contents (not metadata) changed.
 
 Parameters:
 
@@ -882,8 +1139,6 @@ Parameters:
 ### Delete Asset
 
 This _action_ deletes the `Asset` with the given `id` using the `DeleteAsset` function.
-
-> [!NOTE] this function doesn't exist yet on `Service`, we need to add it.
 
 > [!IMPORTANT]
 > this function will delete the asset folder within the profile, and remove
