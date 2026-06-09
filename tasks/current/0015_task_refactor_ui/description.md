@@ -40,13 +40,13 @@ Example:
 }
 ```
 
-- Whenever an _action_ returns with an entry is added to the `Notifications` list with `ERROR` level
+- Whenever an _action_ returns with an error an entry is added to the `Notifications` list with `ERROR` level
   containing the error message as `Text`
 - Whenever an _action_ executes successfully an entry is added to `Notifications` with `INFO` level
   and with a `Text` that describes what action was executed successfully.
 
 `Notification`s also show up in the _notification area_ on each screen when created then removed
-after `5 seconds`.
+after `5 seconds` (this is usually called a "Toast" message)
 
 `Notification`s can be viewed by opening the [Notifications Modal](#notifications-modal)
 
@@ -84,7 +84,8 @@ so we don't need to implement that. Tables always have a fixed height so that th
 #### Selection
 
 When a row is selected (bubbles supports this) we need to display the actions that can be performed on
-the selected item in the "Actions" column. We do this only on the selection to prevent visual noise.
+the selected item in the "Actions" column. We do this only on the selection to prevent visual noise
+and possible mnemonic button duplications.
 
 Actions are invoked using mnemonics, that we need to visually display in the actions. Each mnemonic is
 a letter, for example:
@@ -113,7 +114,7 @@ and the currently selected item should be visually distinct. bubbles supports th
 ## Screens
 
 Each screen is opened by calling a function that constructs the screen.
-These functions can accept parameters when called (usually identifiers) for
+These functions can accept a single parameter when called (usually identifiers) for
 loading the data for the screen. These are documented (see below).
 
 _Note that_ on **all screens** there is a status bar with the current available
@@ -149,7 +150,7 @@ The following is a template for all screens:
 
 ### Welcome Screen
 
-When the app is started with `af` the user will land on this screen (see mockup below).
+When the app is started with `af` the user lands on this screen (see mockup below).
 
 - "Profiles" navigates to the [Profiles Screen](#profiles-screen) (see below)
 - "Settings" navigates to the _Settings Screen_ (see below)
@@ -181,12 +182,12 @@ At the bottom there is the statusbar that shows the possible key bindings:
 
 ### Profiles Screen
 
-When the screen is loaded `Profiles` are loaded using the [LoadProfiles](#load-profiles) _Action_.
+When the screen is loaded `Profiles` are loaded using the [Load Profiles](#load-profiles) _Action_ (no parameters).
 
 We use the bubbles table component on this screen.
 When a profile is selected in the table we add 2 _mnemonic buttons_
 
-- Pressing `i` loads the [Edit Profile Screen](#edit-profile-screen), using the selected `Profile`'s id as parameter.
+- Pressing `e` loads the [Edit Profile Screen](#edit-profile-screen), using the selected `Profile`'s id as parameter.
 - Pressing `d` deletes the profile. It uses the confirmation modal (see below) to ask for confirmation.
 
 Regardless of table selection
@@ -206,10 +207,11 @@ Regardless of table selection
 │ test        Test        /Users/addamsson/af/profiles/   [Edit] [Delete]            │ <-- selected row
 │ ...                                                                                │
 └────────────────────────────────────────────────────────────────────────────────────┘
+ [Create New Profile] [Register Profile]
 
 {{ notification area (no content == invisible by default) }}
 
-↑/k up • ↓/j down • c create • r register • n notifications • s settings • q quit
+↑/k up • ↓/j down • n notifications • s settings • q quit
 ```
 
 ### Edit Profile Screen
@@ -231,13 +233,13 @@ The assets table lists all the `Asset` objects within the loaded `Profile`.
 
 The following context actions are available to selected rows in this table:
 
-- Pressing `i` (mnemonic) will open [Edit Asset Screen](#edit-asset-screen) with the `id` of the selected `Asset`
+- Pressing `e` (mnemonic) will open [Edit Asset Screen](#edit-asset-screen) with the `id` of the selected `Asset`
 - Pressing `d` (mnemonic) will open a [Confirmation](#confirmation-modal) dialog with a command
   that deletes the selected `Asset` using the [Delete Asset](#delete-asset) _action_
 
 Below the _assets table_ there is a mnemonic button: "Create Asset". It is invoked by pressing `c`.
 
-When "New Asset" is invoked the [Create Asset Modal](#create-asset-modal) is displayed. If it
+When "Create Asset" is invoked the [Create Asset Modal](#create-asset-modal) is displayed. If it
 isn't canceled an `Asset.Manifest` is returned and the [Create Asset](#create-asset) _action_
 is invoked.
 
@@ -252,11 +254,14 @@ The following context actions are available to selected rows in this table:
 - Pressing `d` (mnemonic) will open a [Confirmation](#confirmation-dialog) dialog with a command
   that deletes the selected `Project` using the [Delete Project](#delete-project) _action_
 
-Below the _projects table_ there is a mnemonic button: "Register Project". It is invoked by pressing `r`.
+Below the _projects table_ on the left side there is a mnemonic button: "Register Project". It is invoked by pressing `r`.
 
 When "Register Project" is invoked the [Register Project Modal](#register-project-modal) is displayed. If it
-isn't canceled a `Project` is returned and the [Register Project](#register-project) _action_
-is invoked.
+isn't canceled a `Project` is returned and the [Register Project](#register-project) _action_ is invoked.
+
+Below the _projects table_ on the right side there is a mnemonic button: "Back". It is invoked by pressing `b`.
+
+When `b` is pressed we go back to the [Profiles Screen](#profiles-screen).
 
 The following mockup shows how the Edit Profile Screen should look like.
 
@@ -329,7 +334,12 @@ It occupies 50% of the available horizontal space, and 90% of the available vert
 Pressing `1` (focus handling mnemonic button) will focus the `treetable`.
 
 Pressing `e` ("Edit" mnemonic button) opens the file for editing using the `tui/editor` functionality.
-After the editor is closed we return to the screen.
+After the editor is closed we return to the screen and [Update Asset](#update-asset) is called
+with the result.
+
+> [!IMPORTANT]
+> We need to update the asset to recalculate the SHA. This is important because we want this change
+> to show up on the [Plan Project Screen](#plan-project-screen) as an _update_ and not as a _drift_.
 
 > [!IMPORTANT]
 > the "Edit" mnemonic button is only rendered for leaf nodes (files), not for directories
@@ -349,7 +359,7 @@ and if confirmed it
 
 #### Customize
 
-In the right column there is a _group_ named "Summary" that shows non-editable data. occupying
+In the right column there is a _group_ named "Summary" that shows non-editable data. It occupies
 50% of the horizontal and 30% of the vertical space available.
 
 Below it there is a _group_ named "Customize" that shows editable fields and it occupies
@@ -484,39 +494,64 @@ The following context actions are available to selected rows in this table:
 
 Parameters: the `id` of the `Project`
 
-When this screen is opened we load the `Project` with the `id` that is passed to this screen
-using the [Load Project](#load-project) _action_.
+When this screen is opened we load the _Project Plan_ for the `Project` with the `id` that is passed to this screen
+using the [Plan Project](#plan-project) function.
 
 The following mockup shows the Plan Project Screen. There is a single treetable on the screen.
 
 The UI needs to fit on the current screen. The heading, the buttons, the notifications and
 the status parts have a fixed size, so we need to calculate the table's size based on this.
 
-There is a "Apply" button below the "Plan Project" table that will call thej
+There is a "Apply" button below the "Plan Project" table that will call the [Sync Project](#sync-project)
+function with the user's selections.
 
-> [!NOTE]
-> The Plan screen will use the current state that exists. Actions performed on this screen are automatically
-> saved
+All files in the plan have a `ChangeKind` value. "create", "update" and "delete" are all managed
+changes (eg: user created new asset metadata, deleted asset metadata or updated a file on the filesystem)
+so there are no actions that the user can perform. "drift" and "unknown" might need user intervention:
+
+"drift": means a previously managed file was modified locally, apply would overwrite those edits. User should be able to choose:
+
+- overwrite: overwrite the changes
+- keep: don't touch the changes
+  "Keep" is chosen by default
+
+"unknown" marks an unrecognized file that was never managed.
+
+- delete: delete the file
+- keep: don't touch the file
+  "Keep" is chosen by default
+
+The table has the following fields:
+
+- Name: the path of the file (or directory)
+- Status: The `ChangeKind` of the file (only applicable for files, not directories)
+- Current Action: is the action that is currently chosen (only applicable for files, not directories)
+- Actions: contains the possible actions. These are mnemonic buttons that act as a toggle between 2 options:
+    - "Overwrite" (mnemonic `o`) and "Keep" (mnemonic `k`) for "drift"
+    - "Delete" (mnemonic `d`) and "Keep" (mnemonic `k`) for "unknown"
+      The mnemonic buttons are only present for the selected row (like in all other tables)
+
+Pressing the mnemonic button `Apply` (mnemonic `a`) constructs a list of changes and calls [Sync Project](#sync-project) with it.
 
 ```
 ┌──────────────────────────────────┐
 │Planning Project {{project.name}} │
 └──────────────────────────────────┘
 ┌Changes────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│ Name                               Status                       Actions                                   │
+│ Name                               Status      Current Action   Actions                                   │
 │────────────────────────────────────────────────────────────────────────────────────────────────────────── │
 │foo/                                                                                                       │
 │└── bar/                                                                                                   │
-│    └── hello.md                    ? unknown                    [Delete]                                  │
+│    └── hello.md                    ? unknown   Keep             [Delete]                                  │
 │.claude/                                                                                                   │
 │├── commands/                                                                                              │
-││   └── rewrite.md                  - delete                     [Keep]                                    │
+││   └── rewrite.md                  - delete                                                               │
 │└── skills/                                                                                                │
 │    ├── implement-task/                                                                                    │
 │    │   └── skill.md                ~ update                                                               │
 │    └── review-task/                                                                                       │
 │        ├── skill.md                + add                                                                  │
-│        └── review-template.md      ~ add                                                                  │
+│        └── review-template.md      * drift     Keep             [Overwrite]                               │
 │                                                                                                           │
 │                                                                                                           │
 │                                                                                                           │
@@ -776,6 +811,42 @@ This _action_ deletes the `Project` with the given `id` using the `DeleteProject
 Parameters:
 
 - `id`: mandatory
+
+### Plan Project
+
+This _action_ creates a sync plan for the `Project` with the given `id` using the `Plan` function.
+
+> [!IMPORTANT]
+> We'll need to update the sync as there are other cases that we're not handling currently besides `delete_candidate`, the `unknown` state.
+> Unknown is when there is a file in a managed directory that we didn't add.
+
+Parameters:
+
+- `id`: mandatory
+
+### Sync Project
+
+This _action_ creates applies a previously created sync plan for the `Project` using the `Apply` function.
+
+> [!IMPORTANT]
+> There is a significant change compared to how `Apply` was working up until now. During the planning phase the user now can select
+> resolutions for each asset that is not an expected change:
+>
+> "drift": means a previously managed file was modified locally; apply would overwrite those edits. User should be able to choose:
+>
+> - overwrite: overwrite the changes
+> - keep: don't touch the changes
+>
+> "unknown" marks an unrecognized file that we never managed.
+>
+> - delete: delete the file
+> - keep: don't touch the file
+>
+> Note that "create", "update" and "delete" have no options they will be automatically done.
+
+Parameters:
+
+- `plan`: the plan that was created, mandatory
 
 ### Load Asset
 
