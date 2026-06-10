@@ -1,9 +1,11 @@
 package doctor
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/hexworks/agentfiles/internal/config"
 	"github.com/hexworks/agentfiles/internal/profile"
@@ -18,6 +20,7 @@ func TestCheckProfile_CleanProjectHasEmptyChanges(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(projectRoot, "AGENTS.md"), []byte("matched"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	seedManagedState(t, projectRoot)
 
 	report, checkErrs := CheckProfile(loaded)
 	if len(checkErrs) > 0 {
@@ -44,6 +47,7 @@ func TestCheckProfile_DirtyProjectListsChanges(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(projectRoot, "AGENTS.md"), []byte("differs"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	seedManagedState(t, projectRoot)
 
 	report, checkErrs := CheckProfile(loaded)
 	if len(checkErrs) > 0 {
@@ -87,4 +91,30 @@ func setupProfileWithProject(t *testing.T, profileRoot, projectRoot, assetBody s
 		t.Fatal(err)
 	}
 	return loaded
+}
+
+// seedManagedState writes a minimal `.agentfiles/state.json` so Plan treats
+// the project as having been applied before. The empty ManagedFiles map is
+// enough: the file's mere presence flips Plan out of first-apply mode, and
+// the empty map means drift detection falls through to ChangeUpdate when
+// content differs.
+func seedManagedState(t *testing.T, projectRoot string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(projectRoot, config.StateDirName), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	state := llmsync.ManagedState{
+		ProfileID:        "personal",
+		ProjectID:        "app",
+		GeneratorVersion: llmsync.GeneratorVersion,
+		LastAppliedAt:    time.Now(),
+		ManagedFiles:     map[string]string{},
+	}
+	data, err := json.Marshal(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectRoot, config.StateDirName, config.StateFileName), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
 }

@@ -31,6 +31,7 @@ func TestRenderPreview_ListsEachChangeWithIcon(t *testing.T) {
 			{Path: ".claude/settings.local.json", Kind: llmsync.ChangeUpdate, Reason: "content differs"},
 			{Path: ".codex/old.txt", Kind: llmsync.ChangeDelete, Reason: "recognized llm file not selected"},
 			{Path: "CLAUDE.md", Kind: llmsync.ChangeDrift, Reason: "managed file changed locally"},
+			{Path: ".cursor/stray.md", Kind: llmsync.ChangeUnknown, Reason: "unrecognized file in managed surface"},
 		},
 	}
 
@@ -41,6 +42,7 @@ func TestRenderPreview_ListsEachChangeWithIcon(t *testing.T) {
 		"~ [update] .claude/settings.local.json: content differs",
 		"- [delete] .codex/old.txt: recognized llm file not selected",
 		"! [drift] CLAUDE.md: managed file changed locally",
+		"? [unknown] .cursor/stray.md: unrecognized file in managed surface",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("missing %q in:\n%s", want, out)

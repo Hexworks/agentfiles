@@ -12,6 +12,7 @@ durable rationale is recorded as ADRs in [`../adr/`](../adr/README.md).
 - `0005`: use the TUI as the only user interface — superseded by `0006`
 - `0006`: remove CLI subcommands in favor of pure TUI
 - `0007`: rendering belongs to the TUI
+- `0010`: sync resolution model and first-apply clean slate
 
 ## Usage
 

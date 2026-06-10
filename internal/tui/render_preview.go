@@ -40,6 +40,8 @@ func changeStyle(kind llmsync.ChangeKind) (string, lipgloss.Style) {
 		return "!", driftStyle
 	case llmsync.ChangeDelete:
 		return "-", deleteStyle
+	case llmsync.ChangeUnknown:
+		return "?", driftStyle
 	}
 	return "?", mutedStyle
 }

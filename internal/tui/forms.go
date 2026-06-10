@@ -10,6 +10,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/asset"
 	"github.com/hexworks/agentfiles/internal/doctor"
 	"github.com/hexworks/agentfiles/internal/registry"
+	llmsync "github.com/hexworks/agentfiles/internal/sync"
 )
 
 // supportedAssetTypes mirrors the asset.Type constants so the select list is
@@ -202,17 +203,6 @@ func RunProjectApply(service *app.Service) error {
 		return err
 	}
 	fmt.Print(RenderPreview(preview))
-	var deleteCandidates bool
-	if len(preview.DeleteCandidates) > 0 {
-		if err := runForm(huh.NewGroup(
-			huh.NewConfirm().
-				Title("Delete recognized unmanaged files?").
-				Description(fmt.Sprintf("%d delete candidate(s) detected", len(preview.DeleteCandidates))).
-				Value(&deleteCandidates),
-		)); err != nil {
-			return err
-		}
-	}
 	var confirmed bool
 	if err := runForm(huh.NewGroup(
 		huh.NewConfirm().
@@ -225,7 +215,10 @@ func RunProjectApply(service *app.Service) error {
 		fmt.Println("aborted")
 		return nil
 	}
-	if _, err := service.Apply(profileID, projectID, deleteCandidates); err != nil {
+	// Per-file resolutions (drift/unknown toggles) ship with the Plan Project
+	// screen in task 0029; until then we apply with defaults: drift kept,
+	// unknowns kept, create/update/delete auto.
+	if _, err := service.Apply(profileID, projectID, []llmsync.FileResolution{}); err != nil {
 		return err
 	}
 	fmt.Println("applied")

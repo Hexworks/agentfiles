@@ -185,13 +185,15 @@ func (s *Service) Plan(profileRef, projectID string) (*llmsync.Preview, errs.Dom
 }
 
 // Apply executes the write half of the pipeline by first building a preview and
-// then asking the sync package to materialize the desired files.
-func (s *Service) Apply(profileRef, projectID string, deleteCandidates bool) (*llmsync.Preview, errs.DomainError) {
+// then asking the sync package to materialize the desired files. The caller
+// supplies per-file resolutions for drift and unknown entries; create/update/
+// delete kinds carry the implicit ResolveAuto.
+func (s *Service) Apply(profileRef, projectID string, resolutions []llmsync.FileResolution) (*llmsync.Preview, errs.DomainError) {
 	preview, err := s.Plan(profileRef, projectID)
 	if err != nil {
 		return nil, err
 	}
-	if err := llmsync.Apply(preview, deleteCandidates); err != nil {
+	if err := llmsync.Apply(preview, resolutions); err != nil {
 		return nil, err
 	}
 	return preview, nil
