@@ -10,7 +10,6 @@ import (
 	"github.com/hexworks/agentfiles/internal/asset"
 	"github.com/hexworks/agentfiles/internal/doctor"
 	"github.com/hexworks/agentfiles/internal/registry"
-	llmsync "github.com/hexworks/agentfiles/internal/sync"
 )
 
 // supportedAssetTypes mirrors the asset.Type constants so the select list is
@@ -218,7 +217,7 @@ func RunProjectApply(service *app.Service) error {
 	// Per-file resolutions (drift/unknown toggles) ship with the Plan Project
 	// screen in task 0029; until then we apply with defaults: drift kept,
 	// unknowns kept, create/update/delete auto.
-	if _, err := service.Apply(profileID, projectID, []llmsync.FileResolution{}); err != nil {
+	if _, err := service.Apply(profileID, projectID, nil, nil); err != nil {
 		return err
 	}
 	fmt.Println("applied")

@@ -47,6 +47,8 @@ func projectChangeStyle(kind sync.ChangeKind) (string, lipgloss.Style) {
 		return "!", driftStyle
 	case sync.ChangeDelete:
 		return "-", deleteStyle
+	case sync.ChangeUnknown:
+		return "?", driftStyle
 	}
 	return "?", mutedStyle
 }

@@ -77,7 +77,7 @@ func TestRenderLoadError_IncludesUnderlyingMessage(t *testing.T) {
 
 // The close binding (esc / q) must transition the content to Cancelled so the
 // hosting modal emits a ResolvedMsg with Confirmed=false on the next cycle.
-func TestContent_CloseKeysCancelResolution(t *testing.T) {
+func TestContent_CloseKeysCancelLifecycle(t *testing.T) {
 	cases := []struct {
 		name string
 		msg  tea.KeyPressMsg
@@ -88,11 +88,11 @@ func TestContent_CloseKeysCancelResolution(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			c := &content{keys: defaultKeymap()}
-			if state, _ := c.Resolution(); state != modal.Active {
+			if state, _ := c.Lifecycle(); state != modal.Active {
 				t.Fatalf("initial state = %v, want Active", state)
 			}
 			_, _ = c.Update(tc.msg)
-			state, value := c.Resolution()
+			state, value := c.Lifecycle()
 			if state != modal.Cancelled {
 				t.Errorf("state = %v, want Cancelled", state)
 			}
@@ -108,7 +108,7 @@ func TestContent_CloseKeysCancelResolution(t *testing.T) {
 func TestContent_NonCloseKeyKeepsActive(t *testing.T) {
 	c := &content{keys: defaultKeymap()}
 	_, _ = c.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
-	if state, _ := c.Resolution(); state != modal.Active {
+	if state, _ := c.Lifecycle(); state != modal.Active {
 		t.Fatalf("state = %v, want Active after scroll key", state)
 	}
 }

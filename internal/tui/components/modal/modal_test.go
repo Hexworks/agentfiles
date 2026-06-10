@@ -17,7 +17,7 @@ type fakeContent struct {
 	view         string
 	updates      int
 	lastMsg      tea.Msg
-	resolutionFn func() (ResolutionState, any)
+	resolutionFn func() (LifecycleState, any)
 	initCmd      tea.Cmd
 	returnCmd    tea.Cmd
 }
@@ -32,7 +32,7 @@ func (f *fakeContent) Update(msg tea.Msg) (Content, tea.Cmd) {
 
 func (f *fakeContent) View() string { return f.view }
 
-func (f *fakeContent) Resolution() (ResolutionState, any) {
+func (f *fakeContent) Lifecycle() (LifecycleState, any) {
 	if f.resolutionFn == nil {
 		return Active, nil
 	}
@@ -84,7 +84,7 @@ func TestModal_NoResolvedMsgWhileActive(t *testing.T) {
 
 func TestModal_EmitsResolvedMsgWhenContentDone(t *testing.T) {
 	fake := &fakeContent{
-		resolutionFn: func() (ResolutionState, any) { return Confirmed, "payload" },
+		resolutionFn: func() (LifecycleState, any) { return Confirmed, "payload" },
 	}
 	m := New("wizard", fake)
 
@@ -104,7 +104,7 @@ func TestModal_EmitsResolvedMsgWhenContentDone(t *testing.T) {
 
 func TestModal_CancelMapsToConfirmedFalse(t *testing.T) {
 	fake := &fakeContent{
-		resolutionFn: func() (ResolutionState, any) { return Cancelled, nil },
+		resolutionFn: func() (LifecycleState, any) { return Cancelled, nil },
 	}
 	m := New("wizard", fake)
 
@@ -119,9 +119,9 @@ func TestModal_CancelMapsToConfirmedFalse(t *testing.T) {
 	}
 }
 
-func TestModal_UpdateIsInertAfterResolution(t *testing.T) {
+func TestModal_UpdateIsInertAfterLifecycleResolved(t *testing.T) {
 	fake := &fakeContent{
-		resolutionFn: func() (ResolutionState, any) { return Confirmed, nil },
+		resolutionFn: func() (LifecycleState, any) { return Confirmed, nil },
 	}
 	m := New("id", fake)
 
@@ -144,7 +144,7 @@ func TestModal_BatchesContentCmdWithResolve(t *testing.T) {
 	innerMsg := "from-content"
 	fake := &fakeContent{
 		returnCmd:    func() tea.Msg { return innerMsg },
-		resolutionFn: func() (ResolutionState, any) { return Confirmed, "payload" },
+		resolutionFn: func() (LifecycleState, any) { return Confirmed, "payload" },
 	}
 	m := New("wizard", fake)
 

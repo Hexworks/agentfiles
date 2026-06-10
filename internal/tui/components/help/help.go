@@ -59,7 +59,7 @@ type content struct {
 	width    int
 	height   int
 	viewport viewport.Model
-	state    modal.ResolutionState
+	state    modal.LifecycleState
 	keys     keymap
 }
 
@@ -151,7 +151,7 @@ func (c *content) View() string {
 	)
 }
 
-func (c *content) Resolution() (modal.ResolutionState, any) {
+func (c *content) Lifecycle() (modal.LifecycleState, any) {
 	return c.state, nil
 }
 

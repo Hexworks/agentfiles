@@ -18,7 +18,7 @@ const editPath = "docs/manual/"
 // Active across the editor invocation so the modal remains open when the
 // editor returns.
 type viewContent struct {
-	state    modal.ResolutionState
+	state    modal.LifecycleState
 	lastErr  error
 	editedAt int
 }
@@ -62,7 +62,7 @@ func (c *viewContent) View() string {
 	return lipgloss.JoinVertical(lipgloss.Left, title, "", button, "", status, hint)
 }
 
-func (c *viewContent) Resolution() (modal.ResolutionState, any) {
+func (c *viewContent) Lifecycle() (modal.LifecycleState, any) {
 	return c.state, nil
 }
 

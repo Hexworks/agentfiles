@@ -25,14 +25,19 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-// ResolutionState enumerates the three states a [Content] can be in. It
+// LifecycleState enumerates the three states a [Content] can be in. It
 // replaces an earlier two-bool encoding so illegal combinations cannot be
 // expressed.
-type ResolutionState int
+//
+// The name "lifecycle" is deliberate: this enum tracks where a piece of
+// modal content sits in its open/confirmed/cancelled lifecycle. The
+// unrelated `sync.Resolution` family models per-file apply decisions
+// (overwrite/keep/delete) — keep the two vocabularies apart.
+type LifecycleState int
 
 const (
 	// Active means the content has not yet resolved; the modal stays open.
-	Active ResolutionState = iota
+	Active LifecycleState = iota
 	// Confirmed means the user completed the content successfully; the
 	// modal will emit a [ResolvedMsg] with Confirmed=true.
 	Confirmed
@@ -42,17 +47,17 @@ const (
 )
 
 // Content is anything that can live inside a [Modal]. It mirrors the standard
-// Bubble Tea model lifecycle plus a [Content.Resolution] check that lets the
+// Bubble Tea model lifecycle plus a [Content.Lifecycle] check that lets the
 // modal know when to resolve.
 type Content interface {
 	Init() tea.Cmd
 	Update(tea.Msg) (Content, tea.Cmd)
 	View() string
-	// Resolution reports the current state of the content. When state is
+	// Lifecycle reports the current state of the content. When state is
 	// [Confirmed] the modal will emit a [ResolvedMsg] carrying value; when
 	// state is [Cancelled] the modal emits a ResolvedMsg with Confirmed=false
 	// and Value=nil regardless of what value is returned here.
-	Resolution() (state ResolutionState, value any)
+	Lifecycle() (state LifecycleState, value any)
 }
 
 // ResolvedMsg is dispatched once when the modal's [Content] reports a terminal
@@ -156,7 +161,7 @@ func (m *Modal) Update(msg tea.Msg) (*Modal, tea.Cmd) {
 	}
 	var cmd tea.Cmd
 	m.content, cmd = m.content.Update(msg)
-	state, value := m.content.Resolution()
+	state, value := m.content.Lifecycle()
 	if state == Active {
 		return m, cmd
 	}

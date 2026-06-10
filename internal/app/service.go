@@ -184,19 +184,77 @@ func (s *Service) Plan(profileRef, projectID string) (*llmsync.Preview, errs.Dom
 	return llmsync.Plan(loaded, proj)
 }
 
-// Apply executes the write half of the pipeline by first building a preview and
-// then asking the sync package to materialize the desired files. The caller
-// supplies per-file resolutions for drift and unknown entries; create/update/
-// delete kinds carry the implicit ResolveAuto.
-func (s *Service) Apply(profileRef, projectID string, resolutions []llmsync.FileResolution) (*llmsync.Preview, errs.DomainError) {
+// DriftDecision is the app-layer mirror of llmsync.DriftDecision. The
+// TUI consumes the app vocabulary so it never imports `internal/sync`
+// directly, keeping the documented `tui → app` dependency edge true.
+type DriftDecision string
+
+// Possible DriftDecision values mirror llmsync.DriftDecision.
+const (
+	DriftKeep      DriftDecision = "keep"
+	DriftOverwrite DriftDecision = "overwrite"
+)
+
+// UnknownDecision is the app-layer mirror of llmsync.UnknownDecision.
+type UnknownDecision string
+
+// Possible UnknownDecision values mirror llmsync.UnknownDecision.
+const (
+	UnknownKeep   UnknownDecision = "keep"
+	UnknownDelete UnknownDecision = "delete"
+)
+
+// DriftResolution pairs a drifted path with the user's per-file
+// decision. Service.Apply translates these into the corresponding
+// sync types before invoking the engine.
+type DriftResolution struct {
+	Path     string
+	Decision DriftDecision
+}
+
+// UnknownResolution pairs an unknown path with the user's per-file
+// decision.
+type UnknownResolution struct {
+	Path     string
+	Decision UnknownDecision
+}
+
+// Apply executes the write half of the pipeline by first building a preview
+// and then asking the sync package to materialize the desired files. The
+// caller supplies per-file resolutions for drift and unknown entries.
+// Defaults (no resolution for a path): drift kept, unknown kept; create/
+// update/delete always apply.
+func (s *Service) Apply(profileRef, projectID string, driftResolutions []DriftResolution, unknownResolutions []UnknownResolution) (*llmsync.Preview, errs.DomainError) {
 	preview, err := s.Plan(profileRef, projectID)
 	if err != nil {
 		return nil, err
 	}
-	if err := llmsync.Apply(preview, resolutions); err != nil {
+	if err := llmsync.Apply(preview, toSyncDriftResolutions(driftResolutions), toSyncUnknownResolutions(unknownResolutions)); err != nil {
 		return nil, err
 	}
 	return preview, nil
+}
+
+func toSyncDriftResolutions(in []DriftResolution) []llmsync.DriftResolution {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]llmsync.DriftResolution, len(in))
+	for i, r := range in {
+		out[i] = llmsync.DriftResolution{Path: r.Path, Decision: llmsync.DriftDecision(r.Decision)}
+	}
+	return out
+}
+
+func toSyncUnknownResolutions(in []UnknownResolution) []llmsync.UnknownResolution {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]llmsync.UnknownResolution, len(in))
+	for i, r := range in {
+		out[i] = llmsync.UnknownResolution{Path: r.Path, Decision: llmsync.UnknownDecision(r.Decision)}
+	}
+	return out
 }
 
 // ensureProjectPathAvailable enforces the ownership rule that one repository
