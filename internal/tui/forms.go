@@ -8,7 +8,6 @@ import (
 	"charm.land/huh/v2"
 	"github.com/hexworks/agentfiles/internal/app"
 	"github.com/hexworks/agentfiles/internal/asset"
-	"github.com/hexworks/agentfiles/internal/doctor"
 	"github.com/hexworks/agentfiles/internal/registry"
 )
 
@@ -221,26 +220,6 @@ func RunProjectApply(service *app.Service) error {
 		return err
 	}
 	fmt.Println("applied")
-	return nil
-}
-
-// RunDoctor drives the read-only health check for one profile.
-func RunDoctor(service *app.Service) error {
-	profileID, err := selectProfile(service, "Profile", "Profile to inspect")
-	if err != nil {
-		return err
-	}
-	loaded, err := service.LoadProfile(profileID)
-	if err != nil {
-		return err
-	}
-	report, checkErrs := doctor.CheckProfile(loaded)
-	fmt.Print(RenderReport(report))
-	if len(checkErrs) > 0 {
-		fmt.Print("\n")
-		fmt.Print(RenderErrors(checkErrs))
-		return errAlreadyReported
-	}
 	return nil
 }
 

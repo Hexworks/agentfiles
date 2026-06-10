@@ -1,8 +1,9 @@
 ---
 id: 0015
 type: feature
-status: pending
+status: wont-do
 depends_on: 0014
+note: this task was split into subtasks
 ---
 
 # Refactor UI
@@ -275,11 +276,11 @@ When a profile is selected in the table we add 2 _mnemonic buttons_
 - Pressing `e` loads the [Edit Profile Screen](#edit-profile-screen), using the selected `Profile`'s id as parameter.
 - Pressing `d` deletes the profile via a **two-step** confirmation flow:
     1. First [Confirmation Modal](#confirmation-modal): "Are you sure you want to delete profile {{name}}?"
-       - "No" → abort, no further prompts.
-       - "Yes" → proceed to step 2.
+        - "No" → abort, no further prompts.
+        - "Yes" → proceed to step 2.
     2. Second [Confirmation Modal](#confirmation-modal): "Also delete profile folder on disk?"
-       - "No" → invoke [Delete Profile](#delete-profile) with `KeepFolders` (default).
-       - "Yes" → invoke [Delete Profile](#delete-profile) with `DeleteFolders`.
+        - "No" → invoke [Delete Profile](#delete-profile) with `KeepFolders` (default).
+        - "Yes" → invoke [Delete Profile](#delete-profile) with `DeleteFolders`.
 
 Regardless of table selection
 
@@ -638,11 +639,9 @@ The table has the following fields:
     - row `Status = drift`:
         - `Current Action = Keep` → button `[Overwrite]` (mnemonic `o`)
         - `Current Action = Overwrite` → button `[Keep]` (mnemonic `k`)
-    - row `Status = unknown`:
-        - `Current Action = Keep` → button `[Delete]` (mnemonic `d`)
-        - `Current Action = Delete` → button `[Keep]` (mnemonic `k`)
-  The button is only present on the selected + focused row (consistent with all other
-  tables). Pressing the button swaps `Current Action` and re-renders the row.
+    - row `Status = unknown`: - `Current Action = Keep` → button `[Delete]` (mnemonic `d`) - `Current Action = Delete` → button `[Keep]` (mnemonic `k`)
+      The button is only present on the selected + focused row (consistent with all other
+      tables). Pressing the button swaps `Current Action` and re-renders the row.
 
 Pressing the mnemonic button `Apply` (mnemonic `a`) constructs a list of changes and calls [Sync Project](#sync-project) with it.
 

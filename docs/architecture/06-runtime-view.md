@@ -72,14 +72,3 @@ sequenceDiagram
 6. If the user opted to delete candidates, recognized unmanaged files are
    removed.
 7. `.agentfiles/state.json` is updated with new managed-file hashes.
-
-## Scenario: Run Doctor For A Profile
-
-1. The user reaches the "doctor" form and picks a profile.
-2. The doctor package iterates every project owned by that profile.
-3. For each project, doctor runs a render plan and a sync plan, capturing
-   any failures as `[]errs.DomainError` without aborting the run.
-4. Doctor returns a `*doctor.Report` with one `ProjectStatus` per project.
-5. The TUI renders the report; broken and healthy projects appear in the
-   same view so the user can act on the failing ones without losing
-   context.

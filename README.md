@@ -220,13 +220,6 @@ Manage the target-repository manifests and run the render/apply workflow.
 | `Project → Plan`  | Pick the profile, then the project; previews changes (read-only).                                                      |
 | `Project → Apply` | Pick the profile, then the project; previews changes; asks whether to delete candidates and confirm before writing.    |
 
-### Doctor
-
-Read-only health check across every project owned by one profile. Reports
-drift, unmanaged recognized files, and delete candidates for all of them at
-once. Pick `Doctor` from the main menu; the form prompts for the profile to
-inspect.
-
 ---
 
 ## Asset types
@@ -397,7 +390,6 @@ This is an initial implementation. Working today:
 - Managed-state tracking via `.agentfiles/state.json`
 - Drift detection
 - Delete-candidate detection for recognized LLM files
-- `doctor` health check across a profile's projects
 - TUI-driven menu and per-command forms for every operation
 
 ---
