@@ -1,7 +1,7 @@
 ---
 id: 0020
 type: task
-status: pending
+status: in-review
 topics: go, tui, charm
 depends_on: 0015
 ---
@@ -103,3 +103,7 @@ column behavior (cursor-only render, mnemonic routing) is unchanged.
 ```
 make build && make test && make lint
 ```
+
+## Plan
+
+[plan.md](./plan.md)

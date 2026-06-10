@@ -49,6 +49,14 @@ type Column struct {
 	Width int
 }
 
+// ValueColumn is an intermediate column injected between the name column and
+// the optional actions column. Value is invoked once per (row, render) and
+// returns the cell text for that row.
+type ValueColumn struct {
+	Column
+	Value func(*Node) string
+}
+
 // ActionsFunc returns the mnemonic buttons for n. Returning nil renders an
 // empty actions cell. The function is invoked once per render for the cursor
 // row only; non-cursor rows always render an empty cell.
@@ -77,14 +85,15 @@ func DefaultStyles() Styles {
 
 // Model is the tree-table widget.
 type Model struct {
-	root        *Node
-	nameCol     Column
-	actionsCol  Column
-	actionsFn   ActionsFunc
-	title       string
-	mnemonicBtn *mnemonic.Button
-	styles      Styles
-	height      int
+	root         *Node
+	nameCol      Column
+	valueColumns []ValueColumn
+	actionsCol   Column
+	actionsFn    ActionsFunc
+	title        string
+	mnemonicBtn  *mnemonic.Button
+	styles       Styles
+	height       int
 
 	flat        []*Node
 	treeLines   []string
@@ -102,6 +111,14 @@ func WithRoot(root *Node) Option { return func(m *Model) { m.root = root } }
 // WithNameColumn overrides the default name-column title and width. The name
 // column is always present and always first.
 func WithNameColumn(c Column) Option { return func(m *Model) { m.nameCol = c } }
+
+// WithValueColumns injects intermediate value columns between the name column
+// and the optional actions column. Each ValueColumn's Value callback is
+// invoked once per (row, render) and returns the cell text. Render order is
+// name → value columns (in order) → actions.
+func WithValueColumns(cols ...ValueColumn) Option {
+	return func(m *Model) { m.valueColumns = cols }
+}
 
 // WithActions enables the trailing actions column. fn must be non-nil; passing
 // nil disables the column. The width is fixed at construction time and should
@@ -161,6 +178,9 @@ func (m *Model) initTable() {
 
 func (m *Model) tableColumns() []table.Column {
 	out := []table.Column{{Title: m.nameCol.Title, Width: m.nameCol.Width}}
+	for _, vc := range m.valueColumns {
+		out = append(out, table.Column{Title: vc.Title, Width: vc.Width})
+	}
 	if m.actionsFn != nil {
 		out = append(out, table.Column{Title: m.actionsCol.Title, Width: m.actionsCol.Width})
 	}
@@ -187,6 +207,9 @@ func (m *Model) refreshRows() {
 			name = m.treeLines[i]
 		}
 		row := table.Row{name}
+		for _, vc := range m.valueColumns {
+			row = append(row, vc.Value(n))
+		}
 		if m.actionsFn != nil {
 			cell := ""
 			if i == cursor {
