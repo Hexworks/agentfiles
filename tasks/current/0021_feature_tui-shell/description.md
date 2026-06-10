@@ -2,6 +2,7 @@
 id: 0021
 type: feature
 status: pending
+topics: go, tui, charm
 depends_on: 0019, 0020
 ---
 

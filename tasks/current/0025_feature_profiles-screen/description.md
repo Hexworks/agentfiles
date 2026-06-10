@@ -2,6 +2,7 @@
 id: 0025
 type: feature
 status: pending
+topics: go, tui, profile
 depends_on: 0021, 0022, 0023, 0024
 ---
 
