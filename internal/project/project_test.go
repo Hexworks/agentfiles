@@ -1,6 +1,7 @@
 package project
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -49,5 +50,41 @@ func TestDelete_MissingFileIsIdempotent(t *testing.T) {
 	}
 	if err := Delete(root, "never-existed"); err != nil {
 		t.Fatalf("second delete: %v", err)
+	}
+}
+
+func TestDelete_RealFailureReturnsTypedError(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("permission-based failure injection cannot run as root")
+	}
+	root := t.TempDir()
+	projects := filepath.Join(root, config.ProjectsDirName)
+	if err := os.MkdirAll(projects, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := &Manifest{
+		ID:            "repo",
+		Name:          "Repo",
+		Path:          filepath.Join(root, "repo"),
+		EnabledAgents: []string{"codex"},
+		CreatedAt:     time.Now().UTC(),
+	}
+	if err := Save(root, manifest); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	// Drop write on the parent so os.Remove cannot unlink.
+	if err := os.Chmod(projects, 0o500); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(projects, 0o755) })
+
+	err := Delete(root, "repo")
+
+	var typed ProjectDeleteError
+	if !errors.As(err, &typed) {
+		t.Fatalf("expected ProjectDeleteError, got %T: %v", err, err)
+	}
+	if typed.Unwrap() == nil {
+		t.Fatal("expected wrapped os error preserved")
 	}
 }

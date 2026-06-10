@@ -61,3 +61,23 @@ func (AssetWalkError) Severity() errs.Severity {
 func (e AssetWalkError) Unwrap() error {
 	return e.Err
 }
+
+// AssetFolderRemoveError reports a non-recoverable failure while removing
+// an asset directory during Delete. A pre-missing directory is not an
+// error.
+type AssetFolderRemoveError struct {
+	Dir string
+	Err error
+}
+
+func (e AssetFolderRemoveError) Error() string {
+	return fmt.Sprintf("remove asset folder %s: %s", e.Dir, e.Err.Error())
+}
+
+func (AssetFolderRemoveError) Severity() errs.Severity {
+	return errs.SeverityError
+}
+
+func (e AssetFolderRemoveError) Unwrap() error {
+	return e.Err
+}

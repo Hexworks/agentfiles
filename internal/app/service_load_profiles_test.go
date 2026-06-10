@@ -1,12 +1,13 @@
 package app
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/hexworks/agentfiles/internal/config"
-	"github.com/hexworks/agentfiles/internal/errs"
+	"github.com/hexworks/agentfiles/internal/utils"
 )
 
 func TestLoadProfiles_ReturnsRegisteredProfiles(t *testing.T) {
@@ -19,9 +20,9 @@ func TestLoadProfiles_ReturnsRegisteredProfiles(t *testing.T) {
 		t.Fatalf("create beta: %v", err)
 	}
 
-	loaded, err := svc.LoadProfiles()
-	if err != nil {
-		t.Fatalf("load: %v", err)
+	loaded, loadErrs := svc.LoadProfiles()
+	if len(loadErrs) != 0 {
+		t.Fatalf("expected no errors, got %v", loadErrs)
 	}
 
 	if len(loaded) != 2 {
@@ -52,16 +53,16 @@ func TestLoadProfiles_AggregatesPerProfileLoadErrors(t *testing.T) {
 		t.Fatalf("corrupt beta: %v", err)
 	}
 
-	loaded, err := svc.LoadProfiles()
+	loaded, loadErrs := svc.LoadProfiles()
 
-	if err == nil {
-		t.Fatal("expected aggregated load error")
-	}
 	if len(loaded) != 1 || loaded[0].Manifest.Name != "Alpha" {
 		t.Fatalf("expected only Alpha loaded, got %v", loaded)
 	}
-	leaves := errs.Collect(err)
-	if len(leaves) == 0 {
-		t.Fatalf("expected at least one typed leaf, got none")
+	if len(loadErrs) != 1 {
+		t.Fatalf("expected exactly one aggregated error, got %d: %v", len(loadErrs), loadErrs)
+	}
+	var typed utils.ReadJSONError
+	if !errors.As(loadErrs[0], &typed) {
+		t.Fatalf("expected ReadJSONError leaf, got %T: %v", loadErrs[0], loadErrs[0])
 	}
 }

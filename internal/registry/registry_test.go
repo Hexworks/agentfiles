@@ -39,6 +39,36 @@ func TestRemove_DeletesProfileRef(t *testing.T) {
 	}
 }
 
+func TestRemove_PreservesSortedOrder(t *testing.T) {
+	store := NewStore(filepath.Join(t.TempDir(), "registry.json"))
+	now := time.Now()
+	refs := []ProfileRef{
+		{ID: "gamma", Name: "Gamma", Path: "/tmp/gamma", CreatedAt: now, LastOpenedAt: now},
+		{ID: "alpha", Name: "Alpha", Path: "/tmp/alpha", CreatedAt: now, LastOpenedAt: now},
+		{ID: "beta", Name: "Beta", Path: "/tmp/beta", CreatedAt: now, LastOpenedAt: now},
+	}
+	for _, ref := range refs {
+		if err := store.Add(ref); err != nil {
+			t.Fatalf("add %s: %v", ref.ID, err)
+		}
+	}
+
+	if err := store.Remove("beta"); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+
+	reg, err := store.Load()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(reg.Profiles) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(reg.Profiles))
+	}
+	if reg.Profiles[0].Name != "Alpha" || reg.Profiles[1].Name != "Gamma" {
+		t.Fatalf("expected sorted [Alpha, Gamma], got %v", []string{reg.Profiles[0].Name, reg.Profiles[1].Name})
+	}
+}
+
 func TestRemove_MissingIDReturnsProfileNotFoundError(t *testing.T) {
 	store := NewStore(filepath.Join(t.TempDir(), "registry.json"))
 

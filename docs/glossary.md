@@ -163,6 +163,17 @@ user supplies a `UnknownDelete` resolution for its path. The first-apply
 clean slate suppresses `ChangeUnknown` entirely so adopting `agentfiles`
 in an existing repo does not flood the preview with noise. See ADR 0010.
 
+## Orphaned File
+
+A managed file left behind in a project repository after the asset or
+project that produced it was deleted from its profile. `DeleteAsset` and
+`DeleteProject` deliberately do not touch project-side files; the next
+`sync.Plan` for the affected project surfaces the leftovers as
+`ChangeDelete` (when the file was recorded in `ManagedState`) or
+`ChangeUnknown` (when it was not). The user can confirm removal through
+the standard preview / apply flow instead of having the delete cascade
+inline at the source.
+
 ## Resolution
 
 The user's per-file decision for a `ChangeDrift` or `ChangeUnknown`

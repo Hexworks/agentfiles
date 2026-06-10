@@ -69,3 +69,5 @@ failure. Background: ADR 0007, `docs/guidelines/errors.md`.
 - `docs/guidelines/documentation_guidelines.md` — arc42 for architecture views, ADRs for durable decisions, glossary for terms; document current reality, not planned state.
 
 Full arc42 set in `docs/architecture/`, ADRs in `docs/adr/`, canonical vocabulary in `docs/glossary.md`.
+
+**Make sure** that you never include the AI footer in commit messages

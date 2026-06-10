@@ -89,22 +89,36 @@ func (e ProfileFolderRemoveError) Unwrap() error {
 	return e.Err
 }
 
-// AssetFolderRemoveError reports a non-recoverable failure while removing
-// an asset directory during DeleteAsset. A pre-missing directory is not
-// an error.
-type AssetFolderRemoveError struct {
-	Dir string
-	Err error
+// ProfileFolderNotARootError reports that DeleteProfileWithFolder
+// refused to recurse a path that no longer looks like a profile root
+// (its profile.json is missing). Defends against a tampered or stale
+// registry entry pointing at an arbitrary directory.
+type ProfileFolderNotARootError struct {
+	Path string
 }
 
-func (e AssetFolderRemoveError) Error() string {
-	return fmt.Sprintf("remove asset folder %s: %s", e.Dir, e.Err.Error())
+func (e ProfileFolderNotARootError) Error() string {
+	return fmt.Sprintf("path is not a profile root (missing profile.json): %s", e.Path)
 }
 
-func (AssetFolderRemoveError) Severity() errs.Severity {
+func (ProfileFolderNotARootError) Severity() errs.Severity {
 	return errs.SeverityError
 }
 
-func (e AssetFolderRemoveError) Unwrap() error {
-	return e.Err
+// UnsafeProfilePathError reports that DeleteProfileWithFolder refused a
+// pathological deletion target: the empty string, the filesystem root,
+// the user's home directory, or an ancestor of the profile registry
+// file. Reason describes which rule was matched so the TUI can render a
+// specific message.
+type UnsafeProfilePathError struct {
+	Path   string
+	Reason string
+}
+
+func (e UnsafeProfilePathError) Error() string {
+	return fmt.Sprintf("refusing to delete unsafe profile path (%s): %s", e.Reason, e.Path)
+}
+
+func (UnsafeProfilePathError) Severity() errs.Severity {
+	return errs.SeverityError
 }

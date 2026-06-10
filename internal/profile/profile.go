@@ -167,6 +167,34 @@ func loadProjectsInto(loaded *Profile) errs.DomainError {
 	return nil
 }
 
+// UnselectAsset removes assetID from SelectedAssetIDs on every project in
+// the profile and persists each modified project. The profile-level
+// invariant being enforced is "Project.SelectedAssetIDs may only
+// reference asset ids present in Profile.Assets" — when an asset
+// disappears, every referencing project must drop the id.
+//
+// Per-project save failures are accumulated into errs.Errors so the
+// caller sees every project that failed in one pass rather than the
+// loop short-circuiting on the first error. Projects that did not
+// reference assetID are skipped.
+func (l *Profile) UnselectAsset(assetID string) errs.DomainError {
+	var failures errs.Errors
+	for _, p := range l.ProjectList() {
+		idx := slices.Index(p.SelectedAssetIDs, assetID)
+		if idx < 0 {
+			continue
+		}
+		p.SelectedAssetIDs = slices.Delete(p.SelectedAssetIDs, idx, idx+1)
+		if saveErr := project.Save(l.Root, p); saveErr != nil {
+			failures = append(failures, saveErr)
+		}
+	}
+	if len(failures) == 0 {
+		return nil
+	}
+	return failures
+}
+
 // ProjectList returns projects sorted by display name, which keeps the
 // TUI presentation stable.
 func (l *Profile) ProjectList() []*project.Manifest {

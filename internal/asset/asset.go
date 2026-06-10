@@ -5,6 +5,8 @@
 package asset
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -182,6 +184,26 @@ func Init(root string, manifest Manifest) (string, errs.DomainError) {
 	// needed.
 
 	return dir, nil
+}
+
+// Delete removes the asset directory at dir. A pre-missing directory is
+// treated as success so the operation is idempotent — symmetric with
+// project.Delete.
+func Delete(dir string) errs.DomainError {
+	if err := os.RemoveAll(dir); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return AssetFolderRemoveError{Dir: dir, Err: err}
+	}
+	return nil
+}
+
+// SaveManifest overwrites the asset manifest in dir with manifest. The
+// caller is responsible for ensuring dir is the authoritative directory
+// for this asset (typically resolved from a loaded profile).
+func SaveManifest(dir string, manifest Manifest) errs.DomainError {
+	if err := manifest.Validate(); err != nil {
+		return err
+	}
+	return utils.WriteJSON(filepath.Join(dir, config.AssetManifestFileName), manifest)
 }
 
 // SupportsAgent implements the "empty compatible_agents means all agents"
