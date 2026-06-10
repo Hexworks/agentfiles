@@ -1,32 +1,29 @@
 // Package notifications hosts the in-memory notification ring buffer,
-// the FIFO toast queue, the notification area component, and the
-// action-to-notification bridge helper used by every TUI screen.
+// the FIFO toast queue, and the action-to-notification bridge helper
+// used by every TUI screen.
 package notifications
 
 import (
 	"sync"
 	"time"
+
+	"github.com/hexworks/agentfiles/internal/errs"
 )
 
-// Level classifies a notification.
-type Level string
-
-const (
-	// LevelInfo marks a successful outcome.
-	LevelInfo Level = "INFO"
-	// LevelError marks a failure surfaced to the user.
-	LevelError Level = "ERROR"
-)
-
-// Notification is a single log entry and toast payload.
+// Notification is a single log entry and toast payload. Severity uses
+// the canonical errs.Severity vocabulary so downstream consumers (log
+// view, notifications modal) can re-style without inventing a parallel
+// taxonomy.
 type Notification struct {
-	Level     Level
+	Severity  errs.Severity
 	Text      string
 	CreatedAt time.Time
 }
 
 // LogCap is the maximum number of entries retained in the ring buffer.
-// New entries past the cap evict the oldest.
+// New entries past the cap evict the oldest. 500 is sized for one busy
+// TUI session worth of plan/apply/CRUD operations plus headroom; tuneable
+// without changing behavior.
 const LogCap = 500
 
 // Log is a fixed-capacity ring buffer of Notification values, in-memory
@@ -69,12 +66,12 @@ func (l *Log) Entries() []Notification {
 	n := len(l.entries)
 	out := make([]Notification, n)
 	if !l.full {
-		for i := 0; i < n; i++ {
+		for i := range n {
 			out[i] = l.entries[n-1-i]
 		}
 		return out
 	}
-	for i := 0; i < n; i++ {
+	for i := range n {
 		idx := (l.next - 1 - i + LogCap) % LogCap
 		out[i] = l.entries[idx]
 	}

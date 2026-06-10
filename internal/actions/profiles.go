@@ -14,30 +14,27 @@ func (a *Actions) LoadProfiles() ([]*profile.Profile, errs.DomainError) {
 	return collapse(profiles, es)
 }
 
-// LoadProfile resolves the profile reference (id, name, or path) and
-// returns the fully loaded profile model.
 func (a *Actions) LoadProfile(in LoadProfileInput) (*profile.Profile, errs.DomainError) {
 	return a.svc.LoadProfile(in.ProfileRef)
 }
 
-// CreateProfile scaffolds a new profile folder and registers it.
 func (a *Actions) CreateProfile(in CreateProfileInput) (*registry.ProfileRef, errs.DomainError) {
 	return a.svc.CreateProfile(in.Name, in.Path)
 }
 
-// RegisterProfile adopts an existing profile folder into the registry.
 func (a *Actions) RegisterProfile(in RegisterProfileInput) (*registry.ProfileRef, errs.DomainError) {
 	return a.svc.RegisterProfile(in.Path)
 }
 
-// DeleteProfile dispatches on FolderAction: KeepFolders removes the
-// registry entry only; DeleteFolders removes both.
+// DeleteProfile removes the registry entry. The on-disk profile folder
+// is left untouched; use DeleteProfileWithFolder for the destructive
+// variant.
 func (a *Actions) DeleteProfile(in DeleteProfileInput) (struct{}, errs.DomainError) {
-	var err errs.DomainError
-	if in.FolderAction == DeleteFolders {
-		err = a.svc.DeleteProfileWithFolder(in.ProfileRef)
-	} else {
-		err = a.svc.DeleteProfile(in.ProfileRef)
-	}
-	return struct{}{}, err
+	return struct{}{}, a.svc.DeleteProfile(in.ProfileRef)
+}
+
+// DeleteProfileWithFolder removes both the registry entry and the
+// on-disk profile folder. Guarded by Service-side safety checks.
+func (a *Actions) DeleteProfileWithFolder(in DeleteProfileInput) (struct{}, errs.DomainError) {
+	return struct{}{}, a.svc.DeleteProfileWithFolder(in.ProfileRef)
 }

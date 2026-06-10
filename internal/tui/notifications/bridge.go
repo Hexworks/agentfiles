@@ -15,28 +15,27 @@ type NotificationMsg struct {
 }
 
 // From runs action, then returns a tea.Cmd whose message is a
-// NotificationMsg. On success the message carries LevelInfo with
-// successText; on failure it carries LevelError with the rendered
-// err.Error() text. The action's T return value is discarded — screens
-// that need both the value and a notification call the action directly
-// and dispatch both messages themselves.
+// NotificationMsg. On success the message carries SeverityInfo with
+// successText; on failure it carries err.Severity() (the typed domain
+// severity) with err.Error() text. The action's T return value is
+// discarded — screens that need both the value and a notification call
+// the action directly and dispatch both messages themselves.
 //
 // The notification's CreatedAt is captured at command-execution time
-// (when the tea runtime runs the cmd), not at From's construction
-// time.
+// (when the tea runtime runs the cmd), not at From's construction time.
 func From[T any](action func() (T, errs.DomainError), successText string) tea.Cmd {
 	return func() tea.Msg {
 		_, err := action()
 		now := time.Now()
 		if err != nil {
 			return NotificationMsg{Notification: Notification{
-				Level:     LevelError,
+				Severity:  err.Severity(),
 				Text:      err.Error(),
 				CreatedAt: now,
 			}}
 		}
 		return NotificationMsg{Notification: Notification{
-			Level:     LevelInfo,
+			Severity:  errs.SeverityInfo,
 			Text:      successText,
 			CreatedAt: now,
 		}}

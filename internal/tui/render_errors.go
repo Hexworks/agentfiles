@@ -6,6 +6,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"github.com/hexworks/agentfiles/internal/errs"
+	"github.com/hexworks/agentfiles/internal/tui/styles"
 )
 
 // RenderError formats a single error value for display. errs.Collect
@@ -46,12 +47,8 @@ func renderOneDomainError(err errs.DomainError) string {
 }
 
 // severityStyle picks the icon and lipgloss style for a severity level.
+// Delegates to the shared styles package so notifications and error
+// rendering stay in sync.
 func severityStyle(s errs.Severity) (string, lipgloss.Style) {
-	switch s {
-	case errs.SeverityError:
-		return "✗", errorStyle
-	case errs.SeverityWarning:
-		return "⚠", warnStyle
-	}
-	return "ℹ", infoStyle
+	return styles.SeverityStyle(s)
 }

@@ -5,8 +5,6 @@ import (
 	"github.com/hexworks/agentfiles/internal/errs"
 )
 
-// LoadAsset returns the asset identified by AssetID inside the given
-// profile.
 func (a *Actions) LoadAsset(in LoadAssetInput) (*asset.Asset, errs.DomainError) {
 	return a.svc.LoadAsset(in.ProfileRef, in.AssetID)
 }
@@ -17,8 +15,6 @@ func (a *Actions) CreateAsset(in CreateAssetInput) (string, errs.DomainError) {
 	return a.svc.InitAsset(in.ProfileRef, in.Manifest)
 }
 
-// UpdateAsset overwrites the asset manifest on disk with the caller's
-// edits.
 func (a *Actions) UpdateAsset(in UpdateAssetInput) (struct{}, errs.DomainError) {
 	return struct{}{}, a.svc.UpdateAsset(in.ProfileRef, in.Manifest)
 }

@@ -1,41 +1,20 @@
 package notifications_test
 
 import (
+	"strconv"
 	"testing"
 	"time"
 
+	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/tui/notifications"
 )
 
 func mkNotif(i int) notifications.Notification {
 	return notifications.Notification{
-		Level:     notifications.LevelInfo,
-		Text:      "n" + itoa(i),
+		Severity:  errs.SeverityInfo,
+		Text:      "n" + strconv.Itoa(i),
 		CreatedAt: time.Unix(int64(i), 0),
 	}
-}
-
-// itoa avoids strconv import just for tiny test labels.
-func itoa(i int) string {
-	if i == 0 {
-		return "0"
-	}
-	var buf [20]byte
-	pos := len(buf)
-	neg := i < 0
-	if neg {
-		i = -i
-	}
-	for i > 0 {
-		pos--
-		buf[pos] = byte('0' + i%10)
-		i /= 10
-	}
-	if neg {
-		pos--
-		buf[pos] = '-'
-	}
-	return string(buf[pos:])
 }
 
 func TestLog_NewLogEmpty(t *testing.T) {
@@ -47,7 +26,7 @@ func TestLog_NewLogEmpty(t *testing.T) {
 
 func TestLog_AddBelowCapReturnsNewestFirst(t *testing.T) {
 	log := notifications.NewLog()
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		log.Add(mkNotif(i))
 	}
 
@@ -62,7 +41,7 @@ func TestLog_AddBelowCapReturnsNewestFirst(t *testing.T) {
 
 func TestLog_AddAtCapDropsOldest(t *testing.T) {
 	log := notifications.NewLog()
-	for i := 0; i < notifications.LogCap; i++ {
+	for i := range notifications.LogCap {
 		log.Add(mkNotif(i))
 	}
 	log.Add(mkNotif(notifications.LogCap)) // 501st entry
@@ -71,7 +50,7 @@ func TestLog_AddAtCapDropsOldest(t *testing.T) {
 	if len(entries) != notifications.LogCap {
 		t.Fatalf("expected %d entries, got %d", notifications.LogCap, len(entries))
 	}
-	if entries[0].Text != "n"+itoa(notifications.LogCap) {
+	if entries[0].Text != "n"+strconv.Itoa(notifications.LogCap) {
 		t.Fatalf("expected newest text n%d, got %q", notifications.LogCap, entries[0].Text)
 	}
 	if entries[len(entries)-1].Text != "n1" {
@@ -82,7 +61,7 @@ func TestLog_AddAtCapDropsOldest(t *testing.T) {
 func TestLog_AddPastCapEvictionOrder(t *testing.T) {
 	log := notifications.NewLog()
 	const extra = 50
-	for i := 0; i < notifications.LogCap+extra; i++ {
+	for i := range notifications.LogCap + extra {
 		log.Add(mkNotif(i))
 	}
 
@@ -91,10 +70,10 @@ func TestLog_AddPastCapEvictionOrder(t *testing.T) {
 		t.Fatalf("expected cap %d entries, got %d", notifications.LogCap, len(entries))
 	}
 	// Newest = LogCap+extra-1; oldest = extra (first `extra` entries evicted).
-	if want, got := "n"+itoa(notifications.LogCap+extra-1), entries[0].Text; want != got {
+	if want, got := "n"+strconv.Itoa(notifications.LogCap+extra-1), entries[0].Text; want != got {
 		t.Fatalf("newest: want %q got %q", want, got)
 	}
-	if want, got := "n"+itoa(extra), entries[len(entries)-1].Text; want != got {
+	if want, got := "n"+strconv.Itoa(extra), entries[len(entries)-1].Text; want != got {
 		t.Fatalf("oldest: want %q got %q", want, got)
 	}
 }

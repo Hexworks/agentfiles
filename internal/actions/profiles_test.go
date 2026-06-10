@@ -7,30 +7,22 @@ import (
 	"testing"
 
 	"github.com/hexworks/agentfiles/internal/actions"
-	"github.com/hexworks/agentfiles/internal/app"
 	"github.com/hexworks/agentfiles/internal/config"
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/registry"
 	"github.com/hexworks/agentfiles/internal/utils"
 )
 
-func newProfileFixture(t *testing.T) (*actions.Actions, *app.Service, string /*root*/) {
-	t.Helper()
-	root := t.TempDir()
-	svc := app.New(filepath.Join(root, "registry.json"))
-	return actions.New(svc), svc, root
-}
-
 func TestActions_LoadProfiles_ReturnsAll(t *testing.T) {
-	a, svc, root := newProfileFixture(t)
-	if _, err := svc.CreateProfile("Alpha", filepath.Join(root, "alpha")); err != nil {
+	f := newFixture(t)
+	if _, err := f.Svc.CreateProfile("Alpha", filepath.Join(f.Root, "alpha")); err != nil {
 		t.Fatalf("seed alpha: %v", err)
 	}
-	if _, err := svc.CreateProfile("Beta", filepath.Join(root, "beta")); err != nil {
+	if _, err := f.Svc.CreateProfile("Beta", filepath.Join(f.Root, "beta")); err != nil {
 		t.Fatalf("seed beta: %v", err)
 	}
 
-	profiles, err := a.LoadProfiles()
+	profiles, err := f.A.LoadProfiles()
 	if err != nil {
 		t.Fatalf("LoadProfiles: %v", err)
 	}
@@ -40,9 +32,9 @@ func TestActions_LoadProfiles_ReturnsAll(t *testing.T) {
 }
 
 func TestActions_LoadProfiles_CollapsesErrorsIntoErrsErrors(t *testing.T) {
-	a, svc, root := newProfileFixture(t)
-	betaPath := filepath.Join(root, "beta")
-	if _, err := svc.CreateProfile("Beta", betaPath); err != nil {
+	f := newFixture(t)
+	betaPath := filepath.Join(f.Root, "beta")
+	if _, err := f.Svc.CreateProfile("Beta", betaPath); err != nil {
 		t.Fatalf("seed beta: %v", err)
 	}
 	// Corrupt the manifest so Load fails.
@@ -50,7 +42,7 @@ func TestActions_LoadProfiles_CollapsesErrorsIntoErrsErrors(t *testing.T) {
 		t.Fatalf("corrupt: %v", err)
 	}
 
-	profiles, err := a.LoadProfiles()
+	profiles, err := f.A.LoadProfiles()
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -71,13 +63,13 @@ func TestActions_LoadProfiles_CollapsesErrorsIntoErrsErrors(t *testing.T) {
 }
 
 func TestActions_LoadProfile_ResolvesByID(t *testing.T) {
-	a, svc, root := newProfileFixture(t)
-	ref, err := svc.CreateProfile("Alpha", filepath.Join(root, "alpha"))
+	f := newFixture(t)
+	ref, err := f.Svc.CreateProfile("Alpha", filepath.Join(f.Root, "alpha"))
 	if err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 
-	got, loadErr := a.LoadProfile(actions.LoadProfileInput{ProfileRef: ref.ID})
+	got, loadErr := f.A.LoadProfile(actions.LoadProfileInput{ProfileRef: ref.ID})
 	if loadErr != nil {
 		t.Fatalf("LoadProfile: %v", loadErr)
 	}
@@ -87,9 +79,9 @@ func TestActions_LoadProfile_ResolvesByID(t *testing.T) {
 }
 
 func TestActions_LoadProfile_MissingReturnsProfileNotFoundError(t *testing.T) {
-	a, _, _ := newProfileFixture(t)
+	f := newFixture(t)
 
-	_, err := a.LoadProfile(actions.LoadProfileInput{ProfileRef: "ghost"})
+	_, err := f.A.LoadProfile(actions.LoadProfileInput{ProfileRef: "ghost"})
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -100,10 +92,10 @@ func TestActions_LoadProfile_MissingReturnsProfileNotFoundError(t *testing.T) {
 }
 
 func TestActions_CreateProfile_UnpacksNameAndPath(t *testing.T) {
-	a, _, root := newProfileFixture(t)
-	path := filepath.Join(root, "alpha")
+	f := newFixture(t)
+	path := filepath.Join(f.Root, "alpha")
 
-	ref, err := a.CreateProfile(actions.CreateProfileInput{Name: "Alpha", Path: path})
+	ref, err := f.A.CreateProfile(actions.CreateProfileInput{Name: "Alpha", Path: path})
 	if err != nil {
 		t.Fatalf("CreateProfile: %v", err)
 	}
@@ -119,19 +111,19 @@ func TestActions_CreateProfile_UnpacksNameAndPath(t *testing.T) {
 }
 
 func TestActions_RegisterProfile_UnpacksPath(t *testing.T) {
-	a, svc, root := newProfileFixture(t)
+	f := newFixture(t)
 	// Seed by creating, then deregister via direct registry mutation so
 	// RegisterProfile adopts the folder.
-	path := filepath.Join(root, "alpha")
-	ref, err := svc.CreateProfile("Alpha", path)
+	path := filepath.Join(f.Root, "alpha")
+	ref, err := f.Svc.CreateProfile("Alpha", path)
 	if err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	if err := svc.DeleteProfile(ref.ID); err != nil {
+	if err := f.Svc.DeleteProfile(ref.ID); err != nil {
 		t.Fatalf("deregister: %v", err)
 	}
 
-	got, regErr := a.RegisterProfile(actions.RegisterProfileInput{Path: path})
+	got, regErr := f.A.RegisterProfile(actions.RegisterProfileInput{Path: path})
 	if regErr != nil {
 		t.Fatalf("RegisterProfile: %v", regErr)
 	}
@@ -140,15 +132,15 @@ func TestActions_RegisterProfile_UnpacksPath(t *testing.T) {
 	}
 }
 
-func TestActions_DeleteProfile_KeepFoldersLeavesFolderOnDisk(t *testing.T) {
-	a, svc, root := newProfileFixture(t)
-	path := filepath.Join(root, "alpha")
-	ref, err := svc.CreateProfile("Alpha", path)
+func TestActions_DeleteProfile_KeepsFolderOnDisk(t *testing.T) {
+	f := newFixture(t)
+	path := filepath.Join(f.Root, "alpha")
+	ref, err := f.Svc.CreateProfile("Alpha", path)
 	if err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 
-	if _, delErr := a.DeleteProfile(actions.DeleteProfileInput{ProfileRef: ref.ID, FolderAction: actions.KeepFolders}); delErr != nil {
+	if _, delErr := f.A.DeleteProfile(actions.DeleteProfileInput{ProfileRef: ref.ID}); delErr != nil {
 		t.Fatalf("DeleteProfile: %v", delErr)
 	}
 	if _, statErr := os.Stat(path); statErr != nil {
@@ -156,16 +148,16 @@ func TestActions_DeleteProfile_KeepFoldersLeavesFolderOnDisk(t *testing.T) {
 	}
 }
 
-func TestActions_DeleteProfile_DeleteFoldersRemovesFolder(t *testing.T) {
-	a, svc, root := newProfileFixture(t)
-	path := filepath.Join(root, "alpha")
-	ref, err := svc.CreateProfile("Alpha", path)
+func TestActions_DeleteProfileWithFolder_RemovesFolder(t *testing.T) {
+	f := newFixture(t)
+	path := filepath.Join(f.Root, "alpha")
+	ref, err := f.Svc.CreateProfile("Alpha", path)
 	if err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 
-	if _, delErr := a.DeleteProfile(actions.DeleteProfileInput{ProfileRef: ref.ID, FolderAction: actions.DeleteFolders}); delErr != nil {
-		t.Fatalf("DeleteProfile: %v", delErr)
+	if _, delErr := f.A.DeleteProfileWithFolder(actions.DeleteProfileInput{ProfileRef: ref.ID}); delErr != nil {
+		t.Fatalf("DeleteProfileWithFolder: %v", delErr)
 	}
 	if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
 		t.Fatalf("expected folder removed, stat err = %v", statErr)
@@ -173,13 +165,13 @@ func TestActions_DeleteProfile_DeleteFoldersRemovesFolder(t *testing.T) {
 }
 
 func TestActions_DeleteProfile_ReturnsStructZeroOnSuccess(t *testing.T) {
-	a, svc, root := newProfileFixture(t)
-	ref, err := svc.CreateProfile("Alpha", filepath.Join(root, "alpha"))
+	f := newFixture(t)
+	ref, err := f.Svc.CreateProfile("Alpha", filepath.Join(f.Root, "alpha"))
 	if err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 
-	got, delErr := a.DeleteProfile(actions.DeleteProfileInput{ProfileRef: ref.ID})
+	got, delErr := f.A.DeleteProfile(actions.DeleteProfileInput{ProfileRef: ref.ID})
 	if delErr != nil {
 		t.Fatalf("DeleteProfile: %v", delErr)
 	}

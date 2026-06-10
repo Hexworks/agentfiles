@@ -1,7 +1,6 @@
 package notifications_test
 
 import (
-	"strings"
 	"testing"
 	"time"
 
@@ -23,25 +22,36 @@ func TestFrom_SuccessProducesInfoNotificationMsg(t *testing.T) {
 	}, "created")
 
 	msg := cmd().(notifications.NotificationMsg)
-	if msg.Notification.Level != notifications.LevelInfo {
-		t.Fatalf("expected LevelInfo, got %q", msg.Notification.Level)
+	if msg.Notification.Severity != errs.SeverityInfo {
+		t.Fatalf("expected SeverityInfo, got %v", msg.Notification.Severity)
 	}
 	if msg.Notification.Text != "created" {
 		t.Fatalf("expected text 'created', got %q", msg.Notification.Text)
 	}
 }
 
-func TestFrom_ErrorProducesErrorNotificationMsg(t *testing.T) {
+func TestFrom_ErrorProducesTypedSeverityNotificationMsg(t *testing.T) {
 	cmd := notifications.From(func() (struct{}, errs.DomainError) {
 		return struct{}{}, fakeErr{severity: errs.SeverityError, text: "boom"}
 	}, "created")
 
 	msg := cmd().(notifications.NotificationMsg)
-	if msg.Notification.Level != notifications.LevelError {
-		t.Fatalf("expected LevelError, got %q", msg.Notification.Level)
+	if msg.Notification.Severity != errs.SeverityError {
+		t.Fatalf("expected SeverityError, got %v", msg.Notification.Severity)
 	}
 	if msg.Notification.Text != "boom" {
 		t.Fatalf("expected text 'boom', got %q", msg.Notification.Text)
+	}
+}
+
+func TestFrom_WarningSeverityPreserved(t *testing.T) {
+	cmd := notifications.From(func() (struct{}, errs.DomainError) {
+		return struct{}{}, fakeErr{severity: errs.SeverityWarning, text: "soft"}
+	}, "")
+
+	msg := cmd().(notifications.NotificationMsg)
+	if msg.Notification.Severity != errs.SeverityWarning {
+		t.Fatalf("expected SeverityWarning preserved (not collapsed to Error), got %v", msg.Notification.Severity)
 	}
 }
 
@@ -68,11 +78,10 @@ func TestFrom_ErrsErrorsRenderedViaErrorMethod(t *testing.T) {
 	}, "")
 
 	msg := cmd().(notifications.NotificationMsg)
-	if msg.Notification.Level != notifications.LevelError {
-		t.Fatalf("expected LevelError, got %q", msg.Notification.Level)
+	if msg.Notification.Severity != errs.SeverityError {
+		t.Fatalf("expected SeverityError (highest in slice), got %v", msg.Notification.Severity)
 	}
-	if !strings.Contains(msg.Notification.Text, "first") ||
-		!strings.Contains(msg.Notification.Text, "second") {
-		t.Fatalf("expected both errors in text, got %q", msg.Notification.Text)
+	if msg.Notification.Text != "first\nsecond" {
+		t.Fatalf("expected exact joined text %q, got %q", "first\nsecond", msg.Notification.Text)
 	}
 }

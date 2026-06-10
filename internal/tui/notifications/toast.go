@@ -27,7 +27,7 @@ type expireMsg struct {
 // Toast is the FIFO queue of pending notifications. Only the front of
 // the queue is visible at any moment; the rest wait for the current
 // one's duration to elapse. The duration is injectable so tests can
-// run with a short tick without slowing the suite.
+// run with a long tick without ever firing real wall-clock expiry.
 type Toast struct {
 	duration time.Duration
 	queue    []Notification
@@ -42,10 +42,6 @@ func NewToast(duration time.Duration) *Toast {
 	}
 	return &Toast{duration: duration}
 }
-
-// Duration returns the per-toast visible duration. Exposed for tests
-// that need to assert the zero-value default mapping.
-func (t *Toast) Duration() time.Duration { return t.duration }
 
 // Init satisfies the bubbletea component contract. The toast has no
 // startup work to do.
@@ -98,18 +94,4 @@ func (t *Toast) scheduleExpire() tea.Cmd {
 	return tea.Tick(d, func(time.Time) tea.Msg {
 		return expireMsg{seq: seq}
 	})
-}
-
-// ExpireNowForTest produces an expireMsg for the current sequence
-// number. Test-only helper that lets the suite drive expiry without
-// waiting for tea.Tick to fire.
-func (t *Toast) ExpireNowForTest() tea.Msg {
-	return expireMsg{seq: t.seq}
-}
-
-// StaleExpireForTest produces an expireMsg for the previous sequence
-// number, simulating a tick from a now-displaced front-of-queue toast
-// arriving after a new toast has taken its place.
-func (t *Toast) StaleExpireForTest() tea.Msg {
-	return expireMsg{seq: t.seq - 1}
 }

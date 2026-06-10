@@ -187,7 +187,11 @@ func collapse[T any](v T, es []errs.DomainError) (T, errs.DomainError) {
 
 ### Tests — `internal/actions/{profiles,projects,assets}_test.go`
 
-Pattern: table-driven; one helper per file constructs a fresh `*app.Service` with `t.TempDir()` + seeded profile/asset/project; typed-error assertions via `errors.As`.
+Pattern: one focused test func per behavior (not table-driven — the
+per-action setup varies enough that a table would obscure intent); a
+shared `fixtures_test.go` helper constructs a fresh `*app.Service` with
+`t.TempDir()` plus optional seeded profile/asset/project; typed-error
+assertions via `errors.As`.
 
 `profiles_test.go`:
 - `TestActions_LoadProfiles_ReturnsAll`
