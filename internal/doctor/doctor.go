@@ -10,13 +10,16 @@ import (
 	llmsync "github.com/hexworks/agentfiles/internal/sync"
 )
 
-// ProjectChange is the doctor-owned representation of a pending change.
-// It mirrors the fields of llmsync.FileChange that are useful to render
-// without dragging the sync vocabulary across doctor's API boundary.
+// ProjectChange is the doctor-facing view of one pending change. The
+// Kind and Reason fields re-export `llmsync` types directly — doctor does
+// not own a separate vocabulary for them — so callers reading a report
+// still need `internal/sync` if they want to switch on the constants. The
+// boundary is light: doctor owns Report and ProjectStatus shape, sync
+// owns the per-row vocabulary.
 type ProjectChange struct {
 	Path   string
 	Kind   llmsync.ChangeKind
-	Reason string
+	Reason llmsync.ReasonKind
 }
 
 // Report is the structured result of a profile health check. It contains one
@@ -68,25 +71,9 @@ func convertChanges(in []llmsync.FileChange) []ProjectChange {
 	for i, c := range in {
 		out[i] = ProjectChange{
 			Path:   c.Path,
-			Kind:   convertKind(c.Kind),
+			Kind:   c.Kind,
 			Reason: c.Reason,
 		}
 	}
 	return out
-}
-
-func convertKind(k llmsync.ChangeKind) llmsync.ChangeKind {
-	switch k {
-	case llmsync.ChangeCreate:
-		return llmsync.ChangeCreate
-	case llmsync.ChangeUpdate:
-		return llmsync.ChangeUpdate
-	case llmsync.ChangeDrift:
-		return llmsync.ChangeDrift
-	case llmsync.ChangeDelete:
-		return llmsync.ChangeDelete
-	case llmsync.ChangeUnknown:
-		return llmsync.ChangeUnknown
-	}
-	return llmsync.ChangeKind(string(k))
 }

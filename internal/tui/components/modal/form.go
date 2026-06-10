@@ -6,7 +6,7 @@ import (
 )
 
 // formContent adapts a [huh.Form] to the [Content] interface. The form's
-// own State drives the modal's resolution: StateCompleted -> Confirmed,
+// own State drives the modal's lifecycle: StateCompleted -> Confirmed,
 // StateAborted -> Cancelled. On Confirmed, extract is called to convert the
 // form into a caller-defined payload, so *huh.Form does not leak out of this
 // package.
@@ -27,7 +27,7 @@ func (f *formContent) Update(msg tea.Msg) (Content, tea.Cmd) {
 
 func (f *formContent) View() string { return f.form.View() }
 
-func (f *formContent) Resolution() (ResolutionState, any) {
+func (f *formContent) Lifecycle() (LifecycleState, any) {
 	switch f.form.State {
 	case huh.StateCompleted:
 		return Confirmed, f.extract(f.form)

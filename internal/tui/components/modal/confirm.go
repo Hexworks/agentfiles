@@ -14,7 +14,7 @@ import (
 type confirmContent struct {
 	prompt   string
 	selected confirmChoice
-	state    ResolutionState
+	state    LifecycleState
 	styles   ConfirmStyles
 	keys     confirmKeys
 }
@@ -144,7 +144,7 @@ func (c *confirmContent) View() string {
 	return sb.String()
 }
 
-func (c *confirmContent) Resolution() (ResolutionState, any) {
+func (c *confirmContent) Lifecycle() (LifecycleState, any) {
 	if c.state == Confirmed {
 		return Confirmed, true
 	}

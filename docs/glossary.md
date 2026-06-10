@@ -131,12 +131,56 @@ managed-file hashes and generation metadata for the last successful apply.
 ## Drift
 
 A condition where a previously managed file was changed locally after apply and
-now differs from the managed-state hash.
+now differs from the managed-state hash. Drift defaults to *keep* during
+apply; the user must explicitly resolve a drift entry to `DriftOverwrite`
+to let apply replace the local edits. Choosing `DriftKeep` adopts the
+on-disk content as the new managed baseline so future plans do not flag
+the same path as drift again. See ADR 0010.
 
-## Delete Candidate
+## First-Apply Clean Slate
 
-A recognized LLM-tooling file in a managed surface that is present in the
-repository but not in the current desired output set.
+A project with no `.agentfiles/state.json` is treated as fresh: every desired
+file is classified as `ChangeCreate` (overwriting whatever exists at that
+path), and stray files inside managed surfaces are ignored. The first
+successful apply writes the initial state; subsequent plans then
+distinguish drift from unknown normally. Surfaced on `Preview.FirstApply`
+so the TUI can show a clean-slate banner. See ADR 0010.
+
+## ChangeDelete
+
+A pending change emitted by `sync.Plan` for a file recorded in the
+previous `ManagedState` but missing from the new desired output. The
+user already opted in to managing the file during a previous apply, so
+removal is auto-applied on the next `sync.Apply`; the preview itself is
+the opt-in surface. See ADR 0010.
+
+## ChangeUnknown
+
+A pending change emitted by `sync.Plan` for a file that lives inside a
+managed surface but was never tracked in `ManagedState`. Unlike
+`ChangeDelete`, removal is **not** automatic: the file is kept unless the
+user supplies a `UnknownDelete` resolution for its path. The first-apply
+clean slate suppresses `ChangeUnknown` entirely so adopting `agentfiles`
+in an existing repo does not flood the preview with noise. See ADR 0010.
+
+## Resolution
+
+The user's per-file decision for a `ChangeDrift` or `ChangeUnknown`
+entry. The sync engine models the two cases as separate types because
+their valid choices do not overlap: `DriftDecision` is `DriftOverwrite`
+or `DriftKeep`; `UnknownDecision` is `UnknownDelete` or `UnknownKeep`.
+Paths absent from the resolution slices fall back to the safe default
+(drift → keep, unknown → keep). See ADR 0010.
+
+## File Resolution
+
+The slice element that pairs a target path with one resolution
+decision. The engine exposes `sync.DriftResolution` and
+`sync.UnknownResolution`; the app layer mirrors them as
+`app.DriftResolution` and `app.UnknownResolution` so the TUI never
+imports `internal/sync` directly. Paths in either slice must be the
+forward-slash relative key matching `FileChange.Path` — absolute or
+OS-separated paths are rejected with `InvalidPathError`.
 
 ## Apply
 
@@ -176,15 +220,25 @@ underlying values mirror `sync.FileChange` but the boundary is explicit.
 ## Change Kind
 
 The classification of a pending change inside a Preview or Project
-Status. One of `create`, `update`, `drift`, or `delete`. The
-sync layer owns `sync.ChangeKind`; doctor mirrors it as
-`doctor.ChangeKind` to keep its API independent.
+Status. One of `create`, `update`, `drift`, `delete`, or `unknown`. The
+sync layer owns `sync.ChangeKind`; `doctor.ProjectChange.Kind`
+re-exports the same type — doctor does not maintain a parallel
+vocabulary.
 
 ## File Change
 
 The sync-layer entry that pairs a target path with its `ChangeKind` and
-a short reason string. Produced inside `sync.Preview.Changes` and
-converted into `doctor.ProjectChange` by doctor's report builder.
+a `ReasonKind` constant. Produced inside `sync.Preview.Changes` and
+re-exported through `doctor.ProjectChange` by doctor's report builder.
+
+## Reason Kind
+
+The domain-level explanation field on `sync.FileChange`. Values are
+constants (`ReasonFirstApply`, `ReasonFileMissing`, `ReasonContentDiffers`,
+`ReasonDriftDetected`, `ReasonStateRecordedDelete`, `ReasonUnknown`)
+emitted by the sync engine; the TUI translates each value into
+user-facing prose so a copy-edit (or future i18n pass) touches one
+file. Tests assert against the constants, not the translated text.
 
 ## Severity
 

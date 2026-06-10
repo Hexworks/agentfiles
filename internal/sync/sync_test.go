@@ -2,6 +2,7 @@ package sync
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -62,7 +63,7 @@ func writeState(t *testing.T, projectRoot string, files map[string]string) {
 		ProfileID:        "personal",
 		ProjectID:        "app",
 		GeneratorVersion: GeneratorVersion,
-		LastAppliedAt:    time.Now(),
+		LastAppliedAt:    time.Now().UTC(),
 		ManagedFiles:     files,
 	}
 	if err := os.WriteFile(filepath.Join(projectRoot, config.StateDirName, config.StateFileName), mustJSON(t, state), 0o644); err != nil {
@@ -107,12 +108,15 @@ func TestPlan_FirstApply_EmitsCreateAndIgnoresStrayFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if !preview.FirstApply {
+		t.Fatalf("expected FirstApply=true, got false")
+	}
 	create := findChange(t, preview.Changes, "AGENTS.md")
 	if create.Kind != ChangeCreate {
 		t.Fatalf("AGENTS.md kind = %q, want create", create.Kind)
 	}
-	if create.Reason != "first apply" {
-		t.Fatalf("AGENTS.md reason = %q, want \"first apply\"", create.Reason)
+	if create.Reason != ReasonFirstApply {
+		t.Fatalf("AGENTS.md reason = %q, want ReasonFirstApply", create.Reason)
 	}
 	if hasChangeOfKind(preview.Changes, ChangeUnknown) {
 		t.Fatalf("first apply must not emit ChangeUnknown: %+v", preview.Changes)
@@ -167,6 +171,9 @@ func TestPlan_SubsequentApply_StateRecordedDelete(t *testing.T) {
 	if deleted.Kind != ChangeDelete {
 		t.Fatalf(".codex/old.txt kind = %q, want delete", deleted.Kind)
 	}
+	if deleted.Reason != ReasonStateRecordedDelete {
+		t.Fatalf(".codex/old.txt reason = %q, want ReasonStateRecordedDelete", deleted.Reason)
+	}
 }
 
 func TestPlan_SubsequentApply_UnknownFile(t *testing.T) {
@@ -194,6 +201,9 @@ func TestPlan_SubsequentApply_UnknownFile(t *testing.T) {
 	if unknown.Kind != ChangeUnknown {
 		t.Fatalf(".codex/stray.txt kind = %q, want unknown", unknown.Kind)
 	}
+	if unknown.Reason != ReasonUnknown {
+		t.Fatalf(".codex/stray.txt reason = %q, want ReasonUnknown", unknown.Reason)
+	}
 	if hasChangeOfKind(preview.Changes, ChangeDelete) {
 		t.Fatalf("unknown-only fixture must not emit ChangeDelete: %+v", preview.Changes)
 	}
@@ -218,9 +228,12 @@ func TestPlan_SubsequentApply_DriftDetected(t *testing.T) {
 	if drift.Kind != ChangeDrift {
 		t.Fatalf("AGENTS.md kind = %q, want drift", drift.Kind)
 	}
+	if drift.Reason != ReasonDriftDetected {
+		t.Fatalf("AGENTS.md reason = %q, want ReasonDriftDetected", drift.Reason)
+	}
 }
 
-func TestApply_ResolveKeep_LeavesDriftAlone(t *testing.T) {
+func TestApply_DriftKeep_LeavesOnDiskAlone(t *testing.T) {
 	projectRoot := t.TempDir()
 	loaded, proj := setupProfileAndProject(t, projectRoot)
 	if err := os.WriteFile(filepath.Join(projectRoot, "AGENTS.md"), []byte("drifted"), 0o644); err != nil {
@@ -232,7 +245,7 @@ func TestApply_ResolveKeep_LeavesDriftAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Apply(preview, []FileResolution{{Path: "AGENTS.md", Resolution: ResolveKeep}}); err != nil {
+	if err := Apply(preview, []DriftResolution{{Path: "AGENTS.md", Decision: DriftKeep}}, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -245,7 +258,7 @@ func TestApply_ResolveKeep_LeavesDriftAlone(t *testing.T) {
 	}
 }
 
-func TestApply_ResolveOverwrite_RewritesDrift(t *testing.T) {
+func TestApply_DriftOverwrite_RewritesDrift(t *testing.T) {
 	projectRoot := t.TempDir()
 	loaded, proj := setupProfileAndProject(t, projectRoot)
 	if err := os.WriteFile(filepath.Join(projectRoot, "AGENTS.md"), []byte("drifted"), 0o644); err != nil {
@@ -257,7 +270,7 @@ func TestApply_ResolveOverwrite_RewritesDrift(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Apply(preview, []FileResolution{{Path: "AGENTS.md", Resolution: ResolveOverwrite}}); err != nil {
+	if err := Apply(preview, []DriftResolution{{Path: "AGENTS.md", Decision: DriftOverwrite}}, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -289,7 +302,7 @@ func TestApply_DefaultUnknown_LeavesAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Apply(preview, nil); err != nil {
+	if err := Apply(preview, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -298,7 +311,7 @@ func TestApply_DefaultUnknown_LeavesAlone(t *testing.T) {
 	}
 }
 
-func TestApply_ResolveDelete_RemovesUnknown(t *testing.T) {
+func TestApply_UnknownDelete_RemovesUnknown(t *testing.T) {
 	projectRoot := t.TempDir()
 	loaded, proj := setupProfileAndProject(t, projectRoot)
 	if err := os.WriteFile(filepath.Join(projectRoot, "AGENTS.md"), []byte(agentsDocBody), 0o644); err != nil {
@@ -317,7 +330,7 @@ func TestApply_ResolveDelete_RemovesUnknown(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Apply(preview, []FileResolution{{Path: ".codex/stray.txt", Resolution: ResolveDelete}}); err != nil {
+	if err := Apply(preview, nil, []UnknownResolution{{Path: ".codex/stray.txt", Decision: UnknownDelete}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -348,7 +361,7 @@ func TestApply_StateDeleteRemovesFileAndDropsEntry(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Apply(preview, nil); err != nil {
+	if err := Apply(preview, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -361,6 +374,218 @@ func TestApply_StateDeleteRemovesFileAndDropsEntry(t *testing.T) {
 	}
 	if _, ok := state.ManagedFiles["AGENTS.md"]; !ok {
 		t.Fatalf("state should retain still-desired entry: %+v", state.ManagedFiles)
+	}
+}
+
+// TestApply_StateRewritten asserts the post-Apply state.json contains
+// exactly the paths the loop actually wrote or adopted, not "every file
+// in preview.Files". Mixes create, delete (auto), unknown (kept) so the
+// invariant from plan step 6 is pinned: kept unknowns never enter state,
+// auto-deletes drop out, creates land with their rendered hash.
+func TestApply_StateRewritten(t *testing.T) {
+	projectRoot := t.TempDir()
+	loaded, proj := setupProfileAndProject(t, projectRoot)
+	// state-recorded file that is no longer desired → ChangeDelete (auto).
+	if err := os.MkdirAll(filepath.Join(projectRoot, ".codex"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectRoot, ".codex", "old.txt"), []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// unknown stray file kept → not in state after apply.
+	if err := os.WriteFile(filepath.Join(projectRoot, ".codex", "stray.txt"), []byte("stray"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// state seeded only with the soon-to-be-deleted file; AGENTS.md is a
+	// fresh ChangeCreate.
+	writeState(t, projectRoot, map[string]string{
+		".codex/old.txt": hashOf("old"),
+	})
+	preview, err := Plan(loaded, proj)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Apply(preview, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	state := readState(t, projectRoot)
+	if got, want := state.ManagedFiles["AGENTS.md"], hashOf(agentsDocBody); got != want {
+		t.Fatalf("AGENTS.md hash = %q, want %q", got, want)
+	}
+	if _, ok := state.ManagedFiles[".codex/old.txt"]; ok {
+		t.Fatalf("auto-deleted entry must drop out of state: %+v", state.ManagedFiles)
+	}
+	if _, ok := state.ManagedFiles[".codex/stray.txt"]; ok {
+		t.Fatalf("kept unknown must not enter state: %+v", state.ManagedFiles)
+	}
+}
+
+// TestApply_DriftKeep_AdoptsCurrentAsBaseline pins the issue #1 semantics:
+// keeping a drift records the on-disk hash in ManagedState so the next
+// Plan no longer classifies the path as drift.
+func TestApply_DriftKeep_AdoptsCurrentAsBaseline(t *testing.T) {
+	projectRoot := t.TempDir()
+	loaded, proj := setupProfileAndProject(t, projectRoot)
+	if err := os.WriteFile(filepath.Join(projectRoot, "AGENTS.md"), []byte("drifted"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeState(t, projectRoot, map[string]string{"AGENTS.md": "previous"})
+	preview, err := Plan(loaded, proj)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Apply(preview, []DriftResolution{{Path: "AGENTS.md", Decision: DriftKeep}}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	state := readState(t, projectRoot)
+	if got, want := state.ManagedFiles["AGENTS.md"], hashOf("drifted"); got != want {
+		t.Fatalf("baseline hash = %q, want on-disk %q", got, want)
+	}
+
+	nextPreview, err := Plan(loaded, proj)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, change := range nextPreview.Changes {
+		if change.Path == "AGENTS.md" && change.Kind == ChangeDrift {
+			t.Fatalf("expected AGENTS.md no longer ChangeDrift after keep+adopt; got %+v", nextPreview.Changes)
+		}
+	}
+}
+
+// TestApply_DefaultDrift_LeavesAlone is the symmetric counterpart to the
+// default-unknown test: nil drift resolutions must default to DriftKeep,
+// so the on-disk file remains untouched even without an explicit entry.
+func TestApply_DefaultDrift_LeavesAlone(t *testing.T) {
+	projectRoot := t.TempDir()
+	loaded, proj := setupProfileAndProject(t, projectRoot)
+	if err := os.WriteFile(filepath.Join(projectRoot, "AGENTS.md"), []byte("drifted"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeState(t, projectRoot, map[string]string{"AGENTS.md": "previous"})
+	preview, err := Plan(loaded, proj)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Apply(preview, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	got, readErr := os.ReadFile(filepath.Join(projectRoot, "AGENTS.md"))
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(got) != "drifted" {
+		t.Fatalf("AGENTS.md = %q, want unchanged \"drifted\" (default drift = keep)", string(got))
+	}
+}
+
+// TestApply_DuplicateResolutions_LastWins pins the documented "duplicate
+// paths: last entry wins" contract for both drift and unknown slices.
+func TestApply_DuplicateResolutions_LastWins(t *testing.T) {
+	projectRoot := t.TempDir()
+	loaded, proj := setupProfileAndProject(t, projectRoot)
+	if err := os.WriteFile(filepath.Join(projectRoot, "AGENTS.md"), []byte("drifted"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeState(t, projectRoot, map[string]string{"AGENTS.md": "previous"})
+	preview, err := Plan(loaded, proj)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// First entry says Keep, second says Overwrite — Overwrite wins.
+	if err := Apply(preview, []DriftResolution{
+		{Path: "AGENTS.md", Decision: DriftKeep},
+		{Path: "AGENTS.md", Decision: DriftOverwrite},
+	}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	got, readErr := os.ReadFile(filepath.Join(projectRoot, "AGENTS.md"))
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(got) != agentsDocBody {
+		t.Fatalf("AGENTS.md = %q, want %q (last-wins should have overwritten)", string(got), agentsDocBody)
+	}
+}
+
+// TestApply_UnknownResolutionPath_IsIgnored pins the changelog's
+// "resolution path not in Changes is silently ignored" contract.
+func TestApply_UnknownResolutionPath_IsIgnored(t *testing.T) {
+	projectRoot := t.TempDir()
+	loaded, proj := setupProfileAndProject(t, projectRoot)
+	if err := os.WriteFile(filepath.Join(projectRoot, "AGENTS.md"), []byte(agentsDocBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeState(t, projectRoot, map[string]string{"AGENTS.md": hashOf(agentsDocBody)})
+	preview, err := Plan(loaded, proj)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Apply(preview, nil, []UnknownResolution{{Path: ".codex/does-not-exist.txt", Decision: UnknownDelete}}); err != nil {
+		t.Fatalf("expected no error for stray resolution path, got %v", err)
+	}
+
+	if _, statErr := os.Stat(filepath.Join(projectRoot, "AGENTS.md")); statErr != nil {
+		t.Fatalf("AGENTS.md should still exist: %v", statErr)
+	}
+}
+
+// TestApply_InvalidResolutionPath_ReturnsTypedError exercises the path
+// validator (option 17). Uses errors.As per the errors guideline.
+func TestApply_InvalidResolutionPath_ReturnsTypedError(t *testing.T) {
+	projectRoot := t.TempDir()
+	loaded, proj := setupProfileAndProject(t, projectRoot)
+	if err := os.WriteFile(filepath.Join(projectRoot, "AGENTS.md"), []byte(agentsDocBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeState(t, projectRoot, map[string]string{"AGENTS.md": hashOf(agentsDocBody)})
+	preview, err := Plan(loaded, proj)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	applyErr := Apply(preview, nil, []UnknownResolution{{Path: "/etc/passwd", Decision: UnknownDelete}})
+	if applyErr == nil {
+		t.Fatalf("expected InvalidPathError for absolute path, got nil")
+	}
+	var invalid InvalidPathError
+	if !errors.As(applyErr, &invalid) {
+		t.Fatalf("expected InvalidPathError, got %T: %v", applyErr, applyErr)
+	}
+	if invalid.Path != "/etc/passwd" {
+		t.Fatalf("InvalidPathError.Path = %q, want /etc/passwd", invalid.Path)
+	}
+}
+
+// TestPlan_CorruptStateKey_ReturnsTypedError exercises the
+// loadState-side path validation (issue #3): a state.json key with
+// ".." causes a StateCorruptError, surfacing via errors.As.
+func TestPlan_CorruptStateKey_ReturnsTypedError(t *testing.T) {
+	projectRoot := t.TempDir()
+	loaded, proj := setupProfileAndProject(t, projectRoot)
+	writeState(t, projectRoot, map[string]string{
+		"../../etc/passwd": "dead",
+	})
+
+	_, err := Plan(loaded, proj)
+	if err == nil {
+		t.Fatalf("expected StateCorruptError, got nil")
+	}
+	var corrupt StateCorruptError
+	if !errors.As(err, &corrupt) {
+		t.Fatalf("expected StateCorruptError, got %T: %v", err, err)
+	}
+	if corrupt.Key != "../../etc/passwd" {
+		t.Fatalf("StateCorruptError.Key = %q, want \"../../etc/passwd\"", corrupt.Key)
 	}
 }
 

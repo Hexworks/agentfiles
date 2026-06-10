@@ -8,7 +8,7 @@ import (
 
 // newTestForm builds the smallest valid huh.Form we can hand to formContent.
 // The content of the form does not matter for these tests — only its State
-// field, which the adapter reads in Resolution().
+// field, which the adapter reads in Lifecycle().
 func newTestForm() *huh.Form {
 	return huh.NewForm(
 		huh.NewGroup(
@@ -21,11 +21,11 @@ func newTestForm() *huh.Form {
 // adapter to surface the original *huh.Form pointer.
 func identityExtract(f *huh.Form) any { return f }
 
-func TestFormContent_ResolutionMapsHuhState(t *testing.T) {
+func TestFormContent_LifecycleMapsHuhState(t *testing.T) {
 	cases := []struct {
 		name             string
 		state            huh.FormState
-		wantState        ResolutionState
+		wantState        LifecycleState
 		wantFormIdentity bool
 	}{
 		{
@@ -52,7 +52,7 @@ func TestFormContent_ResolutionMapsHuhState(t *testing.T) {
 			form.State = tc.state
 			fc := &formContent{form: form, extract: identityExtract}
 
-			state, value := fc.Resolution()
+			state, value := fc.Lifecycle()
 
 			if state != tc.wantState {
 				t.Errorf("state = %v, want %v", state, tc.wantState)
