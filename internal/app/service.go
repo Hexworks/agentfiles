@@ -4,17 +4,35 @@
 package app
 
 import (
+	"errors"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/hexworks/agentfiles/internal/asset"
 	"github.com/hexworks/agentfiles/internal/config"
 	"github.com/hexworks/agentfiles/internal/errs"
-	"github.com/hexworks/agentfiles/internal/utils"
 	"github.com/hexworks/agentfiles/internal/profile"
 	"github.com/hexworks/agentfiles/internal/project"
 	"github.com/hexworks/agentfiles/internal/registry"
 	llmsync "github.com/hexworks/agentfiles/internal/sync"
+	"github.com/hexworks/agentfiles/internal/utils"
+)
+
+// FolderAction controls whether DeleteProfile also removes the on-disk
+// profile folder.
+type FolderAction int
+
+const (
+	// KeepFolders leaves the on-disk profile folder in place after
+	// DeleteProfile removes the registry entry.
+	KeepFolders FolderAction = iota
+	// DeleteFolders removes the on-disk profile folder during
+	// DeleteProfile. A pre-missing folder is not treated as an error.
+	DeleteFolders
 )
 
 // Service is the thin application layer used by the TUI.
@@ -219,6 +237,168 @@ func (s *Service) ensureProjectPathAvailable(projectPath string, active *profile
 		}
 	}
 	return conflicts
+}
+
+// LoadProfiles returns every registered profile, fully loaded (assets and
+// projects scanned). Profiles that fail to load are skipped from the result
+// and their errors are aggregated into the returned errs.DomainError so the
+// TUI can show every problem at once without losing healthy profiles.
+//
+// The returned slice keeps the registry order (already sorted by name by
+// registry.Store.Save).
+func (s *Service) LoadProfiles() ([]*profile.Profile, errs.DomainError) {
+	reg, err := s.Registry.Load()
+	if err != nil {
+		return nil, err
+	}
+	loaded := make([]*profile.Profile, 0, len(reg.Profiles))
+	var loadErrs []errs.DomainError
+	for _, ref := range reg.Profiles {
+		p, loadErr := profile.Load(ref.Path)
+		if loadErr != nil {
+			loadErrs = append(loadErrs, loadErr)
+			continue
+		}
+		loaded = append(loaded, p)
+	}
+	if len(loadErrs) > 0 {
+		return loaded, errs.Errors(loadErrs)
+	}
+	return loaded, nil
+}
+
+// DeleteProfile removes the profile from the global registry. When
+// folderAction is DeleteFolders the on-disk profile folder is removed as
+// well; a pre-missing folder is not an error so the registry side always
+// succeeds even when the folder is already gone.
+func (s *Service) DeleteProfile(profileRef string, folderAction FolderAction) errs.DomainError {
+	ref, err := s.Registry.Resolve(profileRef)
+	if err != nil {
+		return err
+	}
+	if err := s.Registry.Remove(ref.ID); err != nil {
+		return err
+	}
+	if folderAction != DeleteFolders {
+		return nil
+	}
+	if rmErr := os.RemoveAll(ref.Path); rmErr != nil && !errors.Is(rmErr, fs.ErrNotExist) {
+		return ProfileFolderRemoveError{Path: ref.Path, Err: rmErr}
+	}
+	return nil
+}
+
+// LoadAsset returns the asset identified by assetID inside the given
+// profile. Missing asset → AssetNotFoundError.
+func (s *Service) LoadAsset(profileRef, assetID string) (*asset.Asset, errs.DomainError) {
+	loaded, err := s.LoadProfile(profileRef)
+	if err != nil {
+		return nil, err
+	}
+	a := loaded.Assets[assetID]
+	if a == nil {
+		return nil, AssetNotFoundError{AssetID: assetID}
+	}
+	return a, nil
+}
+
+// UpdateAsset overwrites the asset manifest on disk with the caller's
+// edits. The asset must already exist in the profile; this method is not
+// a scaffold path (use InitAsset for that).
+//
+// Note: the task description mentions recomputing per-file content
+// hashes. The current asset model does not store hashes — internal/sync
+// computes them on the fly from disk and the project's state.json — so
+// the drift-vs-update distinction already works without an asset-side
+// hash store. If a later change adds an in-memory hash field on
+// asset.Asset, recompute it here.
+func (s *Service) UpdateAsset(profileRef string, a *asset.Asset) errs.DomainError {
+	if a == nil {
+		return AssetNotFoundError{AssetID: ""}
+	}
+	loaded, err := s.LoadProfile(profileRef)
+	if err != nil {
+		return err
+	}
+	if loaded.Assets[a.ID] == nil {
+		return AssetNotFoundError{AssetID: a.ID}
+	}
+	if validateErr := a.Manifest.Validate(); validateErr != nil {
+		return validateErr
+	}
+	return utils.WriteJSON(filepath.Join(a.Dir, config.AssetManifestFileName), a.Manifest)
+}
+
+// DeleteAsset removes the asset folder from the profile and unselects the
+// asset id from every project in the profile. Already-synced files in
+// project repos are not touched and remain orphaned.
+func (s *Service) DeleteAsset(profileRef, assetID string) errs.DomainError {
+	loaded, err := s.LoadProfile(profileRef)
+	if err != nil {
+		return err
+	}
+	target := loaded.Assets[assetID]
+	if target == nil {
+		return AssetNotFoundError{AssetID: assetID}
+	}
+	for _, p := range loaded.ProjectList() {
+		idx := slices.Index(p.SelectedAssetIDs, assetID)
+		if idx < 0 {
+			continue
+		}
+		p.SelectedAssetIDs = slices.Delete(p.SelectedAssetIDs, idx, idx+1)
+		if saveErr := project.Save(loaded.Root, p); saveErr != nil {
+			return saveErr
+		}
+	}
+	if rmErr := os.RemoveAll(target.Dir); rmErr != nil && !errors.Is(rmErr, fs.ErrNotExist) {
+		return AssetFolderRemoveError{Dir: target.Dir, Err: rmErr}
+	}
+	return nil
+}
+
+// LoadProject returns the project manifest identified by projectID inside
+// the given profile. Missing project → ProjectNotFoundError.
+func (s *Service) LoadProject(profileRef, projectID string) (*project.Manifest, errs.DomainError) {
+	loaded, err := s.LoadProfile(profileRef)
+	if err != nil {
+		return nil, err
+	}
+	p := loaded.Projects[projectID]
+	if p == nil {
+		return nil, ProjectNotFoundError{ProjectID: projectID}
+	}
+	return p, nil
+}
+
+// UpdateProject overwrites the project manifest on disk with the caller's
+// edits. The project must already exist in the profile; this is not a
+// create path (use AddProject for that).
+func (s *Service) UpdateProject(profileRef string, p *project.Manifest) errs.DomainError {
+	if p == nil {
+		return ProjectNotFoundError{ProjectID: ""}
+	}
+	loaded, err := s.LoadProfile(profileRef)
+	if err != nil {
+		return err
+	}
+	if loaded.Projects[p.ID] == nil {
+		return ProjectNotFoundError{ProjectID: p.ID}
+	}
+	return project.Save(loaded.Root, p)
+}
+
+// DeleteProject removes the project manifest from the profile. Files in
+// the project's target repository are not touched.
+func (s *Service) DeleteProject(profileRef, projectID string) errs.DomainError {
+	loaded, err := s.LoadProfile(profileRef)
+	if err != nil {
+		return err
+	}
+	if loaded.Projects[projectID] == nil {
+		return ProjectNotFoundError{ProjectID: projectID}
+	}
+	return project.Delete(loaded.Root, projectID)
 }
 
 // slug creates a stable file/id friendly name from user-facing input.

@@ -67,3 +67,44 @@ func (e ProjectPathOwnedError) Error() string {
 func (ProjectPathOwnedError) Severity() errs.Severity {
 	return errs.SeverityWarning
 }
+
+// ProfileFolderRemoveError reports a non-recoverable failure while
+// removing the on-disk profile folder during DeleteProfile. A pre-missing
+// folder is not an error: only real filesystem failures (permissions,
+// I/O) reach the caller through this value.
+type ProfileFolderRemoveError struct {
+	Path string
+	Err  error
+}
+
+func (e ProfileFolderRemoveError) Error() string {
+	return fmt.Sprintf("remove profile folder %s: %s", e.Path, e.Err.Error())
+}
+
+func (ProfileFolderRemoveError) Severity() errs.Severity {
+	return errs.SeverityError
+}
+
+func (e ProfileFolderRemoveError) Unwrap() error {
+	return e.Err
+}
+
+// AssetFolderRemoveError reports a non-recoverable failure while removing
+// an asset directory during DeleteAsset. A pre-missing directory is not
+// an error.
+type AssetFolderRemoveError struct {
+	Dir string
+	Err error
+}
+
+func (e AssetFolderRemoveError) Error() string {
+	return fmt.Sprintf("remove asset folder %s: %s", e.Dir, e.Err.Error())
+}
+
+func (AssetFolderRemoveError) Severity() errs.Severity {
+	return errs.SeverityError
+}
+
+func (e AssetFolderRemoveError) Unwrap() error {
+	return e.Err
+}

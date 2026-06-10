@@ -4,6 +4,9 @@
 package project
 
 import (
+	"errors"
+	"io/fs"
+	"os"
 	"path/filepath"
 	"slices"
 	"time"
@@ -61,4 +64,18 @@ func Save(profileRoot string, manifest *Manifest) errs.DomainError {
 	}
 	path := filepath.Join(profileRoot, config.ProjectsDirName, manifest.ID+".json")
 	return utils.WriteJSON(path, manifest)
+}
+
+// Delete removes the project manifest file from the owning profile's
+// projects/ directory. A missing file is treated as success so the
+// operation is idempotent.
+func Delete(profileRoot, projectID string) errs.DomainError {
+	path := filepath.Join(profileRoot, config.ProjectsDirName, projectID+".json")
+	if err := os.Remove(path); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		return ProjectDeleteError{Path: path, Err: err}
+	}
+	return nil
 }

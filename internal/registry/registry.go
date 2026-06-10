@@ -111,6 +111,23 @@ func (s *Store) Add(ref ProfileRef) errs.DomainError {
 	return s.Save(reg)
 }
 
+// Remove deletes the profile reference matching profileID from the global
+// registry. A missing id is reported as ProfileNotFoundError so callers
+// can distinguish "nothing to do" from "remove succeeded".
+func (s *Store) Remove(profileID string) errs.DomainError {
+	reg, err := s.Load()
+	if err != nil {
+		return err
+	}
+	for i, existing := range reg.Profiles {
+		if existing.ID == profileID {
+			reg.Profiles = append(reg.Profiles[:i], reg.Profiles[i+1:]...)
+			return s.Save(reg)
+		}
+	}
+	return ProfileNotFoundError{Ref: profileID}
+}
+
 // Touch updates the last-opened timestamp for one profile. The timestamp is
 // operational metadata only; it does not affect rendering behavior.
 func (s *Store) Touch(profileID string) errs.DomainError {

@@ -1,6 +1,10 @@
 package project
 
-import "github.com/hexworks/agentfiles/internal/errs"
+import (
+	"fmt"
+
+	"github.com/hexworks/agentfiles/internal/errs"
+)
 
 // ProjectFieldsRequiredError reports a project manifest with one or more
 // missing required identity fields (id, name, path).
@@ -34,3 +38,22 @@ func (NoEnabledAgentsError) Severity() errs.Severity {
 // ErrNoEnabledAgents is the canonical sentinel value of
 // NoEnabledAgentsError.
 var ErrNoEnabledAgents = NoEnabledAgentsError{}
+
+// ProjectDeleteError reports a non-recoverable failure to delete a
+// project manifest file. A pre-missing file is not an error.
+type ProjectDeleteError struct {
+	Path string
+	Err  error
+}
+
+func (e ProjectDeleteError) Error() string {
+	return fmt.Sprintf("delete project manifest %s: %s", e.Path, e.Err.Error())
+}
+
+func (ProjectDeleteError) Severity() errs.Severity {
+	return errs.SeverityError
+}
+
+func (e ProjectDeleteError) Unwrap() error {
+	return e.Err
+}
