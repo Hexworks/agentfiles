@@ -43,18 +43,24 @@ Don't:
 
 ## Require Explicit Deletion Opt-In
 
-Recognized unmanaged files should be surfaced, not removed automatically.
+Files inside managed surfaces split into two classifications. Recognized
+managed files (recorded in the previous `ManagedState` and missing from the
+new desired output) auto-delete on apply because the user already saw them
+in the preview. Unknown files (in a managed surface but never tracked)
+require a per-file `ResolveDelete` resolution; the default is keep.
 
 ```text
 Do:
-- report delete candidates in the preview
-- require explicit confirmation or a delete flag before removal
+- emit ChangeDelete for state-recorded paths missing from desired
+- emit ChangeUnknown for surface files not in state and not in desired
+- require an explicit ResolveDelete entry before removing an unknown file
 ```
 
 ```text
 Don't:
-- delete recognized files automatically during apply
+- delete unknown files automatically during apply
 - expand deletion to unrelated repository files
+- emit ChangeUnknown on the first apply (no state yet to compare against)
 ```
 
 ## Keep Managed State Accurate

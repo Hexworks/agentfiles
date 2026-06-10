@@ -101,10 +101,13 @@ can list every issue in one preview.
 
 ### `sync`
 
-Calculates preview changes, detects drift, detects recognized delete
-candidates, writes files, and stores managed state in `.agentfiles/state.json`.
-Sync produces a `Preview` struct; turning that struct into user-facing text
-is the TUI's job (see `tui.RenderPreview`).
+Calculates preview changes (create / update / drift / delete / unknown),
+applies per-file `FileResolution` decisions, writes files, and stores
+managed state in `.agentfiles/state.json`. Sync produces a `Preview`
+struct; turning that struct into user-facing text is the TUI's job
+(see `tui.RenderPreview`). First-apply (no `.agentfiles/state.json`) is
+treated as a clean slate — every desired file is `ChangeCreate`, no
+`ChangeUnknown` entries are emitted. See ADR 0010.
 
 ### `doctor`
 

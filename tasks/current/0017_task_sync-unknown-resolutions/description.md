@@ -1,9 +1,14 @@
 ---
 id: 0017
 type: task
-status: pending
+status: in-review
+topics: go, tui
 depends_on: 0015
 ---
+
+## Plan
+
+[plan.md](./plan.md)
 
 # Sync: ChangeUnknown classification + Resolutions API
 

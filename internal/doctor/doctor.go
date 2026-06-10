@@ -85,6 +85,8 @@ func convertKind(k llmsync.ChangeKind) llmsync.ChangeKind {
 		return llmsync.ChangeDrift
 	case llmsync.ChangeDelete:
 		return llmsync.ChangeDelete
+	case llmsync.ChangeUnknown:
+		return llmsync.ChangeUnknown
 	}
 	return llmsync.ChangeKind(string(k))
 }

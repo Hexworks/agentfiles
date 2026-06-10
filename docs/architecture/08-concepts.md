@@ -24,12 +24,27 @@ together.
 
 The sync layer stores hashes of managed files in `.agentfiles/state.json`. If a
 managed file changes after apply, the next preview reports drift instead of
-silently overwriting without explanation.
+silently overwriting without explanation. Drift defaults to *keep*; the user
+must explicitly resolve a drift entry to `ResolveOverwrite` to let apply
+replace the local edits. See ADR 0010.
+
+## First-Apply Clean Slate
+
+A project with no `.agentfiles/state.json` is treated as fresh: every desired
+file is classified as `ChangeCreate` (overwriting whatever happens to exist
+at that path), and stray files in managed surfaces are ignored. The first
+successful apply writes the initial state; subsequent plans then distinguish
+drift from unknown normally. See ADR 0010.
 
 ## Safety-First Deletion
 
-Recognized but currently undesired LLM files are surfaced as delete candidates.
-Deletion is explicit and opt-in rather than automatic.
+Files inside managed surfaces split into two classifications. Files recorded
+in the previous `ManagedState` but missing from the new desired output
+become `ChangeDelete` and are removed on apply — the user already opted in
+to managing them. Files inside a managed surface that the engine has never
+tracked become `ChangeUnknown`; apply leaves them alone unless the user
+resolves them to `ResolveDelete`. Both flow through the preview so no write
+is implicit.
 
 ## Rendering Lives In The TUI
 

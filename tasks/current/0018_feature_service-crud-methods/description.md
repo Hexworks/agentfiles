@@ -2,6 +2,7 @@
 id: 0018
 type: feature
 status: pending
+topics: go
 depends_on: 0015
 ---
 
