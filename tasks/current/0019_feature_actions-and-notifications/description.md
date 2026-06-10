@@ -1,12 +1,16 @@
 ---
 id: 0019
 type: feature
-status: pending
+status: in-review
 topics: go, tui
 depends_on: 0017, 0018
 ---
 
 # Actions factory + Notifications subsystem
+
+## Plan
+
+[plan.md](./plan.md)
 
 This task delivers two tightly-coupled subsystems described in
 `0015_task_refactor_ui/description.md` — **Actions** and **Notifications**.
