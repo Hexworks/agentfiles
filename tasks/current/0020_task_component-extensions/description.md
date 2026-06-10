@@ -2,6 +2,7 @@
 id: 0020
 type: task
 status: pending
+topics: go, tui, charm
 depends_on: 0015
 ---
 

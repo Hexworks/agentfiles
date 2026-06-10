@@ -2,6 +2,7 @@
 id: 0029
 type: feature
 status: pending
+topics: go, tui, project, render
 depends_on: 0017, 0020, 0021
 ---
 

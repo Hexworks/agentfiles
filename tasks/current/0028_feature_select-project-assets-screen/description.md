@@ -2,6 +2,7 @@
 id: 0028
 type: feature
 status: pending
+topics: go, tui, project, asset
 depends_on: 0021
 ---
 
