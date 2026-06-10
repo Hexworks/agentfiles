@@ -48,7 +48,7 @@ is implicit.
 
 ## Rendering Lives In The TUI
 
-Domain packages return data — `sync.Preview`, `doctor.Report`, `RenderedFile`,
+Domain packages return data — `sync.Preview`, `RenderedFile`,
 typed error structs. The TUI is the only layer that produces user-facing
 text. This keeps stable policy independent of presentation, and makes
 output styling (icons, colors, severity) testable in one place. See ADR

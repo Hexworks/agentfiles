@@ -55,7 +55,6 @@ func mainMenu(service *app.Service) error {
 				huh.NewOption("Profile  — manage profiles", "profile"),
 				huh.NewOption("Asset    — scaffold reusable content", "asset"),
 				huh.NewOption("Project  — plan and apply into a repo", "project"),
-				huh.NewOption("Doctor   — health-check a profile", "doctor"),
 				huh.NewOption("Quit", "quit"),
 			).
 			Value(&choice),
@@ -70,9 +69,6 @@ func mainMenu(service *app.Service) error {
 		return enterSubmenu(assetMenu(service))
 	case "project":
 		return enterSubmenu(projectMenu(service))
-	case "doctor":
-		reportAction(RunDoctor(service))
-		return nil
 	case "quit":
 		return errBack
 	}

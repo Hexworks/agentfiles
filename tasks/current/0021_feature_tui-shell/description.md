@@ -19,7 +19,7 @@ placement).
 (`mainMenu` → `profileMenu` / `assetMenu` / `projectMenu`). The legacy
 `forms.go` file hosts the flow functions (`RunProfileCreate`,
 `RunProjectAdd`, `RunAssetInit`, etc.) plus the `render_*.go` helpers
-(`RenderError`, `RenderReport`, `RenderPreview`). The new TUI is a single
+(`RenderError`, `RenderPreview`). The new TUI is a single
 long-running Bubble Tea program in alt-screen mode with its own screen
 router; the legacy entry points no longer fit.
 

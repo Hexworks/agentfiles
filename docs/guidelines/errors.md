@@ -18,7 +18,7 @@ application code.**
 Use a single `errs.DomainError` for point operations (`Validate`,
 `Save`, `Load`). Use `[]errs.DomainError` for accumulator-shape
 functions that walk a collection and want to surface every failure at
-once (`render.Build`, `app.AddProject`, `doctor.CheckProfile`,
+once (`render.Build`, `app.AddProject`,
 `sync.detectDeleteCandidates`).
 
 The TUI (`internal/tui/`) is the only layer that may keep using the

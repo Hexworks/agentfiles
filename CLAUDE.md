@@ -33,7 +33,6 @@ Domain packages are kept separable by design — do not blur them:
 - `project` — per-project manifest (target path + selected agents + selected asset ids). Lives inside a profile's `projects/`.
 - `render` — **read-only**. Builds desired files from profile+project. Calls `surfaces.IsAllowed` to gate projection targets against the safety fence (`AGENTS.md`, `.claude`, `.cursor`, `.codex`, `.opencode`, `.mcp.json`). Resolves `exclusive_group` conflicts and `compatible_agents` filters.
 - `sync` — compares render plan vs. repo, classifies as `create`/`update`/`drift`/`delete`, writes files, and rewrites `<repo>/.agentfiles/state.json` (hashes of managed files). Imported as `llmsync` in `internal/app` to avoid clashing with stdlib `sync`.
-- `doctor` — read-only health check across every project in a profile. Returns a `*Report` struct (no string formatting); the TUI renders it.
 - `app` — thin orchestration layer called by the TUI. Contains no business logic.
 - `tui` — the only user interface. Menus + `huh` forms. `Esc` and `ctrl+c` both bound to Quit (see `runForm` in `tui/tui.go`) so Esc backs out one level.
 - `utils` — shared path/IO/hashing helpers and small generic utilities (e.g. `Deduplicate`).
@@ -54,7 +53,7 @@ No CLI subcommands exist (see `docs/adr/0006`). The binary opens the menu; every
 ## Errors and rendering
 
 Domain packages return data and typed errors. User-facing strings are
-produced in `internal/tui/` (`RenderPreview`, `RenderReport`, `RenderError`).
+produced in `internal/tui/` (`RenderPreview`, `RenderError`).
 When adding a new failure mode, declare a struct in the package's
 `errors.go` with an `Error()` method instead of using `fmt.Errorf`. Loops
 should accumulate via `errors.Join` rather than short-circuit on the first

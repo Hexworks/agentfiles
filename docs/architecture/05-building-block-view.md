@@ -11,7 +11,6 @@ flowchart TD
     tui --> app
     app --> render
     app --> sync
-    app --> doctor
     render --> profile
     render --> project
     render --> asset
@@ -19,8 +18,6 @@ flowchart TD
     render --> surfaces
     sync --> surfaces
     sync --> utils
-    doctor --> sync
-    doctor --> render
     profile --> asset
     profile --> project
     asset --> config
@@ -109,16 +106,6 @@ struct; turning that struct into user-facing text is the TUI's job
 treated as a clean slate — every desired file is `ChangeCreate`, no
 `ChangeUnknown` entries are emitted. See ADR 0010.
 
-### `doctor`
-
-Runs a sync plan for every project owned by a profile and returns a
-`*doctor.Report` with one `ProjectStatus` per project, plus a
-`[]errs.DomainError` of any per-project failures so successful projects
-still render alongside broken ones. Doctor owns its own `ChangeKind` /
-`ProjectChange` vocabulary so callers do not need to import `internal/sync`
-just to read a report. Doctor never formats output; the TUI renders the
-report.
-
 ### `app`
 
 Coordinates the higher-level operations used by the TUI: profile creation,
@@ -139,8 +126,8 @@ Esc the same as Ctrl+C so every prompt aborts consistently when the user
 wants to back out one level.
 
 The TUI is also the only place that turns domain values into styled text.
-`RenderPreview`, `RenderReport`, and `RenderError` consume sync, doctor, and
-typed-error values respectively, applying lipgloss styles defined once in
+`RenderPreview` and `RenderError` consume sync and typed-error values
+respectively, applying lipgloss styles defined once in
 `internal/tui/styles.go`. ADR 0007 captures the rationale.
 
 ### `tui/components/modal`
