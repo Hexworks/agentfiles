@@ -1,7 +1,7 @@
 ---
 id: 0021
 type: feature
-status: pending
+status: in-review
 topics: go, tui, charm
 depends_on: 0019, 0020
 ---
@@ -112,3 +112,7 @@ Delete:
 make build && make test && make lint
 ./bin/af   # opens alt-screen with placeholder Welcome; n/s/q/? work
 ```
+
+## Plan
+
+[plan.md](./plan.md)

@@ -27,3 +27,17 @@ Each ADR uses a small Michael Nygard style structure:
 - `## Decision`
 - `## Consequences`
 
+## Index
+
+- 0001 — Use profile-based source of truth
+- 0002 — Materialize agent files into projects
+- 0003 — Use global profile registry
+- 0004 — Enforce single profile ownership per project path
+- 0005 — TUI as the only user interface
+- 0006 — Remove CLI subcommands in favor of pure TUI
+- 0007 — Rendering belongs to the TUI
+- 0008 — Domain error everywhere
+- 0009 — Edit files via system editor
+- 0010 — Sync resolutions and first apply
+- 0011 — TUI screen router
+

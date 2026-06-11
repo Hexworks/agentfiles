@@ -1,31 +1,35 @@
 # 6. Runtime View
 
 The runtime behavior is best understood through a few core scenarios. Every
-scenario starts from the TUI. Running `af` opens the top-level menu, and the
-user navigates to the matching flow from there; there are no direct
+scenario starts from the TUI. Running `af` opens the alt-screen Bubble Tea
+shell on the Welcome screen; the user navigates from there to the screen
+that owns the operation (Profiles, Project Detail, …). There are no direct
 subcommand paths.
 
 ## Scenario: Create A Profile
 
-1. The user reaches the "profile create" form by picking
-   `Profile → Create` from the top-level menu.
-2. The form collects display name and target path.
+1. The user reaches the Profiles screen and triggers Create.
+2. A modal collects display name and target path.
 3. The application normalizes the requested path.
 4. The profile package creates the profile folder structure.
 5. The registry package appends a new profile reference to
    `~/.agentprofiles.json`.
+6. The action's bridge command emits a `NotificationMsg`; the shell
+   writes it to the log and surfaces the toast above the status bar.
 
 ## Scenario: Plan A Project
 
-1. The user reaches the "project plan" form.
-2. A profile selector is shown, populated from the registry.
-3. After a profile is chosen, the project selector is shown, populated from
-   that profile's `projects/` folder.
-4. The render package resolves selected assets and builds desired outputs.
-5. The sync package compares desired outputs with project files and existing
+1. The user reaches the Project Detail screen for the relevant profile +
+   project.
+2. They trigger Plan.
+3. The render package resolves selected assets and builds desired outputs.
+4. The sync package compares desired outputs with project files and existing
    managed state.
-6. A preview is produced with create, update, drift, and delete-candidate
+5. A preview is produced with create, update, drift, and delete-candidate
    entries.
+6. The Project Detail screen renders the preview body inside its own area;
+   the shell's notification pipeline reports any per-asset failures via
+   toast + log.
 
 ## Scenario: Apply A Project
 
@@ -64,11 +68,13 @@ sequenceDiagram
     TUI-->>User: render result
 ```
 
-1. The user reaches the "project apply" form and picks a profile and project.
-2. A preview is generated and displayed first.
-3. If delete candidates exist, the form asks whether to remove them.
-4. A confirmation prompt gates the write step.
+1. The user reaches the Project Detail screen for the profile + project.
+2. They trigger Apply; a preview is generated and rendered first.
+3. If delete candidates exist, the screen asks whether to remove them.
+4. A confirmation modal gates the write step.
 5. Files are written to the target repository.
 6. If the user opted to delete candidates, recognized unmanaged files are
    removed.
 7. `.agentfiles/state.json` is updated with new managed-file hashes.
+8. The bridge command emits a `NotificationMsg`; success or failure
+   shows as a toast and is appended to the in-memory log.

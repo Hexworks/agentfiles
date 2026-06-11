@@ -7,8 +7,12 @@ main workflow.
 
 ```mermaid
 flowchart TD
-    cmdaf["cmd/af"] --> tui
-    tui --> app
+    cmdaf["cmd/af"] --> tui_shell["tui/shell"]
+    tui_shell --> actions
+    tui_shell --> tui_notifications["tui/notifications"]
+    tui_shell --> tui_mnemonic["tui/components/mnemonic"]
+    tui_shell --> tui_styles["tui/styles"]
+    actions --> app
     app --> render
     app --> sync
     render --> profile
@@ -24,16 +28,16 @@ flowchart TD
     project --> config
     registry --> config
     surfaces --> config
-    tui --> tui_components_modal["tui/components/modal"]
+    tui_shell --> tui_components_modal["tui/components/modal"]
 
     classDef leaf fill:#eef,stroke:#88a;
-    class config,errs,utils,tui_components_modal leaf;
+    class config,errs,utils,tui_components_modal,tui_styles leaf;
 ```
 
 `config`, `errs`, and `utils` are leaf packages that the rest of the
 codebase reads from but that import nothing internal. They are highlighted
 in blue above to make the dependency direction visible. The TUI layer
-imports `app`; nothing else does.
+reaches `app` only through the `actions` adapter; nothing else imports `app`.
 
 ## Level 2: Package Responsibilities
 
@@ -114,21 +118,39 @@ return `[]errs.DomainError`; non-accumulator calls wrap render slices in
 `errs.Errors` and return a single `error`. Typed-error conventions live in
 [`docs/guidelines/errors.md`](../guidelines/errors.md).
 
-### `tui`
+### `tui/shell`
 
-Implements every interactive flow on top of `huh`: the top-level menu, the
-per-category submenus, and one form per command. Free-form fields use text
-inputs while closed sets (asset types, supported agents, registered profiles,
-profile-owned projects, profile-owned assets) use Select / MultiSelect
-populated from the domain layer. Every command lives here; no other package
-collects user input. A local `runForm` helper installs a keymap that treats
-Esc the same as Ctrl+C so every prompt aborts consistently when the user
-wants to back out one level.
+The root Bubble Tea program. Runs in alt-screen mode, owns the screen
+router stack (`PushScreenMsg` / `PopScreenMsg`), intercepts the global
+key set (`n` notifications, `s` settings, `?` info, `q` quit) before
+the active screen sees them, mounts the toast widget above the status
+bar, and forwards everything else to the top-of-stack `Screen`. The
+status bar joins a fixed global set of hints with each screen's
+dynamic `StatusKeys()` (the focused row's mnemonic bindings) without
+duplicating screen-level labelled buttons. Screens that render entity
+data live next to the shell; the package itself ships a placeholder
+Welcome plus three stubs that stand in for the Notifications modal,
+Settings screen, and Info modal until tasks 0023 and 0024 land.
+Rationale and routing rules: ADR 0011.
 
-The TUI is also the only place that turns domain values into styled text.
-`RenderPreview` and `RenderError` consume sync and typed-error values
-respectively, applying lipgloss styles defined once in
-`internal/tui/styles.go`. ADR 0007 captures the rationale.
+### `tui/notifications`
+
+In-memory `Log` (a 500-entry ring buffer of typed
+`Notification{Severity, Text, CreatedAt}` values), the FIFO `Toast`
+widget that shows one notification at a time for 5 s, and the
+`From()` bridge command that wraps any action so success and failure
+both turn into a single `NotificationMsg` carrying the domain
+severity. The shell routes every `NotificationMsg` into both the
+log and the toast. Severity styling shares the palette from
+`tui/styles` so the toast and the future Notifications modal render
+identically (ADR 0007).
+
+### `tui/styles`
+
+Leaf package holding the palette, named lipgloss styles, severity
+→ icon/style switch (`SeverityStyle`), and the terminal-safe string
+sanitizer. Imported by both the shell and the notifications package
+so the styles vocabulary stays in one place.
 
 ### `tui/components/modal`
 
@@ -150,6 +172,8 @@ borders come from `internal/tui/styles.go` (`modalStyle`) passed in via
 ### `cmd/af`
 
 The binary entry point. It parses the single `--registry` flag with the
-standard-library `flag` package and calls `tui.Run`. There is no Cobra
-command tree and no intermediate routing package — `af` always opens the
-TUI.
+standard-library `flag` package, builds the `app.Service`, wraps it with
+`actions.New`, allocates a `notifications.Log`, and hands the trio to
+`shell.New` before running `tea.NewProgram(...).Run()`. There is no
+Cobra command tree and no intermediate routing package — `af` always
+opens the alt-screen shell.
