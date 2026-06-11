@@ -129,14 +129,8 @@ func (s *Service) AddProject(profileRef, name, path string, agents, assetIDs []s
 	if len(domainErrs) > 0 {
 		return nil, domainErrs
 	}
-	manifest := &project.Manifest{
-		ID:               utils.Slug(name),
-		Name:             name,
-		Path:             path,
-		EnabledAgents:    agents,
-		SelectedAssetIDs: assetIDs,
-		CreatedAt:        time.Now().UTC(),
-	}
+	manifest := project.NewDraft(name, path, agents)
+	manifest.SelectedAssetIDs = assetIDs
 	if err := project.Save(loaded.Root, manifest); err != nil {
 		return nil, []errs.DomainError{err}
 	}
@@ -145,10 +139,16 @@ func (s *Service) AddProject(profileRef, name, path string, agents, assetIDs []s
 
 // InitAsset scaffolds a new asset inside the selected profile. The asset type
 // determines the starter files that get created in the new asset directory.
+// Callers may leave Manifest.ID blank — the service derives it from
+// Manifest.Name via utils.Slug so the modal layer does not need to encode the
+// id-derivation rule a second time.
 func (s *Service) InitAsset(profileRef string, manifest asset.Manifest) (string, errs.DomainError) {
 	loaded, err := s.LoadProfile(profileRef)
 	if err != nil {
 		return "", err
+	}
+	if manifest.ID == "" {
+		manifest.ID = utils.Slug(manifest.Name, config.DefaultAssetSlug)
 	}
 	if loaded.Assets[manifest.ID] != nil {
 		return "", AssetExistsError{AssetID: manifest.ID}

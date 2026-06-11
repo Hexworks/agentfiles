@@ -29,6 +29,22 @@ type Manifest struct {
 	CreatedAt        time.Time `json:"created_at"`
 }
 
+// NewDraft builds a syntactically valid project manifest from form-style
+// inputs. The id is derived from name via utils.Slug so callers cannot drift
+// from app.Service.AddProject's id rule; CreatedAt is stamped to the current
+// UTC time so the returned value passes Manifest.Validate(). EnabledAgents is
+// copied defensively so later mutations on the input slice do not bleed into
+// the manifest.
+func NewDraft(name, path string, agents []string) *Manifest {
+	return &Manifest{
+		ID:            utils.Slug(name, config.DefaultProjectSlug),
+		Name:          name,
+		Path:          path,
+		EnabledAgents: append([]string(nil), agents...),
+		CreatedAt:     time.Now().UTC(),
+	}
+}
+
 // Validate checks only the core project invariants.
 func (m *Manifest) Validate() errs.DomainError {
 	if m.ID == "" || m.Name == "" || m.Path == "" {

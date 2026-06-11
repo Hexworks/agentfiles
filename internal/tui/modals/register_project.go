@@ -9,7 +9,7 @@ import (
 
 // RegisterProjectInput captures the fields collected by the Register Project
 // modal. The screen turns it into a `*project.Manifest` and hands it to
-// `app.Service.AddProject`, which slugs the id and enforces ownership.
+// `app.Service.AddProject`, which enforces ownership.
 type RegisterProjectInput struct {
 	Name          string
 	Path          string
@@ -18,19 +18,15 @@ type RegisterProjectInput struct {
 
 // NewRegisterProject builds the Register Project modal. Asset selection is
 // not collected here — projects are registered with no assets selected; the
-// user picks them later from the Select Project Assets Screen.
+// user picks them later from the Select Project Assets Screen. The resulting
+// payload is a `*project.Manifest` constructed via `project.NewDraft`, so the
+// returned value passes `Manifest.Validate()` without further work.
 func NewRegisterProject(initial RegisterProjectInput) *modal.Modal {
-	form, state := buildRegisterProject(initial)
-	return modal.NewForm("register-project", form, func(*huh.Form) any {
-		return &project.Manifest{
-			Name:          state.Name,
-			Path:          state.Path,
-			EnabledAgents: state.EnabledAgents,
-		}
-	})
+	form, _, extract := buildRegisterProject(initial)
+	return modal.NewForm("register-project", form, extract)
 }
 
-func buildRegisterProject(initial RegisterProjectInput) (*huh.Form, *RegisterProjectInput) {
+func buildRegisterProject(initial RegisterProjectInput) (*huh.Form, *RegisterProjectInput, func(*huh.Form) any) {
 	state := &RegisterProjectInput{
 		Name:          initial.Name,
 		Path:          initial.Path,
@@ -38,26 +34,12 @@ func buildRegisterProject(initial RegisterProjectInput) (*huh.Form, *RegisterPro
 	}
 	form := huh.NewForm(
 		huh.NewGroup(
-			huh.NewInput().
-				Key("name").
-				Title("name").
-				Description("The name of the project").
-				Value(&state.Name).
-				Validate(requiredString),
-			huh.NewInput().
-				Key("path").
-				Title("path").
-				Description("The path of the project").
-				Value(&state.Path).
-				Validate(requiredString),
-			huh.NewMultiSelect[string]().
-				Key("enabled_agents").
-				Title("enabled agents").
-				Description("Multi-select of agents to enable for this project. At least one required.").
-				Value(&state.EnabledAgents).
-				Options(AgentOptions()...).
-				Validate(requiredAgents),
+			nameInput(&state.Name, "The name of the project"),
+			pathInput(&state.Path, "The path of the project"),
+			enabledAgentsSelect(&state.EnabledAgents, "Multi-select of agents to enable for this project. At least one required."),
 		),
 	)
-	return form, state
+	return form, state, func(*huh.Form) any {
+		return project.NewDraft(state.Name, state.Path, state.EnabledAgents)
+	}
 }

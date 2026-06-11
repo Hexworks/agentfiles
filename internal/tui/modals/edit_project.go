@@ -3,61 +3,40 @@ package modals
 import (
 	"charm.land/huh/v2"
 
-	"github.com/hexworks/agentfiles/internal/project"
 	"github.com/hexworks/agentfiles/internal/tui/components/modal"
 )
 
-// editProjectState is the in-flight form state shared by the field
-// bindings and the extract closure.
-type editProjectState struct {
+// EditProjectInput is the typed payload delivered through `modal.ResolvedMsg`
+// when the Edit Project form is submitted. It carries only the editable
+// fields; the screen that opens the modal owns the underlying
+// `*project.Manifest` and is responsible for merging these values back in
+// while preserving `ID`, `SelectedAssetIDs`, and `CreatedAt`.
+type EditProjectInput struct {
 	Name          string
 	Path          string
 	EnabledAgents []string
 }
 
-// NewEditProject builds the Edit Project modal prefilled from an existing
-// project manifest. `Project.ID` and `SelectedAssetIDs` are not exposed —
-// the screen keeps them untouched. The payload is the modified
-// `*project.Manifest`.
-func NewEditProject(existing *project.Manifest) *modal.Modal {
-	form, state := buildEditProject(existing)
-	return modal.NewForm("edit-project", form, func(*huh.Form) any {
-		updated := *existing
-		updated.Name = state.Name
-		updated.Path = state.Path
-		updated.EnabledAgents = state.EnabledAgents
-		return &updated
-	})
+// NewEditProject builds the Edit Project modal prefilled from existing
+// values. `Project.ID` and `SelectedAssetIDs` are not exposed because the
+// modal cannot edit them — see `EditProjectInput`.
+func NewEditProject(initial EditProjectInput) *modal.Modal {
+	form, _, extract := buildEditProject(initial)
+	return modal.NewForm("edit-project", form, extract)
 }
 
-func buildEditProject(existing *project.Manifest) (*huh.Form, *editProjectState) {
-	state := &editProjectState{
-		Name:          existing.Name,
-		Path:          existing.Path,
-		EnabledAgents: append([]string(nil), existing.EnabledAgents...),
+func buildEditProject(initial EditProjectInput) (*huh.Form, *EditProjectInput, func(*huh.Form) any) {
+	state := &EditProjectInput{
+		Name:          initial.Name,
+		Path:          initial.Path,
+		EnabledAgents: append([]string(nil), initial.EnabledAgents...),
 	}
 	form := huh.NewForm(
 		huh.NewGroup(
-			huh.NewInput().
-				Key("name").
-				Title("name").
-				Description("The name of the project").
-				Value(&state.Name).
-				Validate(requiredString),
-			huh.NewInput().
-				Key("path").
-				Title("path").
-				Description("The path of the project").
-				Value(&state.Path).
-				Validate(requiredString),
-			huh.NewMultiSelect[string]().
-				Key("enabled_agents").
-				Title("enabled agents").
-				Description("Multi-select of agents enabled for this project. At least one required.").
-				Value(&state.EnabledAgents).
-				Options(AgentOptions()...).
-				Validate(requiredAgents),
+			nameInput(&state.Name, "The name of the project"),
+			pathInput(&state.Path, "The path of the project"),
+			enabledAgentsSelect(&state.EnabledAgents, "Multi-select of agents enabled for this project. At least one required."),
 		),
 	)
-	return form, state
+	return form, state, func(*huh.Form) any { return *state }
 }

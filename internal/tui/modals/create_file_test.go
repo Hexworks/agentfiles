@@ -2,18 +2,20 @@ package modals
 
 import (
 	"testing"
-
-	"charm.land/huh/v2"
 )
 
-func TestCreateFile_ResolvesWithTypedInput(t *testing.T) {
-	form, state := buildCreateFile(CreateFileInput{Path: "README.md"})
-	state.Path = "scripts/install.sh"
+func TestCreateFile_PrefillSeedsState(t *testing.T) {
+	_, state, _ := buildCreateFile(CreateFileInput{Path: "README.md"})
+	if state.Path != "README.md" {
+		t.Errorf("Path = %q", state.Path)
+	}
+}
+
+func TestCreateFile_PumpResolvesWithTypedInput(t *testing.T) {
+	form, _, extract := buildCreateFile(CreateFileInput{Path: "scripts/install.sh"})
 	submitForm(t, form)
 
-	msg := runResolvedThroughModal(t, "create-file", form, func(*huh.Form) any {
-		return *state
-	})
+	msg := runResolvedThroughModal(t, "create-file", form, extract)
 
 	got, ok := msg.Value.(CreateFileInput)
 	if !ok {
@@ -24,13 +26,16 @@ func TestCreateFile_ResolvesWithTypedInput(t *testing.T) {
 	}
 }
 
+func TestCreateFile_RejectsEmptyRequiredField(t *testing.T) {
+	form, _, _ := buildCreateFile(CreateFileInput{})
+	expectFormStuck(t, form)
+}
+
 func TestCreateFile_CancelResolvesEmpty(t *testing.T) {
-	form, state := buildCreateFile(CreateFileInput{Path: "x"})
+	form, _, extract := buildCreateFile(CreateFileInput{Path: "x"})
 	abortForm(form)
 
-	msg := runResolvedThroughModal(t, "create-file", form, func(*huh.Form) any {
-		return *state
-	})
+	msg := runResolvedThroughModal(t, "create-file", form, extract)
 
 	if msg.Confirmed || msg.Value != nil {
 		t.Errorf("cancel resolved = %#v", msg)

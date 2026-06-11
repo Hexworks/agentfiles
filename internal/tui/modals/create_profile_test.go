@@ -2,20 +2,21 @@ package modals
 
 import (
 	"testing"
-
-	"charm.land/huh/v2"
 )
 
-func TestCreateProfile_ResolvesWithTypedInput(t *testing.T) {
-	form, state := buildCreateProfile(CreateProfileInput{Name: "demo", Path: "/tmp/demo"})
+func TestCreateProfile_PrefillSeedsState(t *testing.T) {
+	_, state, _ := buildCreateProfile(CreateProfileInput{Name: "demo", Path: "/tmp/demo"})
 
-	state.Name = "renamed"
-	state.Path = "/tmp/renamed"
+	if state.Name != "demo" || state.Path != "/tmp/demo" {
+		t.Errorf("state = %+v", state)
+	}
+}
+
+func TestCreateProfile_PumpResolvesWithTypedInput(t *testing.T) {
+	form, _, extract := buildCreateProfile(CreateProfileInput{Name: "demo", Path: "/tmp/demo"})
 	submitForm(t, form)
 
-	msg := runResolvedThroughModal(t, "create-profile", form, func(*huh.Form) any {
-		return *state
-	})
+	msg := runResolvedThroughModal(t, "create-profile", form, extract)
 
 	if !msg.Confirmed {
 		t.Fatalf("Confirmed = false, want true")
@@ -24,19 +25,22 @@ func TestCreateProfile_ResolvesWithTypedInput(t *testing.T) {
 	if !ok {
 		t.Fatalf("Value type = %T, want CreateProfileInput", msg.Value)
 	}
-	if got != (CreateProfileInput{Name: "renamed", Path: "/tmp/renamed"}) {
+	if got != (CreateProfileInput{Name: "demo", Path: "/tmp/demo"}) {
 		t.Errorf("Value = %#v", got)
 	}
 }
 
+func TestCreateProfile_RejectsEmptyRequiredField(t *testing.T) {
+	form, _, _ := buildCreateProfile(CreateProfileInput{})
+	expectFormStuck(t, form)
+}
+
 func TestCreateProfile_CancelResolvesEmpty(t *testing.T) {
-	form, state := buildCreateProfile(CreateProfileInput{Name: "demo", Path: "/tmp/demo"})
+	form, _, extract := buildCreateProfile(CreateProfileInput{Name: "demo", Path: "/tmp/demo"})
 
 	abortForm(form)
 
-	msg := runResolvedThroughModal(t, "create-profile", form, func(*huh.Form) any {
-		return *state
-	})
+	msg := runResolvedThroughModal(t, "create-profile", form, extract)
 
 	if msg.Confirmed {
 		t.Errorf("Confirmed = true, want false on cancel")

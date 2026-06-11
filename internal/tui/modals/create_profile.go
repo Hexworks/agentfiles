@@ -17,32 +17,17 @@ type CreateProfileInput struct {
 // preload the input fields (useful for testing and for "retry after error"
 // flows); a zero value starts the form empty.
 func NewCreateProfile(initial CreateProfileInput) *modal.Modal {
-	form, state := buildCreateProfile(initial)
-	return modal.NewForm("create-profile", form, func(*huh.Form) any {
-		return *state
-	})
+	form, _, extract := buildCreateProfile(initial)
+	return modal.NewForm("create-profile", form, extract)
 }
 
-// buildCreateProfile assembles the form and the shared state pointer the
-// fields write into. Exposed at package scope so unit tests can drive the
-// form without going through the modal wrapper.
-func buildCreateProfile(initial CreateProfileInput) (*huh.Form, *CreateProfileInput) {
+func buildCreateProfile(initial CreateProfileInput) (*huh.Form, *CreateProfileInput, func(*huh.Form) any) {
 	state := &CreateProfileInput{Name: initial.Name, Path: initial.Path}
 	form := huh.NewForm(
 		huh.NewGroup(
-			huh.NewInput().
-				Key("name").
-				Title("Name").
-				Description("Display name for the profile").
-				Value(&state.Name).
-				Validate(requiredString),
-			huh.NewInput().
-				Key("path").
-				Title("Path").
-				Description("Profile directory path. ~ is expanded.").
-				Value(&state.Path).
-				Validate(requiredString),
+			nameInput(&state.Name, "Display name for the profile"),
+			pathInput(&state.Path, "Profile directory path. ~ is expanded."),
 		),
 	)
-	return form, state
+	return form, state, func(*huh.Form) any { return *state }
 }

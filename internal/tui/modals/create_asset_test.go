@@ -4,69 +4,81 @@ import (
 	"reflect"
 	"testing"
 
-	"charm.land/huh/v2"
-
 	"github.com/hexworks/agentfiles/internal/asset"
 )
 
-func TestCreateAsset_ResolvesAsManifest(t *testing.T) {
-	form, state := buildCreateAsset(asset.Manifest{})
-
-	state.Name = "Hello World"
-	state.Type = asset.TypeAgentsDoc
-	state.Description = "test asset"
-	state.Tags = "git, build, ci"
-	state.CompatibleAgents = []string{AgentClaudeCode, AgentCodex}
-	state.ExclusiveGroup = "agents_doc"
-	submitForm(t, form)
-
-	msg := runResolvedThroughModal(t, "create-asset", form, func(*huh.Form) any {
-		return assetManifestFromState(state)
+func TestCreateAsset_PrefillSeedsState(t *testing.T) {
+	_, state, _ := buildCreateAsset(asset.Manifest{
+		Name:             "Existing",
+		Type:             asset.TypeAgentsDoc,
+		Description:      "desc",
+		Tags:             []string{"a", "b"},
+		CompatibleAgents: []string{AgentCodex},
+		ExclusiveGroup:   "g",
 	})
 
-	got, ok := msg.Value.(asset.Manifest)
-	if !ok {
-		t.Fatalf("Value type = %T, want asset.Manifest", msg.Value)
+	if state.Name != "Existing" || state.Type != asset.TypeAgentsDoc ||
+		state.Description != "desc" || state.Tags != "a, b" ||
+		!reflect.DeepEqual(state.CompatibleAgents, []string{AgentCodex}) ||
+		state.ExclusiveGroup != "g" {
+		t.Errorf("state = %+v", state)
 	}
+}
 
-	want := asset.Manifest{
-		ID:               "hello-world",
+func TestCreateAsset_PumpResolvesAsManifestWithoutID(t *testing.T) {
+	form, _, extract := buildCreateAsset(asset.Manifest{
 		Name:             "Hello World",
 		Type:             asset.TypeAgentsDoc,
 		Description:      "test asset",
 		Tags:             []string{"git", "build", "ci"},
 		CompatibleAgents: []string{AgentClaudeCode, AgentCodex},
 		ExclusiveGroup:   "agents_doc",
+	})
+	submitForm(t, form)
+
+	msg := runResolvedThroughModal(t, "create-asset", form, extract)
+
+	got, ok := msg.Value.(asset.Manifest)
+	if !ok {
+		t.Fatalf("Value type = %T, want asset.Manifest", msg.Value)
+	}
+	// MultiSelect.Blur canonicalises the slice to match the option order
+	// declared in config.AllAgents, so claude-code/codex come back as
+	// codex/claude-code.
+	want := asset.Manifest{
+		Name:             "Hello World",
+		Type:             asset.TypeAgentsDoc,
+		Description:      "test asset",
+		Tags:             []string{"git", "build", "ci"},
+		CompatibleAgents: []string{AgentCodex, AgentClaudeCode},
+		ExclusiveGroup:   "agents_doc",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("Manifest = %#v\nwant       %#v", got, want)
 	}
-}
-
-func TestCreateAsset_DefaultsTypeToSkillWhenInitialEmpty(t *testing.T) {
-	_, state := buildCreateAsset(asset.Manifest{})
-	if state.Type != asset.TypeSkill {
-		t.Errorf("default Type = %q, want %q", state.Type, asset.TypeSkill)
+	if got.ID != "" {
+		t.Errorf("ID = %q, want empty (slug applied by app.Service.InitAsset)", got.ID)
 	}
 }
 
+func TestCreateAsset_RejectsEmptyRequiredFields(t *testing.T) {
+	form, _, _ := buildCreateAsset(asset.Manifest{})
+	expectFormStuck(t, form)
+}
+
 func TestCreateAsset_OmitsEmptyOptionalFieldsFromManifest(t *testing.T) {
-	form, state := buildCreateAsset(asset.Manifest{})
-	state.Name = "no-extras"
-	state.Type = asset.TypeRule
-	state.Description = "minimal"
-	state.Tags = "   "          // whitespace only → nil
-	state.CompatibleAgents = nil // empty → empty
-	state.ExclusiveGroup = ""
+	form, _, extract := buildCreateAsset(asset.Manifest{
+		Name:        "no-extras",
+		Type:        asset.TypeRule,
+		Description: "minimal",
+	})
 	submitForm(t, form)
 
-	msg := runResolvedThroughModal(t, "create-asset", form, func(*huh.Form) any {
-		return assetManifestFromState(state)
-	})
+	msg := runResolvedThroughModal(t, "create-asset", form, extract)
 
 	got := msg.Value.(asset.Manifest)
 	if got.Tags != nil {
-		t.Errorf("Tags = %v, want nil for whitespace-only input", got.Tags)
+		t.Errorf("Tags = %v, want nil for unset input", got.Tags)
 	}
 	if len(got.CompatibleAgents) != 0 {
 		t.Errorf("CompatibleAgents = %v, want empty", got.CompatibleAgents)
@@ -74,18 +86,16 @@ func TestCreateAsset_OmitsEmptyOptionalFieldsFromManifest(t *testing.T) {
 	if got.ExclusiveGroup != "" {
 		t.Errorf("ExclusiveGroup = %q, want empty", got.ExclusiveGroup)
 	}
-	if got.ID != "no-extras" {
-		t.Errorf("ID = %q, want %q", got.ID, "no-extras")
+	if got.Name != "no-extras" {
+		t.Errorf("Name = %q", got.Name)
 	}
 }
 
 func TestCreateAsset_CancelResolvesEmpty(t *testing.T) {
-	form, state := buildCreateAsset(asset.Manifest{Name: "x", Description: "y"})
+	form, _, extract := buildCreateAsset(asset.Manifest{Name: "x", Description: "y"})
 	abortForm(form)
 
-	msg := runResolvedThroughModal(t, "create-asset", form, func(*huh.Form) any {
-		return assetManifestFromState(state)
-	})
+	msg := runResolvedThroughModal(t, "create-asset", form, extract)
 
 	if msg.Confirmed || msg.Value != nil {
 		t.Errorf("cancel resolved = %#v", msg)
@@ -99,8 +109,8 @@ func TestNewCreateAsset_UsesStableID(t *testing.T) {
 	}
 }
 
-func TestNewCreateAsset_PrefillRoundtripsTags(t *testing.T) {
-	_, state := buildCreateAsset(asset.Manifest{
+func TestCreateAsset_PrefillRoundtripsTags(t *testing.T) {
+	_, state, _ := buildCreateAsset(asset.Manifest{
 		Tags: []string{"a", "b", "c"},
 	})
 	if state.Tags != "a, b, c" {

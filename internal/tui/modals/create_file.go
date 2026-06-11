@@ -14,23 +14,16 @@ type CreateFileInput struct {
 
 // NewCreateFile builds the Create File modal.
 func NewCreateFile(initial CreateFileInput) *modal.Modal {
-	form, state := buildCreateFile(initial)
-	return modal.NewForm("create-file", form, func(*huh.Form) any {
-		return *state
-	})
+	form, _, extract := buildCreateFile(initial)
+	return modal.NewForm("create-file", form, extract)
 }
 
-func buildCreateFile(initial CreateFileInput) (*huh.Form, *CreateFileInput) {
+func buildCreateFile(initial CreateFileInput) (*huh.Form, *CreateFileInput, func(*huh.Form) any) {
 	state := &CreateFileInput{Path: initial.Path}
 	form := huh.NewForm(
 		huh.NewGroup(
-			huh.NewInput().
-				Key("path").
-				Title("Path").
-				Description("File path relative to the asset folder").
-				Value(&state.Path).
-				Validate(requiredString),
+			pathInput(&state.Path, "File path relative to the asset folder"),
 		),
 	)
-	return form, state
+	return form, state, func(*huh.Form) any { return *state }
 }

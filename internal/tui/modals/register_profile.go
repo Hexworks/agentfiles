@@ -14,23 +14,16 @@ type RegisterProfileInput struct {
 
 // NewRegisterProfile builds the Register Profile modal.
 func NewRegisterProfile(initial RegisterProfileInput) *modal.Modal {
-	form, state := buildRegisterProfile(initial)
-	return modal.NewForm("register-profile", form, func(*huh.Form) any {
-		return *state
-	})
+	form, _, extract := buildRegisterProfile(initial)
+	return modal.NewForm("register-profile", form, extract)
 }
 
-func buildRegisterProfile(initial RegisterProfileInput) (*huh.Form, *RegisterProfileInput) {
+func buildRegisterProfile(initial RegisterProfileInput) (*huh.Form, *RegisterProfileInput, func(*huh.Form) any) {
 	state := &RegisterProfileInput{Path: initial.Path}
 	form := huh.NewForm(
 		huh.NewGroup(
-			huh.NewInput().
-				Key("path").
-				Title("Path").
-				Description("Profile directory path. ~ is expanded.").
-				Value(&state.Path).
-				Validate(requiredString),
+			pathInput(&state.Path, "Profile directory path. ~ is expanded."),
 		),
 	)
-	return form, state
+	return form, state, func(*huh.Form) any { return *state }
 }

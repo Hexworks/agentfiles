@@ -2,19 +2,20 @@ package modals
 
 import (
 	"testing"
-
-	"charm.land/huh/v2"
 )
 
-func TestRegisterProfile_ResolvesWithTypedInput(t *testing.T) {
-	form, state := buildRegisterProfile(RegisterProfileInput{Path: "/seed"})
+func TestRegisterProfile_PrefillSeedsState(t *testing.T) {
+	_, state, _ := buildRegisterProfile(RegisterProfileInput{Path: "/seed"})
+	if state.Path != "/seed" {
+		t.Errorf("Path = %q", state.Path)
+	}
+}
 
-	state.Path = "/home/addamsson/profiles/demo"
+func TestRegisterProfile_PumpResolvesWithTypedInput(t *testing.T) {
+	form, _, extract := buildRegisterProfile(RegisterProfileInput{Path: "/home/addamsson/profiles/demo"})
 	submitForm(t, form)
 
-	msg := runResolvedThroughModal(t, "register-profile", form, func(*huh.Form) any {
-		return *state
-	})
+	msg := runResolvedThroughModal(t, "register-profile", form, extract)
 
 	got, ok := msg.Value.(RegisterProfileInput)
 	if !ok {
@@ -25,13 +26,16 @@ func TestRegisterProfile_ResolvesWithTypedInput(t *testing.T) {
 	}
 }
 
+func TestRegisterProfile_RejectsEmptyRequiredField(t *testing.T) {
+	form, _, _ := buildRegisterProfile(RegisterProfileInput{})
+	expectFormStuck(t, form)
+}
+
 func TestRegisterProfile_CancelResolvesEmpty(t *testing.T) {
-	form, state := buildRegisterProfile(RegisterProfileInput{Path: "/seed"})
+	form, _, extract := buildRegisterProfile(RegisterProfileInput{Path: "/seed"})
 	abortForm(form)
 
-	msg := runResolvedThroughModal(t, "register-profile", form, func(*huh.Form) any {
-		return *state
-	})
+	msg := runResolvedThroughModal(t, "register-profile", form, extract)
 
 	if msg.Confirmed || msg.Value != nil {
 		t.Errorf("cancel resolved = %#v", msg)

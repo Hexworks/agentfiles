@@ -5,7 +5,6 @@ import (
 
 	"github.com/hexworks/agentfiles/internal/asset"
 	"github.com/hexworks/agentfiles/internal/tui/components/modal"
-	"github.com/hexworks/agentfiles/internal/utils"
 )
 
 // createAssetState is the in-flight form state shared by the field bindings
@@ -21,18 +20,16 @@ type createAssetState struct {
 	ExclusiveGroup   string
 }
 
-// NewCreateAsset builds the Create Asset modal. `initial` lets callers
-// preload fields (also used by tests). The resulting payload is an
-// `asset.Manifest` ready for `app.Service.InitAsset`; the screen is
-// responsible for any domain-level retry on `AssetExistsError`.
+// NewCreateAsset builds the Create Asset modal. `initial` lets callers preload
+// fields (also used by tests). The resulting payload is an `asset.Manifest`
+// with `ID` left empty — `app.Service.InitAsset` derives the id from the name
+// via `utils.Slug`, mirroring how `AddProject` slugs project ids.
 func NewCreateAsset(initial asset.Manifest) *modal.Modal {
-	form, state := buildCreateAsset(initial)
-	return modal.NewForm("create-asset", form, func(*huh.Form) any {
-		return assetManifestFromState(state)
-	})
+	form, _, extract := buildCreateAsset(initial)
+	return modal.NewForm("create-asset", form, extract)
 }
 
-func buildCreateAsset(initial asset.Manifest) (*huh.Form, *createAssetState) {
+func buildCreateAsset(initial asset.Manifest) (*huh.Form, *createAssetState, func(*huh.Form) any) {
 	state := &createAssetState{
 		Name:             initial.Name,
 		Type:             initial.Type,
@@ -41,53 +38,21 @@ func buildCreateAsset(initial asset.Manifest) (*huh.Form, *createAssetState) {
 		CompatibleAgents: append([]string(nil), initial.CompatibleAgents...),
 		ExclusiveGroup:   initial.ExclusiveGroup,
 	}
-	if state.Type == "" {
-		state.Type = asset.TypeSkill
-	}
 	form := huh.NewForm(
 		huh.NewGroup(
-			huh.NewInput().
-				Key("name").
-				Title("name").
-				Description("The name of the asset (eg: `agents.md`)").
-				Value(&state.Name).
-				Validate(requiredString),
-			huh.NewSelect[asset.Type]().
-				Key("type").
-				Title("type").
-				Description("The type of the asset (eg: `agents_doc`)").
-				Value(&state.Type).
-				Options(assetTypeOptions()...),
-			huh.NewText().
-				Key("description").
-				Title("description").
-				Description("Describe the asset").
-				Value(&state.Description).
-				Validate(requiredString),
-			huh.NewInput().
-				Key("tags").
-				Title("tags").
-				Description(`Assign (optional) tags, eg: "git, build"`).
-				Value(&state.Tags),
-			huh.NewMultiSelect[string]().
-				Key("compatible_agents").
-				Title("compatible agents").
-				Description("Multi-select of agents this asset renders for. Empty means \"all enabled agents\".").
-				Value(&state.CompatibleAgents).
-				Options(AgentOptions()...),
-			huh.NewInput().
-				Key("exclusive_group").
-				Title("exclusive group").
-				Description("Assign (optional) exclusive group (eg: `agents_doc`)").
-				Value(&state.ExclusiveGroup),
+			nameInput(&state.Name, "The name of the asset (eg: `agents.md`)"),
+			assetTypeSelect(&state.Type, "The type of the asset (eg: `agents_doc`)"),
+			descriptionText(&state.Description, "Describe the asset"),
+			tagsInput(&state.Tags, `Assign (optional) tags, eg: "git, build"`),
+			compatibleAgentsSelect(&state.CompatibleAgents, "Multi-select of agents this asset renders for. Empty means \"all enabled agents\"."),
+			exclusiveGroupInput(&state.ExclusiveGroup, "Assign (optional) exclusive group (eg: `agents_doc`)"),
 		),
 	)
-	return form, state
+	return form, state, func(*huh.Form) any { return assetManifestFromState(state) }
 }
 
 func assetManifestFromState(state *createAssetState) asset.Manifest {
 	return asset.Manifest{
-		ID:               utils.Slug(state.Name),
 		Name:             state.Name,
 		Type:             state.Type,
 		Description:      state.Description,
@@ -95,15 +60,6 @@ func assetManifestFromState(state *createAssetState) asset.Manifest {
 		CompatibleAgents: state.CompatibleAgents,
 		ExclusiveGroup:   state.ExclusiveGroup,
 	}
-}
-
-func assetTypeOptions() []huh.Option[asset.Type] {
-	types := asset.AllTypes()
-	out := make([]huh.Option[asset.Type], 0, len(types))
-	for _, t := range types {
-		out = append(out, huh.NewOption(string(t), t))
-	}
-	return out
 }
 
 func joinTags(tags []string) string {
