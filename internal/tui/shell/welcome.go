@@ -5,6 +5,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/hexworks/agentfiles/internal/actions"
 	"github.com/hexworks/agentfiles/internal/tui/styles"
 )
 
@@ -35,10 +36,10 @@ type welcomeScreen struct {
 	choose key.Binding
 }
 
-func newWelcomeScreen(globals globalKeyMap) *welcomeScreen {
+func newWelcomeScreen(globals globalKeyMap, a *actions.Actions) *welcomeScreen {
 	return &welcomeScreen{
 		items: []welcomeItem{
-			{label: "Profiles", action: func() tea.Cmd { return pushCmd(newProfilesStub()) }},
+			{label: "Profiles", action: func() tea.Cmd { return pushCmd(newProfilesScreen(a)) }},
 			{label: "Settings", action: func() tea.Cmd { return pushCmd(newSettingsScreen()) }},
 			{label: "Quit", action: func() tea.Cmd { return tea.Quit }},
 		},

@@ -66,7 +66,7 @@ func New(a *actions.Actions, log *notifications.Log) Model {
 		toast:   &toastAdapter{inner: notifications.NewToast(0)},
 		log:     log,
 		keys:    keys,
-		stack:   []Screen{newWelcomeScreen(keys)},
+		stack:   []Screen{newWelcomeScreen(keys, a)},
 	}
 }
 

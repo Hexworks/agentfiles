@@ -1,7 +1,7 @@
 ---
 id: 0025
 type: feature
-status: pending
+status: in-review
 topics: go, tui, profile
 depends_on: 0021, 0022, 0023, 0024
 ---
@@ -105,3 +105,7 @@ Plus:
 make build && make test && make lint
 ./bin/af   # Welcome → Profiles → Create/Register/Edit/Delete flows
 ```
+
+## Plan
+
+[plan.md](./plan.md)

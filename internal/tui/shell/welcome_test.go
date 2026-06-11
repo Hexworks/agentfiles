@@ -5,10 +5,20 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/hexworks/agentfiles/internal/actions"
+	"github.com/hexworks/agentfiles/internal/app"
 )
 
+func newTestWelcomeScreen(t *testing.T) *welcomeScreen {
+	t.Helper()
+	dir := t.TempDir()
+	svc := app.New(dir + "/registry.json")
+	return newWelcomeScreen(defaultGlobalKeyMap(), actions.New(svc))
+}
+
 func TestWelcomeScreen_InitialCursorOnProfiles(t *testing.T) {
-	s := newWelcomeScreen(defaultGlobalKeyMap())
+	s := newTestWelcomeScreen(t)
 	if s.cursor != 0 {
 		t.Fatalf("cursor = %d, want 0", s.cursor)
 	}
@@ -27,7 +37,7 @@ func TestWelcomeScreen_DownMovesCursor(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			s := newWelcomeScreen(defaultGlobalKeyMap())
+			s := newTestWelcomeScreen(t)
 			_, _ = s.Update(tc.kp)
 			if s.cursor != 1 {
 				t.Errorf("cursor = %d, want 1", s.cursor)
@@ -46,7 +56,7 @@ func TestWelcomeScreen_UpWrapsFromTop(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			s := newWelcomeScreen(defaultGlobalKeyMap())
+			s := newTestWelcomeScreen(t)
 			_, _ = s.Update(tc.kp)
 			if s.cursor != len(s.items)-1 {
 				t.Errorf("cursor = %d, want %d (wrap)", s.cursor, len(s.items)-1)
@@ -65,7 +75,7 @@ func TestWelcomeScreen_DownWrapsFromBottom(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			s := newWelcomeScreen(defaultGlobalKeyMap())
+			s := newTestWelcomeScreen(t)
 			s.cursor = len(s.items) - 1
 			_, _ = s.Update(tc.kp)
 			if s.cursor != 0 {
@@ -75,8 +85,8 @@ func TestWelcomeScreen_DownWrapsFromBottom(t *testing.T) {
 	}
 }
 
-func TestWelcomeScreen_EnterOnProfilesPushesProfilesStub(t *testing.T) {
-	s := newWelcomeScreen(defaultGlobalKeyMap())
+func TestWelcomeScreen_EnterOnProfilesPushesProfilesScreen(t *testing.T) {
+	s := newTestWelcomeScreen(t)
 	s.cursor = 0
 	_, cmd := s.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd == nil {
@@ -86,13 +96,13 @@ func TestWelcomeScreen_EnterOnProfilesPushesProfilesStub(t *testing.T) {
 	if !ok {
 		t.Fatalf("cmd produced %T, want PushScreenMsg", cmd())
 	}
-	if _, ok := push.Screen.(*profilesStub); !ok {
-		t.Fatalf("pushed screen = %T, want *profilesStub", push.Screen)
+	if _, ok := push.Screen.(*profilesScreen); !ok {
+		t.Fatalf("pushed screen = %T, want *profilesScreen", push.Screen)
 	}
 }
 
 func TestWelcomeScreen_VOnSettingsPushesSettingsScreen(t *testing.T) {
-	s := newWelcomeScreen(defaultGlobalKeyMap())
+	s := newTestWelcomeScreen(t)
 	s.cursor = 1
 	_, cmd := s.Update(tea.KeyPressMsg{Code: 'v', Text: "v"})
 	if cmd == nil {
@@ -108,7 +118,7 @@ func TestWelcomeScreen_VOnSettingsPushesSettingsScreen(t *testing.T) {
 }
 
 func TestWelcomeScreen_EnterOnQuitEmitsQuitMsg(t *testing.T) {
-	s := newWelcomeScreen(defaultGlobalKeyMap())
+	s := newTestWelcomeScreen(t)
 	s.cursor = len(s.items) - 1
 	_, cmd := s.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd == nil {
@@ -120,7 +130,7 @@ func TestWelcomeScreen_EnterOnQuitEmitsQuitMsg(t *testing.T) {
 }
 
 func TestWelcomeScreen_UnrelatedKeyIsNoop(t *testing.T) {
-	s := newWelcomeScreen(defaultGlobalKeyMap())
+	s := newTestWelcomeScreen(t)
 	s.cursor = 1
 	_, cmd := s.Update(tea.KeyPressMsg{Code: 'x', Text: "x"})
 	if cmd != nil {
@@ -132,14 +142,14 @@ func TestWelcomeScreen_UnrelatedKeyIsNoop(t *testing.T) {
 }
 
 func TestWelcomeScreen_TitleIsAgentfiles(t *testing.T) {
-	s := newWelcomeScreen(defaultGlobalKeyMap())
+	s := newTestWelcomeScreen(t)
 	if got := s.Title(); got != "Agentfiles" {
 		t.Errorf("Title() = %q, want Agentfiles", got)
 	}
 }
 
 func TestWelcomeScreen_BodyContainsAllItems(t *testing.T) {
-	s := newWelcomeScreen(defaultGlobalKeyMap())
+	s := newTestWelcomeScreen(t)
 	body := s.Body(80, 10)
 	for _, want := range []string{"Choose a task", "Profiles", "Settings", "Quit"} {
 		if !strings.Contains(body, want) {
@@ -149,7 +159,7 @@ func TestWelcomeScreen_BodyContainsAllItems(t *testing.T) {
 }
 
 func TestWelcomeScreen_BodyMarksSelectedRow(t *testing.T) {
-	s := newWelcomeScreen(defaultGlobalKeyMap())
+	s := newTestWelcomeScreen(t)
 	s.cursor = 1
 	body := s.Body(80, 10)
 	if !strings.Contains(body, "> Settings") {
@@ -161,7 +171,7 @@ func TestWelcomeScreen_BodyMarksSelectedRow(t *testing.T) {
 }
 
 func TestWelcomeScreen_BodyClampsLongLabelsToWidth(t *testing.T) {
-	s := newWelcomeScreen(defaultGlobalKeyMap())
+	s := newTestWelcomeScreen(t)
 	// width 6: prefix 4 + label 2 → "Profiles" must truncate to "P…".
 	body := s.Body(6, 10)
 	if strings.Contains(body, "Profiles") {
