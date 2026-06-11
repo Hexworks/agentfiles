@@ -37,6 +37,7 @@ type profilesScreen struct {
 	delete   *mnemonic.Button
 	create   *mnemonic.Button
 	register *mnemonic.Button
+	back     *mnemonic.Button
 	// set is rebuilt on every selection-state transition so duplicate
 	// mnemonics panic at Set.Add time — the load-bearing safety net
 	// required by task 0025.
@@ -76,20 +77,28 @@ func newProfilesScreen(a *actions.Actions) *profilesScreen {
 	return s
 }
 
-// buildButtons creates the four mnemonic buttons once. Their Actions
-// close over s so each button can reach the current state when its
-// keybinding fires — the closures are stable, the data they read is not.
+// buildButtons creates the mnemonic buttons once. Their Actions close
+// over s so each button can reach the current state when its keybinding
+// fires — the closures are stable, the data they read is not. The Back
+// button also fires on `esc` so it follows the same dismissal pattern as
+// the rest of the TUI.
 func (s *profilesScreen) buildButtons() {
 	s.edit = mnemonic.New("Edit", 'e', func() tea.Cmd { return s.onEdit() })
 	s.delete = mnemonic.New("Delete", 'd', func() tea.Cmd { return s.onDelete() })
 	s.create = mnemonic.New("Create New Profile", 'c', func() tea.Cmd { return s.onCreate() })
 	s.register = mnemonic.New("Register Profile", 'r', func() tea.Cmd { return s.onRegister() })
+	s.back = mnemonic.New(
+		"Back",
+		'b',
+		func() tea.Cmd { return popCmd() },
+		mnemonic.WithExtraBindingKeys("esc"),
+	)
 }
 
 // rebuildSet refreshes the mnemonic.Set after a selection-state change.
-// With no profiles the row-level buttons drop out so c/r can be used
-// without conflict; with profiles all four are present and the Set's
-// duplicate-rune check verifies they remain disjoint.
+// With no profiles the row-level buttons drop out so e/d can be reused
+// elsewhere later without conflict; with profiles all five are present
+// and the Set's duplicate-rune check verifies they remain disjoint.
 func (s *profilesScreen) rebuildSet() {
 	set := mnemonic.NewSet()
 	if len(s.profiles) > 0 {
@@ -98,6 +107,7 @@ func (s *profilesScreen) rebuildSet() {
 	}
 	set.Add(s.create)
 	set.Add(s.register)
+	set.Add(s.back)
 	s.set = set
 }
 
@@ -122,6 +132,13 @@ func (s *profilesScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 		if s.modal != nil {
 			mw, mh := modalSize(m.Width, m.Height)
 			s.modal.SetSize(mw, mh)
+			// Forward the resize through the modal so the hosted huh
+			// form (or any other Bubble Tea content) sees its new
+			// viewport. formContent does not satisfy Resizable, so
+			// SetSize alone would not reach it.
+			var cmd tea.Cmd
+			s.modal, cmd = s.modal.Update(m)
+			return s, cmd
 		}
 		return s, nil
 
@@ -173,8 +190,8 @@ func (s *profilesScreen) forwardToModal(msg tea.Msg) (Screen, tea.Cmd) {
 func (s *profilesScreen) Title() string { return "Profiles" }
 
 // StatusKeys exposes only the row-level mnemonics (e/edit, d/delete).
-// Screen-level c/r are visible on the button row beneath the table and
-// must not be duplicated in the bar (parent task 0015 rule).
+// Screen-level c/r/b are visible on the button row beneath the table
+// and must not be duplicated in the bar (parent task 0015 rule).
 func (s *profilesScreen) StatusKeys() []key.Binding {
 	if len(s.profiles) == 0 {
 		return nil
@@ -190,20 +207,24 @@ func (s *profilesScreen) Body(width, height int) string {
 	return s.modal.Render(background, width, height)
 }
 
-// bodyContent renders the table plus the screen-level button row. The
-// empty state shows a small explanatory line in place of the table so
-// the user is not staring at a styled-but-empty border.
-func (s *profilesScreen) bodyContent(width, _ int) string {
-	buttons := lipgloss.PlaceHorizontal(
-		width,
-		lipgloss.Left,
-		" "+s.create.View()+"  "+s.register.View(),
-	)
+// bodyContent renders the table plus the screen-level button row,
+// padded to exactly height rows. Returning a shorter string would let
+// the shell's vertical join pull the status bar off-screen when a modal
+// composites itself over a larger canvas.
+func (s *profilesScreen) bodyContent(width, height int) string {
+	buttonRow := " " + s.create.View() + "  " + s.register.View() + "  " + s.back.View()
+	buttons := lipgloss.PlaceHorizontal(width, lipgloss.Left, buttonRow)
+	var content string
 	if len(s.profiles) == 0 {
 		empty := " No profiles registered. Press 'c' to create one or 'r' to register an existing folder."
-		return lipgloss.JoinVertical(lipgloss.Left, empty, "", buttons)
+		content = lipgloss.JoinVertical(lipgloss.Left, empty, "", buttons)
+	} else {
+		content = lipgloss.JoinVertical(lipgloss.Left, s.table.View(), "", buttons)
 	}
-	return lipgloss.JoinVertical(lipgloss.Left, s.table.View(), "", buttons)
+	if height <= 0 {
+		return content
+	}
+	return lipgloss.NewStyle().Width(width).Height(height).Render(content)
 }
 
 // rebuildTable constructs a fresh bubbles/table model from the current
@@ -224,13 +245,16 @@ func (s *profilesScreen) rebuildTable() {
 
 // buildRows materializes one table.Row per profile. The Actions cell is
 // populated only on the cursor row, matching the task 0015 mockup where
-// `[Edit] [Delete]` appears next to the selected profile.
+// `[Edit] [Delete]` appears next to the selected profile. The labels are
+// rendered as plain text rather than via mnemonic.Button.View so the
+// table's cursor-row highlight is not broken by the embedded foreground
+// styling the mnemonic buttons emit.
 func (s *profilesScreen) buildRows(cursor int) []table.Row {
 	rows := make([]table.Row, len(s.profiles))
 	for i, p := range s.profiles {
 		actions := ""
 		if i == cursor {
-			actions = s.edit.View() + " " + s.delete.View()
+			actions = "[Edit] [Delete]"
 		}
 		rows[i] = table.Row{p.Manifest.ID, p.Manifest.Name, p.Root, actions}
 	}

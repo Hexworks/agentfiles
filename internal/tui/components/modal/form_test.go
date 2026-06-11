@@ -3,6 +3,7 @@ package modal
 import (
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
 )
 
@@ -97,6 +98,17 @@ func TestNewForm_PanicsOnNilExtract(t *testing.T) {
 		}
 	}()
 	NewForm("id", newTestForm(), nil)
+}
+
+func TestFormContent_EscAbortsForm(t *testing.T) {
+	form := newTestForm()
+	fc := &formContent{form: form, extract: identityExtract}
+
+	_, _ = fc.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
+
+	if form.State != huh.StateAborted {
+		t.Errorf("form.State = %v, want StateAborted after esc", form.State)
+	}
 }
 
 func TestNewForm_ExtractShapesResolvedPayload(t *testing.T) {

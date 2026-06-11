@@ -94,27 +94,57 @@ func TestProfilesScreen_InitLoadsProfilesFromActions(t *testing.T) {
 	}
 }
 
-func TestProfilesScreen_NoProfiles_MnemonicSetHasOnlyCR(t *testing.T) {
+func TestProfilesScreen_NoProfiles_MnemonicSetHasOnlyCRB(t *testing.T) {
 	f := newProfilesFixture(t)
 	s := newProfilesScreen(f.Actions)
 	withProfiles(s, nil)
 
 	got := mnemonicLabels(s.set)
-	want := []string{"Create New Profile", "Register Profile"}
+	want := []string{"Create New Profile", "Register Profile", "Back"}
 	if !labelsEqual(got, want) {
 		t.Errorf("set labels = %v, want %v", got, want)
 	}
 }
 
-func TestProfilesScreen_WithProfiles_MnemonicSetHasECDR_AllUnique(t *testing.T) {
+func TestProfilesScreen_WithProfiles_MnemonicSetHasEDCRB_AllUnique(t *testing.T) {
 	f := newProfilesFixture(t)
 	s := newProfilesScreen(f.Actions)
 	withProfiles(s, []*profile.Profile{fakeProfile("alpha", "Alpha", "/tmp/alpha")})
 
 	got := mnemonicLabels(s.set)
-	want := []string{"Edit", "Delete", "Create New Profile", "Register Profile"}
+	want := []string{"Edit", "Delete", "Create New Profile", "Register Profile", "Back"}
 	if !labelsEqual(got, want) {
 		t.Errorf("set labels = %v, want %v", got, want)
+	}
+}
+
+func TestProfilesScreen_BTriggersPop(t *testing.T) {
+	f := newProfilesFixture(t)
+	s := newProfilesScreen(f.Actions)
+	withProfiles(s, nil)
+
+	_, cmd := s.Update(tea.KeyPressMsg{Code: 'b', Text: "b"})
+
+	if cmd == nil {
+		t.Fatalf("b produced nil cmd")
+	}
+	if _, ok := cmd().(PopScreenMsg); !ok {
+		t.Fatalf("cmd produced %T, want PopScreenMsg", cmd())
+	}
+}
+
+func TestProfilesScreen_EscWithNoModalTriggersPop(t *testing.T) {
+	f := newProfilesFixture(t)
+	s := newProfilesScreen(f.Actions)
+	withProfiles(s, nil)
+
+	_, cmd := s.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
+
+	if cmd == nil {
+		t.Fatalf("esc produced nil cmd")
+	}
+	if _, ok := cmd().(PopScreenMsg); !ok {
+		t.Fatalf("cmd produced %T, want PopScreenMsg", cmd())
 	}
 }
 
@@ -159,6 +189,34 @@ func TestProfilesScreen_StatusKeysEmptyWhenNoProfiles(t *testing.T) {
 
 	if keys := s.StatusKeys(); keys != nil {
 		t.Errorf("StatusKeys = %v, want nil on empty state", keys)
+	}
+}
+
+func TestProfilesScreen_EscWithModalForwardsToModal(t *testing.T) {
+	f := newProfilesFixture(t)
+	s := newProfilesScreen(f.Actions)
+	withProfiles(s, nil)
+
+	// Open a form modal first; esc should be forwarded to it and abort
+	// the form, which clears the modal field on the next ResolvedMsg.
+	_, _ = s.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
+	if s.modal == nil {
+		t.Fatalf("setup: create modal not opened")
+	}
+
+	_, cmd := s.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
+
+	// The modal abort path emits a ResolvedMsg via cmd; pump it through
+	// Update so the screen clears its modal field.
+	msgs := collectMessages(t, cmd)
+	for _, m := range msgs {
+		if resolved, ok := m.(modal.ResolvedMsg); ok {
+			_, _ = s.Update(resolved)
+		}
+	}
+
+	if s.modal != nil {
+		t.Errorf("modal still open after esc on form modal, want cleared")
 	}
 }
 
@@ -454,9 +512,10 @@ func TestProfilesScreen_BodyShowsProfileRowsAndActions(t *testing.T) {
 	_, _ = s.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
 
 	body := s.Body(100, 20)
-	// "Edit" / "Delete" are mnemonic-styled so the rune breaks across
-	// ANSI escapes — search for the unbroken tail of each label.
-	for _, want := range []string{"alpha", "Alpha", "/tmp/alpha", "dit", "elete"} {
+	// Selected-row actions cell holds plain "[Edit] [Delete]" text so
+	// the table's cursor highlight does not fight the mnemonic foreground
+	// styling.
+	for _, want := range []string{"alpha", "Alpha", "/tmp/alpha", "[Edit] [Delete]"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("Body missing %q\n%s", want, body)
 		}
@@ -486,8 +545,8 @@ func TestProfilesScreen_CursorMoveRebuildsActionsColumn(t *testing.T) {
 	if rows[0][3] != "" {
 		t.Errorf("row 0 actions = %q, want empty after cursor moved off it", rows[0][3])
 	}
-	if rows[1][3] == "" {
-		t.Errorf("row 1 actions empty, want Edit/Delete on cursor row")
+	if rows[1][3] != "[Edit] [Delete]" {
+		t.Errorf("row 1 actions = %q, want [Edit] [Delete] on cursor row", rows[1][3])
 	}
 }
 

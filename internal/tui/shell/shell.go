@@ -141,14 +141,26 @@ func (m Model) notify(n notifications.Notification) (Model, tea.Cmd) {
 	return m, cmd
 }
 
-// pushScreen appends s to the stack and runs its Init.
+// pushScreen appends s to the stack and runs its Init. When the shell
+// already has a window size, a synthetic WindowSizeMsg is batched with
+// the Init command so the new screen learns its dimensions immediately
+// instead of having to wait for the next user-driven resize event.
 func (m Model) pushScreen(s Screen) (Model, tea.Cmd) {
 	top := m.stack[len(m.stack)-1]
 	if sameScreenType(top, s) {
 		return m, nil
 	}
 	m.stack = append(m.stack, s)
-	return m, s.Init()
+	cmd := s.Init()
+	if m.width <= 0 || m.height <= 0 {
+		return m, cmd
+	}
+	width, height := m.width, m.height
+	sizeCmd := func() tea.Msg { return tea.WindowSizeMsg{Width: width, Height: height} }
+	if cmd == nil {
+		return m, sizeCmd
+	}
+	return m, tea.Batch(cmd, sizeCmd)
 }
 
 // popScreen removes the top screen. On a single-screen stack it is a

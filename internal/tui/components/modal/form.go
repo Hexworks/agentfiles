@@ -18,6 +18,14 @@ type formContent struct {
 func (f *formContent) Init() tea.Cmd { return f.form.Init() }
 
 func (f *formContent) Update(msg tea.Msg) (Content, tea.Cmd) {
+	// Escape aborts every form modal uniformly. huh's default keymap
+	// only treats ctrl+c as abort, but users expect Esc to dismiss a
+	// dialog — intercept here so every form modal inherits the same
+	// behavior without each caller wiring its own keymap override.
+	if kp, ok := msg.(tea.KeyPressMsg); ok && kp.Code == tea.KeyEsc {
+		f.form.State = huh.StateAborted
+		return f, nil
+	}
 	model, cmd := f.form.Update(msg)
 	if updated, ok := model.(*huh.Form); ok {
 		f.form = updated

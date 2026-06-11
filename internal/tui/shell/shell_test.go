@@ -93,6 +93,58 @@ func TestUpdate_PushScreenMsgRunsNewScreenInit(t *testing.T) {
 	}
 }
 
+func TestUpdate_PushScreenMsgPropagatesStoredSize(t *testing.T) {
+	m := newTestShell(t)
+
+	// Seed the shell with a window size before the push so the new
+	// screen has a target to receive.
+	tm, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = tm.(Model)
+
+	spy := &sizingSpy{}
+	tm, cmd := m.Update(PushScreenMsg{Screen: spy})
+	m = tm.(Model)
+	if cmd == nil {
+		t.Fatalf("push with size produced nil cmd")
+	}
+
+	// The push batches Init + a synthetic WindowSizeMsg cmd. Drain both
+	// and pump any WindowSizeMsg back through the shell so it reaches
+	// the active screen via the standard broadcast path.
+	collect(t, cmd, func(msg tea.Msg) {
+		if ws, ok := msg.(tea.WindowSizeMsg); ok {
+			tm, _ = m.Update(ws)
+			m = tm.(Model)
+		}
+	})
+
+	if len(spy.received) == 0 {
+		t.Fatalf("pushed screen received no WindowSizeMsg, want one")
+	}
+	got := spy.received[len(spy.received)-1]
+	if got.Width != 120 || got.Height != 40 {
+		t.Errorf("propagated size = %v, want {120,40}", got)
+	}
+}
+
+// collect drains cmd into visit for every concrete message it produces,
+// recursing into tea.BatchMsg wrappers. Mirrors the helper in
+// profiles_test.go but kept local so this file does not import it.
+func collect(t *testing.T, cmd tea.Cmd, visit func(tea.Msg)) {
+	t.Helper()
+	if cmd == nil {
+		return
+	}
+	msg := cmd()
+	if batch, ok := msg.(tea.BatchMsg); ok {
+		for _, c := range batch {
+			collect(t, c, visit)
+		}
+		return
+	}
+	visit(msg)
+}
+
 func TestUpdate_PushScreenMsgDedupSameType(t *testing.T) {
 	m := newTestShell(t)
 	tm, _ := m.Update(PushScreenMsg{Screen: newSettingsScreen()})
