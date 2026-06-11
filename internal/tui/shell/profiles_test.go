@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/hexworks/agentfiles/internal/actions"
 	"github.com/hexworks/agentfiles/internal/app"
@@ -547,6 +548,37 @@ func TestProfilesScreen_CursorMoveRebuildsActionsColumn(t *testing.T) {
 	}
 	if rows[1][3] != actionsCellContent() {
 		t.Errorf("row 1 actions = %q, want actionsCellContent on cursor row", rows[1][3])
+	}
+}
+
+func TestProfilesScreen_BodyExactlyMatchesRequestedHeight(t *testing.T) {
+	// Body must return exactly `height` rows. Overshooting pushes the
+	// shell's status bar and toast off the bottom of the terminal — the
+	// bug behind the missing notifications + help line in the original
+	// implementation.
+	f := newProfilesFixture(t)
+	cases := []struct {
+		name     string
+		profiles []*profile.Profile
+		width    int
+		height   int
+	}{
+		{"empty state", nil, 100, 20},
+		{"populated state", []*profile.Profile{fakeProfile("alpha", "Alpha", "/tmp/alpha")}, 100, 20},
+		{"tall window", []*profile.Profile{fakeProfile("alpha", "Alpha", "/tmp/alpha")}, 100, 40},
+		{"short window", []*profile.Profile{fakeProfile("alpha", "Alpha", "/tmp/alpha")}, 100, 8},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newProfilesScreen(f.Actions)
+			withProfiles(s, tc.profiles)
+			_, _ = s.Update(tea.WindowSizeMsg{Width: tc.width, Height: tc.height + 4 /* + chrome */})
+
+			body := s.Body(tc.width, tc.height)
+			if got := lipgloss.Height(body); got != tc.height {
+				t.Errorf("Body height = %d, want %d", got, tc.height)
+			}
+		})
 	}
 }
 

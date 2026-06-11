@@ -207,41 +207,56 @@ func (s *profilesScreen) Body(width, height int) string {
 	return s.modal.Render(background, width, height)
 }
 
-// bodyContent renders the table plus the screen-level button row,
-// padded to exactly height rows. Returning a shorter string would let
-// the shell's vertical join pull the status bar off-screen when a modal
-// composites itself over a larger canvas.
+// bodyContent renders the table plus the screen-level button row at
+// exactly height rows. The shell hands Body the height it has reserved
+// for screen content (window minus title, toast, and status bar) — the
+// content must match that height exactly or the JoinVertical in
+// shell.View will push the status bar off the bottom of the terminal.
 func (s *profilesScreen) bodyContent(width, height int) string {
+	const reservedBelow = 2 // 1 spacer + 1 button row
+	tableH := height - reservedBelow
+	if tableH < 1 {
+		tableH = 1
+	}
+	s.table.SetWidth(width)
+	s.table.SetColumns(s.columns(width))
+	s.table.SetHeight(tableH)
+
 	buttonRow := " " + s.create.View() + "  " + s.register.View() + "  " + s.back.View()
 	buttons := lipgloss.PlaceHorizontal(width, lipgloss.Left, buttonRow)
-	var content string
 	if len(s.profiles) == 0 {
 		empty := " No profiles registered. Press 'c' to create one or 'r' to register an existing folder."
-		content = lipgloss.JoinVertical(lipgloss.Left, empty, "", buttons)
-	} else {
-		content = lipgloss.JoinVertical(lipgloss.Left, s.table.View(), "", buttons)
+		// Pad the hint block to tableH so the button row stays anchored
+		// at the same y-coordinate it occupies when the table is non-empty.
+		emptyBlock := lipgloss.NewStyle().Width(width).Height(tableH).Render(empty)
+		return lipgloss.JoinVertical(lipgloss.Left, emptyBlock, "", buttons)
 	}
-	if height <= 0 {
-		return content
-	}
-	return lipgloss.NewStyle().Width(width).Height(height).Render(content)
+	return lipgloss.JoinVertical(lipgloss.Left, s.table.View(), "", buttons)
 }
 
 // rebuildTable constructs a fresh bubbles/table model from the current
 // profile slice. Re-running on every load keeps row data and column
-// widths in sync without juggling partial state mutations.
+// widths in sync without juggling partial state mutations. The table is
+// seeded with a conservative default size; Body re-sizes it on every
+// render using the height the shell has actually reserved.
 func (s *profilesScreen) rebuildTable() {
-	cols := s.columns(s.tableInnerWidth())
+	width := s.tableInnerWidth()
+	cols := s.columns(width)
 	rows := s.buildRows(0)
 	t := table.New(
 		table.WithColumns(cols),
 		table.WithRows(rows),
 		table.WithFocused(true),
-		table.WithWidth(s.tableInnerWidth()),
-		table.WithHeight(s.tableHeight()),
+		table.WithWidth(width),
+		table.WithHeight(defaultTableHeight),
 	)
 	s.table = t
 }
+
+// defaultTableHeight is the seed value used when the screen has not
+// yet seen a window-size message. Body overrides it on every render
+// using the shell-reserved body height.
+const defaultTableHeight = 10
 
 // buildRows materializes one table.Row per profile. The Actions cell is
 // populated only on the cursor row, matching the task 0015 mockup where
@@ -299,25 +314,15 @@ func (s *profilesScreen) columns(innerW int) []table.Column {
 
 const minPathColW = 12
 
-// applyTableSize feeds the latest width/height into the existing table
-// without reallocating it, so the cursor and any focus state survive a
-// terminal resize.
+// applyTableSize keeps the table's width and column layout in sync with
+// the current window. Height is left to Body, which receives the actual
+// shell-reserved body height on every render — sizing the table at
+// resize time using full window height was the source of a layout bug
+// where the table overflowed the body and pushed status + toast off
+// screen.
 func (s *profilesScreen) applyTableSize() {
-	s.table.SetColumns(s.columns(s.tableInnerWidth()))
 	s.table.SetWidth(s.tableInnerWidth())
-	s.table.SetHeight(s.tableHeight())
-}
-
-// tableHeight reserves a fixed amount of body height for the button row
-// + spacer beneath the table. A non-positive remainder clamps to 1 so
-// bubbles/table never receives a zero height.
-func (s *profilesScreen) tableHeight() int {
-	const reserved = 3 // 1 blank line + 1 button row + 1 safety margin
-	h := s.height - reserved
-	if h < 1 {
-		h = 1
-	}
-	return h
+	s.table.SetColumns(s.columns(s.tableInnerWidth()))
 }
 
 func (s *profilesScreen) tableInnerWidth() int {
