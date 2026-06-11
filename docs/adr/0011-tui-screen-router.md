@@ -105,12 +105,15 @@ precedence over the active screen (with a recording screen that
 asserts non-receipt), `NotificationMsg → log + toast` plumbing,
 `WindowSizeMsg` propagation, and status-bar composition.
 
-Three placeholder stubs (`notificationsStub`, `settingsStub`,
-`infoStub`) ship inside the shell package so the global keys can
-push something the user sees before tasks 0023 and 0024 land. They
-pop on `esc` and will be replaced wholesale by the real modal /
-screen implementations in those tasks. They live next to the shell
+Placeholder stubs ship inside the shell package so the global keys
+and the Welcome menu can push something the user sees before the
+real screens land. They pop on `esc` and live next to the shell
 because they are the shell's own glue, not standalone entity views.
+Each task replaces its target stub with the real screen: task 0023
+replaced `notificationsStub` and `infoStub` with `notificationsScreen`
+and `infoScreen`; task 0024 replaced `settingsStub` and `welcomeStub`
+with `settingsScreen` and `welcomeScreen`. Only `profilesStub` remains
+as a placeholder, pending task 0025.
 
 The `Screen` interface adds dynamic dispatch to the navigation hot
 path. Each `Update` cycle performs one virtual method call to route

@@ -60,12 +60,13 @@ func New(a *actions.Actions, log *notifications.Log) Model {
 	if log == nil {
 		panic("shell.New: nil log")
 	}
+	keys := defaultGlobalKeyMap()
 	return Model{
 		actions: a,
 		toast:   &toastAdapter{inner: notifications.NewToast(0)},
 		log:     log,
-		keys:    defaultGlobalKeyMap(),
-		stack:   []Screen{newWelcomeScreen()},
+		keys:    keys,
+		stack:   []Screen{newWelcomeScreen(keys)},
 	}
 }
 

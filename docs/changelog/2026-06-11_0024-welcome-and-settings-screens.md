@@ -55,6 +55,16 @@ Considered and rejected:
   exercised end-to-end without a synthetic stub.
 - `internal/tui/shell/stubs_test.go` lost its `tea` import after the
   settings-stub assertions moved to `settings_test.go`.
+- ADR 0011 `docs/adr/0011-tui-screen-router.md` Consequences paragraph
+  refreshed to reflect that only `profilesStub` remains as a placeholder
+  after this task replaces `settingsStub` and `welcomeStub`.
+- `welcomeScreen` reuses `globalKeyMap.Up`/`Down` instead of redeclaring
+  the `up`/`k` and `down`/`j` key strings, so the status-bar hint and the
+  screen's matched keys cannot drift apart.
+- `mnemonic.Button` gains a `WithExtraBindingKeys` option; `settingsScreen`
+  uses it to fold `esc` into the Back button's key list, so the screen
+  matches both `b` and `esc` through one `s.back.Matches(kp)` call instead
+  of a separate `kp.Code == tea.KeyEsc` branch.
 
 ## welcomeScreen
 

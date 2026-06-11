@@ -54,7 +54,8 @@ type Button struct {
 	mnemonic   rune
 	action     Action
 	binding    key.Binding
-	bindingKey string // set via [WithBindingKey]; empty falls back to the lowercased mnemonic
+	bindingKey string   // set via [WithBindingKey]; empty falls back to the lowercased mnemonic
+	extraKeys  []string // set via [WithExtraBindingKeys]; appended to the binding's key list
 	styles     Styles
 }
 
@@ -73,6 +74,14 @@ func WithStyles(s Styles) Option {
 // `ctrl+1` whose visible indicator is still `[1]`.
 func WithBindingKey(key string) Option {
 	return func(b *Button) { b.bindingKey = key }
+}
+
+// WithExtraBindingKeys appends extra trigger keys to the button's binding
+// without changing the displayed mnemonic or the binding's help text. Use it
+// when a button should fire on its mnemonic AND on a conventional fallback
+// like `esc` for a Back button.
+func WithExtraBindingKeys(keys ...string) Option {
+	return func(b *Button) { b.extraKeys = append(b.extraKeys, keys...) }
 }
 
 // New constructs a Button. The mnemonic must be a single rune that appears in
@@ -102,8 +111,9 @@ func New(label string, mnemonic rune, action Action, opts ...Option) *Button {
 	if bindKey == "" {
 		bindKey = keyLabel
 	}
+	keys := append([]string{bindKey}, b.extraKeys...)
 	b.binding = key.NewBinding(
-		key.WithKeys(bindKey),
+		key.WithKeys(keys...),
 		key.WithHelp(bindKey, label),
 	)
 	return b

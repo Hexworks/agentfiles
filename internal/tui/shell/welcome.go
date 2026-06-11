@@ -22,6 +22,10 @@ type welcomeItem struct {
 // vertical-list cursor over a fixed route set (Profiles / Settings /
 // Quit). Arrow keys and k/j move the cursor with wrap-around; enter
 // and v fire the selected row's action.
+//
+// Up and Down are reused from the shell's globalKeyMap so the status
+// bar hint (display-only on the global map) cannot drift from the
+// keys the screen actually matches.
 type welcomeScreen struct {
 	cursor int
 	items  []welcomeItem
@@ -31,15 +35,15 @@ type welcomeScreen struct {
 	choose key.Binding
 }
 
-func newWelcomeScreen() *welcomeScreen {
+func newWelcomeScreen(globals globalKeyMap) *welcomeScreen {
 	return &welcomeScreen{
 		items: []welcomeItem{
 			{label: "Profiles", action: func() tea.Cmd { return pushCmd(newProfilesStub()) }},
 			{label: "Settings", action: func() tea.Cmd { return pushCmd(newSettingsScreen()) }},
 			{label: "Quit", action: func() tea.Cmd { return tea.Quit }},
 		},
-		up:     key.NewBinding(key.WithKeys("up", "k")),
-		down:   key.NewBinding(key.WithKeys("down", "j")),
+		up:     globals.Up,
+		down:   globals.Down,
 		choose: key.NewBinding(key.WithKeys("enter", "v")),
 	}
 }
@@ -67,16 +71,35 @@ func (s *welcomeScreen) Title() string { return "Agentfiles" }
 
 func (s *welcomeScreen) StatusKeys() []key.Binding { return nil }
 
-func (s *welcomeScreen) Body(_ int, _ int) string {
+func (s *welcomeScreen) Body(width, _ int) string {
 	bar := styles.MutedStyle.Render("┃")
 	rows := make([]string, 0, len(s.items)+1)
-	rows = append(rows, bar+" "+styles.HeaderStyle.Render("Choose a task"))
+	rows = append(rows, bar+" "+styles.HeaderStyle.Render(clampLabel("Choose a task", width-rowPrefixWidth)))
 	for i, it := range s.items {
 		marker := "  "
 		if i == s.cursor {
 			marker = "> "
 		}
-		rows = append(rows, bar+" "+marker+it.label)
+		rows = append(rows, bar+" "+marker+clampLabel(it.label, width-rowPrefixWidth))
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
+}
+
+// rowPrefixWidth is the visible width consumed by the bar, space, and
+// selection marker that precede every label in the Welcome menu.
+const rowPrefixWidth = 4
+
+// clampLabel truncates label so its rendered width does not exceed max.
+// A non-positive max leaves the label untouched (no WindowSize yet, or
+// the prefix already consumes the entire row). Truncation appends an
+// ellipsis when at least one rune of label still fits.
+func clampLabel(label string, max int) string {
+	if max <= 0 || lipgloss.Width(label) <= max {
+		return label
+	}
+	runes := []rune(label)
+	if max == 1 {
+		return string(runes[:1])
+	}
+	return string(runes[:max-1]) + "…"
 }

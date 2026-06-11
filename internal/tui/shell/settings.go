@@ -18,7 +18,12 @@ type settingsScreen struct {
 
 func newSettingsScreen() *settingsScreen {
 	return &settingsScreen{
-		back: mnemonic.New("Back", 'b', func() tea.Cmd { return popCmd() }),
+		back: mnemonic.New(
+			"Back",
+			'b',
+			func() tea.Cmd { return popCmd() },
+			mnemonic.WithExtraBindingKeys("esc"),
+		),
 	}
 }
 
@@ -31,9 +36,6 @@ func (s *settingsScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 	}
 	if s.back.Matches(kp) {
 		return s, s.back.Trigger()
-	}
-	if kp.Code == tea.KeyEsc {
-		return s, popCmd()
 	}
 	return s, nil
 }
@@ -50,9 +52,6 @@ func (s *settingsScreen) StatusKeys() []key.Binding {
 
 func (s *settingsScreen) Body(width, _ int) string {
 	msg := " Coming soon."
-	back := s.back.View()
-	if width <= lipgloss.Width(back) {
-		return lipgloss.JoinVertical(lipgloss.Left, msg, back)
-	}
-	return lipgloss.JoinVertical(lipgloss.Left, msg, "", lipgloss.PlaceHorizontal(width, lipgloss.Right, back))
+	back := lipgloss.PlaceHorizontal(width, lipgloss.Right, s.back.View())
+	return lipgloss.JoinVertical(lipgloss.Left, msg, "", back)
 }

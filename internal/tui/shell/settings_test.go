@@ -61,7 +61,7 @@ func TestSettingsScreen_TitleAndBody(t *testing.T) {
 	if !strings.Contains(body, "Coming soon") {
 		t.Errorf("Body missing 'Coming soon'\n%s", body)
 	}
-	if !strings.Contains(body, "[") || !strings.Contains(body, "ack]") {
-		t.Errorf("Body missing [Back] button render\n%s", body)
+	if !strings.Contains(body, s.back.View()) {
+		t.Errorf("Body missing mnemonic-styled Back button render\n%s", body)
 	}
 }
