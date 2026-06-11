@@ -13,7 +13,7 @@ type globalKeyMap struct {
 	Notifications key.Binding // n  → push notificationsStub
 	Settings      key.Binding // s  → push settingsStub
 	Help          key.Binding // ?  → push infoStub
-	Quit          key.Binding // q  → tea.Quit
+	Quit          key.Binding // q  / ctrl+c → tea.Quit
 	Up            key.Binding // ↑/k — display-only
 	Down          key.Binding // ↓/j — display-only
 }
@@ -33,7 +33,10 @@ func defaultGlobalKeyMap() globalKeyMap {
 			key.WithHelp("?", "help"),
 		),
 		Quit: key.NewBinding(
-			key.WithKeys("q"),
+			// ctrl+c is bundled with q so the unconditional-abort
+			// path goes through the same key.Matches discipline as
+			// every other global key — see ADR 0011.
+			key.WithKeys("q", "ctrl+c"),
 			key.WithHelp("q", "quit"),
 		),
 		Up: key.NewBinding(
@@ -63,12 +66,4 @@ func (m Model) handleGlobalKey(kp tea.KeyPressMsg) (tea.Cmd, bool) {
 		return tea.Quit, true
 	}
 	return nil, false
-}
-
-func pushCmd(s Screen) tea.Cmd {
-	return func() tea.Msg { return PushScreenMsg{Screen: s} }
-}
-
-func popCmd() tea.Cmd {
-	return func() tea.Msg { return PopScreenMsg{} }
 }

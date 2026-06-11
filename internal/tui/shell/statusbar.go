@@ -39,5 +39,8 @@ func keyHint(b key.Binding) string {
 	if h.Key == "" {
 		return ""
 	}
-	return styles.MutedStyle.Render(h.Key + " " + h.Desc)
+	// styles.Safe blocks ANSI / bidi / C1 sequences a future
+	// manifest-sourced binding could carry. Bindings are trusted
+	// today; the wrap holds the boundary closed for tomorrow.
+	return styles.MutedStyle.Render(styles.Safe(h.Key) + " " + styles.Safe(h.Desc))
 }

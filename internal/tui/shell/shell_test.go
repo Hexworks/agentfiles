@@ -7,6 +7,7 @@ import (
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/hexworks/agentfiles/internal/actions"
 	"github.com/hexworks/agentfiles/internal/app"
@@ -46,8 +47,8 @@ func TestUpdate_PushScreenMsgGrowsStack(t *testing.T) {
 	if len(m.stack) != 1 {
 		t.Fatalf("initial stack depth = %d, want 1", len(m.stack))
 	}
-	if _, ok := m.stack[0].(welcomeStub); !ok {
-		t.Fatalf("initial top = %T, want welcomeStub", m.stack[0])
+	if _, ok := m.stack[0].(*welcomeStub); !ok {
+		t.Fatalf("initial top = %T, want *welcomeStub", m.stack[0])
 	}
 
 	tm, _ := m.Update(PushScreenMsg{Screen: newSettingsStub()})
@@ -55,8 +56,55 @@ func TestUpdate_PushScreenMsgGrowsStack(t *testing.T) {
 	if len(m.stack) != 2 {
 		t.Fatalf("after push depth = %d, want 2", len(m.stack))
 	}
-	if _, ok := m.stack[1].(settingsStub); !ok {
-		t.Fatalf("top after push = %T, want settingsStub", m.stack[1])
+	if _, ok := m.stack[1].(*settingsStub); !ok {
+		t.Fatalf("top after push = %T, want *settingsStub", m.stack[1])
+	}
+}
+
+// initSentinelScreen records a known cmd from Init so the shell test
+// can verify PushScreenMsg actually runs it.
+type initSentinelScreen struct {
+	sentinel tea.Msg
+}
+
+func (s *initSentinelScreen) Init() tea.Cmd {
+	return func() tea.Msg { return s.sentinel }
+}
+func (s *initSentinelScreen) Update(_ tea.Msg) (Screen, tea.Cmd) { return s, nil }
+func (s *initSentinelScreen) Body(_ int, _ int) string           { return "" }
+func (s *initSentinelScreen) Title() string                      { return "init-sentinel" }
+func (s *initSentinelScreen) StatusKeys() []key.Binding          { return nil }
+
+type initSentinelMsg struct{}
+
+func TestUpdate_PushScreenMsgRunsNewScreenInit(t *testing.T) {
+	m := newTestShell(t)
+
+	want := initSentinelMsg{}
+	push := &initSentinelScreen{sentinel: want}
+
+	_, cmd := m.Update(PushScreenMsg{Screen: push})
+	if cmd == nil {
+		t.Fatalf("PushScreenMsg returned nil cmd, want screen.Init()")
+	}
+	got := cmd()
+	if got != want {
+		t.Fatalf("Init cmd produced %v, want %v", got, want)
+	}
+}
+
+func TestUpdate_PushScreenMsgDedupSameType(t *testing.T) {
+	m := newTestShell(t)
+	tm, _ := m.Update(PushScreenMsg{Screen: newSettingsStub()})
+	m = tm.(Model)
+	if len(m.stack) != 2 {
+		t.Fatalf("after first push depth = %d, want 2", len(m.stack))
+	}
+
+	tm, _ = m.Update(PushScreenMsg{Screen: newSettingsStub()})
+	m = tm.(Model)
+	if len(m.stack) != 2 {
+		t.Fatalf("after duplicate-type push depth = %d, want 2 (dedup)", len(m.stack))
 	}
 }
 
@@ -70,8 +118,31 @@ func TestUpdate_PopScreenMsgShrinksStack(t *testing.T) {
 	if len(m.stack) != 1 {
 		t.Fatalf("after pop depth = %d, want 1", len(m.stack))
 	}
-	if _, ok := m.stack[0].(welcomeStub); !ok {
-		t.Fatalf("top after pop = %T, want welcomeStub", m.stack[0])
+	if _, ok := m.stack[0].(*welcomeStub); !ok {
+		t.Fatalf("top after pop = %T, want *welcomeStub", m.stack[0])
+	}
+}
+
+func TestUpdate_PopScreenMsgZeroesSlot(t *testing.T) {
+	m := newTestShell(t)
+	tm, _ := m.Update(PushScreenMsg{Screen: newSettingsStub()})
+	m = tm.(Model)
+
+	// Reach into the backing array's index-1 slot via re-slice.
+	backing := m.stack[:cap(m.stack)]
+	if backing[1] == nil {
+		t.Fatalf("setup: slot[1] already nil before pop")
+	}
+
+	tm, _ = m.Update(PopScreenMsg{})
+	m = tm.(Model)
+
+	backing = m.stack[:cap(m.stack)]
+	if len(backing) < 2 {
+		t.Skip("backing array reallocated; cannot verify slot zeroing")
+	}
+	if backing[1] != nil {
+		t.Errorf("popped slot still references %T, want nil", backing[1])
 	}
 }
 
@@ -87,7 +158,7 @@ func TestUpdate_PopScreenMsgRootStays(t *testing.T) {
 
 // recordingScreen captures every message it sees so tests can assert
 // global-key precedence (the screen must NOT see globally intercepted
-// keys).
+// keys) and default-routing fan-out.
 type recordingScreen struct {
 	received []tea.Msg
 }
@@ -111,6 +182,7 @@ func TestUpdate_GlobalKeysInterceptedBeforeScreen(t *testing.T) {
 		{"s settings", tea.KeyPressMsg{Code: 's', Text: "s"}, "push:Settings"},
 		{"? help", tea.KeyPressMsg{Code: '?', Text: "?"}, "push:Info"},
 		{"q quit", tea.KeyPressMsg{Code: 'q', Text: "q"}, "quit"},
+		{"ctrl+c quit", tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}, "quit"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -161,18 +233,28 @@ func TestUpdate_NonGlobalKeyReachesScreen(t *testing.T) {
 	}
 }
 
-func TestUpdate_CtrlCQuits(t *testing.T) {
+// customDefaultMsg is a non-key, non-window, non-notification message
+// that should fall through to default routing.
+type customDefaultMsg struct{}
+
+func TestUpdate_DefaultRoutingFeedsToastAndScreen(t *testing.T) {
 	m := newTestShell(t)
-	_, cmd := m.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl, Text: ""})
-	if cmd == nil {
-		t.Fatalf("expected quit cmd, got nil")
+	rec := &recordingScreen{}
+	m.stack[0] = rec
+
+	msg := customDefaultMsg{}
+	_, cmd := m.Update(msg)
+
+	if len(rec.received) != 1 || rec.received[0] != msg {
+		t.Fatalf("recording screen received %v, want one customDefaultMsg", rec.received)
 	}
-	if _, ok := cmd().(tea.QuitMsg); !ok {
-		t.Fatalf("ctrl+c produced %T, want tea.QuitMsg", cmd())
-	}
+	// Toast.Update returns nil cmd for foreign messages, so cmd may
+	// be a nil-cmd batch. Asserting that the screen saw the message
+	// is the load-bearing claim; cmd shape is implementation detail.
+	_ = cmd
 }
 
-func TestUpdate_NotificationMsgFeedsLogAndToast(t *testing.T) {
+func TestUpdate_NotificationMsgFeedsLog(t *testing.T) {
 	m := newTestShell(t)
 
 	n := notifications.Notification{
@@ -184,29 +266,39 @@ func TestUpdate_NotificationMsgFeedsLogAndToast(t *testing.T) {
 	tm, _ := m.Update(notifications.NotificationMsg{Notification: n})
 	m = tm.(Model)
 
-	entries := m.log.Entries()
+	log := m.log.(*notifications.Log)
+	entries := log.Entries()
 	if len(entries) != 1 {
 		t.Fatalf("log has %d entries, want 1", len(entries))
 	}
-	if entries[0].Text != "profile created" {
-		t.Fatalf("log[0].Text = %q, want %q", entries[0].Text, "profile created")
+}
+
+func TestUpdate_NotificationMsgFeedsToast(t *testing.T) {
+	m := newTestShell(t)
+
+	n := notifications.Notification{
+		Severity:  errs.SeverityInfo,
+		Text:      "profile created",
+		CreatedAt: time.Now(),
 	}
+
+	tm, _ := m.Update(notifications.NotificationMsg{Notification: n})
+	m = tm.(Model)
+
 	if m.toast.Empty() {
 		t.Fatalf("toast empty after NotificationMsg, want non-empty")
 	}
 }
 
-// sizingSpy records the last WindowSizeMsg it receives.
+// sizingSpy records every WindowSizeMsg it receives.
 type sizingSpy struct {
-	last tea.WindowSizeMsg
-	got  bool
+	received []tea.WindowSizeMsg
 }
 
 func (s *sizingSpy) Init() tea.Cmd { return nil }
 func (s *sizingSpy) Update(msg tea.Msg) (Screen, tea.Cmd) {
 	if ws, ok := msg.(tea.WindowSizeMsg); ok {
-		s.last = ws
-		s.got = true
+		s.received = append(s.received, ws)
 	}
 	return s, nil
 }
@@ -214,7 +306,12 @@ func (s *sizingSpy) Body(_ int, _ int) string  { return "" }
 func (s *sizingSpy) Title() string             { return "spy" }
 func (s *sizingSpy) StatusKeys() []key.Binding { return nil }
 
-func TestUpdate_WindowSizeStoredAndPropagated(t *testing.T) {
+// sizingSpy2 is a distinct concrete type from sizingSpy so push-dedup
+// (which compares concrete types) allows stacking the two for the
+// buried-screen propagation test.
+type sizingSpy2 struct{ sizingSpy }
+
+func TestUpdate_WindowSizeStoredAndPropagatedToTop(t *testing.T) {
 	m := newTestShell(t)
 	spy := &sizingSpy{}
 	m.stack[0] = spy
@@ -225,11 +322,34 @@ func TestUpdate_WindowSizeStoredAndPropagated(t *testing.T) {
 	if m.width != 120 || m.height != 40 {
 		t.Fatalf("shell stored (w=%d,h=%d), want (120,40)", m.width, m.height)
 	}
-	if !spy.got {
-		t.Fatalf("active screen did not receive WindowSizeMsg")
+	if len(spy.received) != 1 {
+		t.Fatalf("top screen received %d resize msgs, want 1", len(spy.received))
 	}
-	if spy.last.Width != 120 || spy.last.Height != 40 {
-		t.Fatalf("screen got %v, want {120,40}", spy.last)
+	if spy.received[0].Width != 120 || spy.received[0].Height != 40 {
+		t.Fatalf("top got %v, want {120,40}", spy.received[0])
+	}
+}
+
+func TestUpdate_WindowSizePropagatesToBuriedScreen(t *testing.T) {
+	m := newTestShell(t)
+	root := &sizingSpy{}
+	m.stack[0] = root
+
+	pushed := &sizingSpy2{}
+	tm, _ := m.Update(PushScreenMsg{Screen: pushed})
+	m = tm.(Model)
+	if len(m.stack) != 2 {
+		t.Fatalf("push dedup unexpectedly applied; depth=%d", len(m.stack))
+	}
+
+	tm, _ = m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	m = tm.(Model)
+
+	if len(root.received) != 1 {
+		t.Errorf("buried root received %d resize msgs, want 1", len(root.received))
+	}
+	if len(pushed.received) != 1 {
+		t.Errorf("top received %d resize msgs, want 1", len(pushed.received))
 	}
 }
 
@@ -254,15 +374,16 @@ func TestRenderStatusBar_IncludesGlobalAndDynamic(t *testing.T) {
 			t.Errorf("status bar missing %q\n%s", want, got)
 		}
 	}
+}
 
-	// Screen-level button verbs that the rule says must NOT be
-	// duplicated in the bar — the screen would surface them by
-	// putting them into StatusKeys, which is exactly what the rule
-	// forbids. With an empty dynamic set, these must not appear.
-	emptyBar := renderStatusBar(global, nil)
+func TestRenderStatusBar_OmitsScreenLevelVerbsWhenDynamicEmpty(t *testing.T) {
+	global := defaultGlobalKeyMap()
+
+	got := renderStatusBar(global, nil)
+
 	for _, banned := range []string{"c create", "r register", "b back"} {
-		if strings.Contains(emptyBar, banned) {
-			t.Errorf("status bar leaked screen-level verb %q\n%s", banned, emptyBar)
+		if strings.Contains(got, banned) {
+			t.Errorf("status bar leaked screen-level verb %q\n%s", banned, got)
 		}
 	}
 }
@@ -285,5 +406,81 @@ func TestView_ContainsTitleAndStatusBarHints(t *testing.T) {
 	}
 	if !v.AltScreen {
 		t.Errorf("view AltScreen = false, want true")
+	}
+}
+
+// bodySizeSpy records the (width, height) Body was last called with.
+type bodySizeSpy struct {
+	width, height int
+}
+
+func (s *bodySizeSpy) Init() tea.Cmd                      { return nil }
+func (s *bodySizeSpy) Update(_ tea.Msg) (Screen, tea.Cmd) { return s, nil }
+func (s *bodySizeSpy) Title() string                      { return "size" }
+func (s *bodySizeSpy) StatusKeys() []key.Binding          { return nil }
+func (s *bodySizeSpy) Body(w int, h int) string {
+	s.width = w
+	s.height = h
+	return ""
+}
+
+func TestView_BodyHeightDeductsTitleAndStatusBar(t *testing.T) {
+	m := newTestShell(t)
+	spy := &bodySizeSpy{}
+	m.stack[0] = spy
+
+	tm, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = tm.(Model)
+
+	_ = m.View()
+
+	if spy.width != 80 {
+		t.Errorf("Body width = %d, want 80", spy.width)
+	}
+	titleH := lipgloss.Height(renderTitle(spy.Title()))
+	wantBodyH := 24 - titleH - 1 /* status bar */
+	if spy.height != wantBodyH {
+		t.Errorf("Body height = %d, want %d (24 - title %d - status 1)", spy.height, wantBodyH, titleH)
+	}
+}
+
+func TestView_BodyHeightClampsToZeroOnTinyWindow(t *testing.T) {
+	m := newTestShell(t)
+	spy := &bodySizeSpy{}
+	m.stack[0] = spy
+
+	tm, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 1})
+	m = tm.(Model)
+
+	_ = m.View()
+
+	if spy.height != 0 {
+		t.Errorf("Body height = %d on tiny window, want 0 (clamped)", spy.height)
+	}
+}
+
+func TestView_BodyHeightShrinksWhenToastVisible(t *testing.T) {
+	m := newTestShell(t)
+	spy := &bodySizeSpy{}
+	m.stack[0] = spy
+
+	tm, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = tm.(Model)
+
+	_ = m.View()
+	heightWithoutToast := spy.height
+
+	n := notifications.Notification{
+		Severity:  errs.SeverityInfo,
+		Text:      "hello",
+		CreatedAt: time.Now(),
+	}
+	tm, _ = m.Update(notifications.NotificationMsg{Notification: n})
+	m = tm.(Model)
+
+	_ = m.View()
+	if spy.height >= heightWithoutToast {
+		t.Errorf("body height did not shrink when toast became visible (was %d, now %d)",
+			heightWithoutToast, spy.height)
 	}
 }

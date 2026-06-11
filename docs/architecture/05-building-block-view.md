@@ -8,9 +8,11 @@ main workflow.
 ```mermaid
 flowchart TD
     cmdaf["cmd/af"] --> tui_shell["tui/shell"]
+    cmdaf --> app
+    cmdaf --> registry
     tui_shell --> actions
     tui_shell --> tui_notifications["tui/notifications"]
-    tui_shell --> tui_mnemonic["tui/components/mnemonic"]
+    tui_shell -.future.-> tui_mnemonic["tui/components/mnemonic"]
     tui_shell --> tui_styles["tui/styles"]
     actions --> app
     app --> render
@@ -28,16 +30,24 @@ flowchart TD
     project --> config
     registry --> config
     surfaces --> config
-    tui_shell --> tui_components_modal["tui/components/modal"]
+    tui_shell -.future.-> tui_components_modal["tui/components/modal"]
 
     classDef leaf fill:#eef,stroke:#88a;
     class config,errs,utils,tui_components_modal,tui_styles leaf;
 ```
 
+The dotted `-.future.->` arrows from `tui/shell` to `tui/components/mnemonic`
+and `tui/components/modal` mark planned coupling: today the shell only consumes
+`bubbles/v2/key.Binding` values via `Screen.StatusKeys()` and never imports
+either component package directly. The real entity screens added in tasks
+0024–0029 will turn those arrows solid.
+
 `config`, `errs`, and `utils` are leaf packages that the rest of the
 codebase reads from but that import nothing internal. They are highlighted
 in blue above to make the dependency direction visible. The TUI layer
-reaches `app` only through the `actions` adapter; nothing else imports `app`.
+reaches `app` only through the `actions` adapter; the binary at `cmd/af`
+wires both `app` and `registry` as the composition root and is the only
+other importer.
 
 ## Level 2: Package Responsibilities
 

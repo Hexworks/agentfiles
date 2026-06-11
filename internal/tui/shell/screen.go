@@ -1,9 +1,9 @@
 // Package shell implements the root Bubble Tea program for agentfiles.
 // It runs in alt-screen mode, owns a screen-router stack, intercepts
-// the global key set (n notifications, s settings, ? info, q quit),
-// hosts the notifications Log + Toast widget mounted above the status
-// bar, and delegates everything else to the active (top-of-stack)
-// Screen.
+// the global key set (n notifications, s settings, ? info, q / ctrl+c
+// quit), hosts the notifications Log + Toast widget mounted above
+// the status bar, and delegates everything else to the active
+// (top-of-stack) Screen.
 //
 // Screens implement the [Screen] interface. They push or pop other
 // screens by emitting [PushScreenMsg] / [PopScreenMsg] from their
@@ -46,3 +46,15 @@ type PushScreenMsg struct{ Screen Screen }
 // PopScreenMsg removes the top screen. On a single-screen stack it is
 // a no-op (the root screen cannot be popped).
 type PopScreenMsg struct{}
+
+// pushCmd returns a tea.Cmd that, when run, emits a PushScreenMsg for
+// s. Lives next to the message type so authors searching for "how do I
+// push a screen?" find the constructor and the message together.
+func pushCmd(s Screen) tea.Cmd {
+	return func() tea.Msg { return PushScreenMsg{Screen: s} }
+}
+
+// popCmd returns a tea.Cmd that, when run, emits a PopScreenMsg.
+func popCmd() tea.Cmd {
+	return func() tea.Msg { return PopScreenMsg{} }
+}
