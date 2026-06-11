@@ -50,10 +50,9 @@ func (t *toastAdapter) Empty() bool  { return t.inner.Empty() }
 
 // New constructs the shell, mounts a fresh Toast (default 5 s
 // duration), wires the supplied Log, and seeds the stack with the
-// placeholder Welcome screen. The actions handle is non-nil; the log
-// is non-nil. New panics on nil inputs because both are programmer
-// errors caught at wiring time, not runtime conditions to recover
-// from.
+// Welcome screen. The actions handle is non-nil; the log is non-nil.
+// New panics on nil inputs because both are programmer errors caught
+// at wiring time, not runtime conditions to recover from.
 func New(a *actions.Actions, log *notifications.Log) Model {
 	if a == nil {
 		panic("shell.New: nil actions")
@@ -66,7 +65,7 @@ func New(a *actions.Actions, log *notifications.Log) Model {
 		toast:   &toastAdapter{inner: notifications.NewToast(0)},
 		log:     log,
 		keys:    defaultGlobalKeyMap(),
-		stack:   []Screen{newWelcomeStub()},
+		stack:   []Screen{newWelcomeScreen()},
 	}
 }
 

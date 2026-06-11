@@ -7,11 +7,10 @@
 //
 // Screens implement the [Screen] interface. They push or pop other
 // screens by emitting [PushScreenMsg] / [PopScreenMsg] from their
-// Update; the root model is the only place the stack mutates. Entity
-// screens (Profiles, Edit Profile, …) are added in later tasks
-// (0024–0029); the package ships a placeholder Welcome stub plus
-// stubs for the three global-key destinations so the shell is
-// observable and testable on its own.
+// Update; the root model is the only place the stack mutates. The
+// shell seeds the root with the Welcome screen; entity screens
+// (Edit Profile, Edit Asset, …) land in later tasks (0025–0029) and
+// are reached through Welcome's menu or screen-local navigation.
 package shell
 
 import (

@@ -1,7 +1,7 @@
 ---
 id: 0024
 type: feature
-status: pending
+status: in-review
 topics: go, tui
 depends_on: 0021
 ---
@@ -91,3 +91,7 @@ the Settings status bar example, so include it.
 make build && make test && make lint
 ./bin/af   # lands on Welcome; menu reaches Settings stub and back
 ```
+
+## Plan
+
+[plan.md](./plan.md)

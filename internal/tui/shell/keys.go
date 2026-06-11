@@ -11,7 +11,7 @@ import (
 // status bar still advertises them so the user knows how to move).
 type globalKeyMap struct {
 	Notifications key.Binding // n  → push notificationsScreen
-	Settings      key.Binding // s  → push settingsStub
+	Settings      key.Binding // s  → push settingsScreen
 	Help          key.Binding // ?  → push infoScreen
 	Quit          key.Binding // q  / ctrl+c → tea.Quit
 	Up            key.Binding // ↑/k — display-only
@@ -59,7 +59,7 @@ func (m Model) handleGlobalKey(kp tea.KeyPressMsg) (tea.Cmd, bool) {
 	case key.Matches(kp, m.keys.Notifications):
 		return pushCmd(m.newNotificationsScreen()), true
 	case key.Matches(kp, m.keys.Settings):
-		return pushCmd(newSettingsStub()), true
+		return pushCmd(newSettingsScreen()), true
 	case key.Matches(kp, m.keys.Help):
 		return pushCmd(m.newInfoScreen()), true
 	case key.Matches(kp, m.keys.Quit):

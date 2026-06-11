@@ -47,17 +47,17 @@ func TestUpdate_PushScreenMsgGrowsStack(t *testing.T) {
 	if len(m.stack) != 1 {
 		t.Fatalf("initial stack depth = %d, want 1", len(m.stack))
 	}
-	if _, ok := m.stack[0].(*welcomeStub); !ok {
-		t.Fatalf("initial top = %T, want *welcomeStub", m.stack[0])
+	if _, ok := m.stack[0].(*welcomeScreen); !ok {
+		t.Fatalf("initial top = %T, want *welcomeScreen", m.stack[0])
 	}
 
-	tm, _ := m.Update(PushScreenMsg{Screen: newSettingsStub()})
+	tm, _ := m.Update(PushScreenMsg{Screen: newSettingsScreen()})
 	m = tm.(Model)
 	if len(m.stack) != 2 {
 		t.Fatalf("after push depth = %d, want 2", len(m.stack))
 	}
-	if _, ok := m.stack[1].(*settingsStub); !ok {
-		t.Fatalf("top after push = %T, want *settingsStub", m.stack[1])
+	if _, ok := m.stack[1].(*settingsScreen); !ok {
+		t.Fatalf("top after push = %T, want *settingsScreen", m.stack[1])
 	}
 }
 
@@ -95,13 +95,13 @@ func TestUpdate_PushScreenMsgRunsNewScreenInit(t *testing.T) {
 
 func TestUpdate_PushScreenMsgDedupSameType(t *testing.T) {
 	m := newTestShell(t)
-	tm, _ := m.Update(PushScreenMsg{Screen: newSettingsStub()})
+	tm, _ := m.Update(PushScreenMsg{Screen: newSettingsScreen()})
 	m = tm.(Model)
 	if len(m.stack) != 2 {
 		t.Fatalf("after first push depth = %d, want 2", len(m.stack))
 	}
 
-	tm, _ = m.Update(PushScreenMsg{Screen: newSettingsStub()})
+	tm, _ = m.Update(PushScreenMsg{Screen: newSettingsScreen()})
 	m = tm.(Model)
 	if len(m.stack) != 2 {
 		t.Fatalf("after duplicate-type push depth = %d, want 2 (dedup)", len(m.stack))
@@ -110,7 +110,7 @@ func TestUpdate_PushScreenMsgDedupSameType(t *testing.T) {
 
 func TestUpdate_PopScreenMsgShrinksStack(t *testing.T) {
 	m := newTestShell(t)
-	tm, _ := m.Update(PushScreenMsg{Screen: newSettingsStub()})
+	tm, _ := m.Update(PushScreenMsg{Screen: newSettingsScreen()})
 	m = tm.(Model)
 
 	tm, _ = m.Update(PopScreenMsg{})
@@ -118,14 +118,14 @@ func TestUpdate_PopScreenMsgShrinksStack(t *testing.T) {
 	if len(m.stack) != 1 {
 		t.Fatalf("after pop depth = %d, want 1", len(m.stack))
 	}
-	if _, ok := m.stack[0].(*welcomeStub); !ok {
-		t.Fatalf("top after pop = %T, want *welcomeStub", m.stack[0])
+	if _, ok := m.stack[0].(*welcomeScreen); !ok {
+		t.Fatalf("top after pop = %T, want *welcomeScreen", m.stack[0])
 	}
 }
 
 func TestUpdate_PopScreenMsgZeroesSlot(t *testing.T) {
 	m := newTestShell(t)
-	tm, _ := m.Update(PushScreenMsg{Screen: newSettingsStub()})
+	tm, _ := m.Update(PushScreenMsg{Screen: newSettingsScreen()})
 	m = tm.(Model)
 
 	// Reach into the backing array's index-1 slot via re-slice.
@@ -395,8 +395,8 @@ func TestView_ContainsTitleAndStatusBarHints(t *testing.T) {
 	v := m.View()
 	content := v.Content
 
-	if !strings.Contains(content, "Welcome") {
-		t.Errorf("view missing title 'Welcome':\n%s", content)
+	if !strings.Contains(content, "Agentfiles") {
+		t.Errorf("view missing title 'Agentfiles':\n%s", content)
 	}
 	for _, want := range []string{"n notifications", "s settings", "q quit", "? help"} {
 		if !strings.Contains(content, want) {
