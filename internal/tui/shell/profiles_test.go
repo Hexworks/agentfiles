@@ -512,10 +512,10 @@ func TestProfilesScreen_BodyShowsProfileRowsAndActions(t *testing.T) {
 	_, _ = s.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
 
 	body := s.Body(100, 20)
-	// Selected-row actions cell holds plain "[Edit] [Delete]" text so
-	// the table's cursor highlight does not fight the mnemonic foreground
-	// styling.
-	for _, want := range []string{"alpha", "Alpha", "/tmp/alpha", "[Edit] [Delete]"} {
+	// Selected-row actions cell holds "[Edit] [Delete]" with manual SGR
+	// underline markers around the mnemonic chars so the cursor-row
+	// highlight is not broken by an embedded lipgloss reset.
+	for _, want := range []string{"alpha", "Alpha", "/tmp/alpha", "dit]", "elete]"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("Body missing %q\n%s", want, body)
 		}
@@ -545,8 +545,23 @@ func TestProfilesScreen_CursorMoveRebuildsActionsColumn(t *testing.T) {
 	if rows[0][3] != "" {
 		t.Errorf("row 0 actions = %q, want empty after cursor moved off it", rows[0][3])
 	}
-	if rows[1][3] != "[Edit] [Delete]" {
-		t.Errorf("row 1 actions = %q, want [Edit] [Delete] on cursor row", rows[1][3])
+	if rows[1][3] != actionsCellContent() {
+		t.Errorf("row 1 actions = %q, want actionsCellContent on cursor row", rows[1][3])
+	}
+}
+
+func TestProfilesScreen_ActionsCellUsesSGRUnderlineWithoutReset(t *testing.T) {
+	got := actionsCellContent()
+	// Underline-on (SGR 4) and underline-off (SGR 24) wrap each
+	// mnemonic char — kept manual so the cell composes inside a
+	// styled cursor row without a full ANSI reset killing the wrapper.
+	for _, want := range []string{"\x1b[4mE\x1b[24m", "\x1b[4mD\x1b[24m"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("actionsCellContent missing SGR sequence %q\n%q", want, got)
+		}
+	}
+	if strings.Contains(got, "\x1b[0m") {
+		t.Errorf("actionsCellContent contains full reset \\x1b[0m which would break cursor-row highlight\n%q", got)
 	}
 }
 

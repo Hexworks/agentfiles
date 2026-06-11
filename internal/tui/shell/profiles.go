@@ -245,20 +245,34 @@ func (s *profilesScreen) rebuildTable() {
 
 // buildRows materializes one table.Row per profile. The Actions cell is
 // populated only on the cursor row, matching the task 0015 mockup where
-// `[Edit] [Delete]` appears next to the selected profile. The labels are
-// rendered as plain text rather than via mnemonic.Button.View so the
-// table's cursor-row highlight is not broken by the embedded foreground
-// styling the mnemonic buttons emit.
+// `[Edit] [Delete]` appears next to the selected profile. The mnemonic
+// chars are wrapped in raw SGR underline-on / underline-off codes so the
+// surrounding cell style (the table's Selected row highlight) is not
+// terminated by an embedded full-reset — a problem mnemonic.Button.View
+// has because lipgloss emits `\x1b[0m` at the end of every styled span.
 func (s *profilesScreen) buildRows(cursor int) []table.Row {
 	rows := make([]table.Row, len(s.profiles))
 	for i, p := range s.profiles {
 		actions := ""
 		if i == cursor {
-			actions = "[Edit] [Delete]"
+			actions = actionsCellContent()
 		}
 		rows[i] = table.Row{p.Manifest.ID, p.Manifest.Name, p.Root, actions}
 	}
 	return rows
+}
+
+// actionsCellContent returns the "[Edit] [Delete]" label with the two
+// mnemonic runes underlined via SGR 4 / 24. Manual escape sequences
+// avoid lipgloss's full-reset behavior so the cell composes cleanly
+// inside the table's Selected style.
+func actionsCellContent() string {
+	const (
+		underlineOn  = "\x1b[4m"
+		underlineOff = "\x1b[24m"
+	)
+	return "[" + underlineOn + "E" + underlineOff + "dit] " +
+		"[" + underlineOn + "D" + underlineOff + "elete]"
 }
 
 // columns picks fixed widths for ID / Name / Actions and gives the
