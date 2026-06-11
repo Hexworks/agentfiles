@@ -10,18 +10,20 @@ import (
 	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
 )
 
-// editProfileStub is the placeholder pushed by the Profiles screen's row-
-// level `[Edit]` action until task 0026 lands the real Edit Profile
-// screen. It carries the selected profile id so the future implementation
-// only needs to swap the body, not the call site.
-type editProfileStub struct {
+// editAssetStub is the placeholder pushed by the Edit Profile screen's
+// Assets-table `[Edit]` action until task 0027 lands the real Edit Asset
+// screen. It carries the selected profile + asset ids so the future
+// implementation only needs to swap the body, not the call site.
+type editAssetStub struct {
 	profileID string
+	assetID   string
 	back      *mnemonic.Button
 }
 
-func newEditProfileStub(profileID string) *editProfileStub {
-	return &editProfileStub{
+func newEditAssetStub(profileID, assetID string) *editAssetStub {
+	return &editAssetStub{
 		profileID: profileID,
+		assetID:   assetID,
 		back: mnemonic.New(
 			"Back",
 			'b',
@@ -31,9 +33,9 @@ func newEditProfileStub(profileID string) *editProfileStub {
 	}
 }
 
-func (s *editProfileStub) Init() tea.Cmd { return nil }
+func (s *editAssetStub) Init() tea.Cmd { return nil }
 
-func (s *editProfileStub) Update(msg tea.Msg) (Screen, tea.Cmd) {
+func (s *editAssetStub) Update(msg tea.Msg) (Screen, tea.Cmd) {
 	kp, ok := msg.(tea.KeyPressMsg)
 	if !ok {
 		return s, nil
@@ -44,16 +46,16 @@ func (s *editProfileStub) Update(msg tea.Msg) (Screen, tea.Cmd) {
 	return s, nil
 }
 
-func (s *editProfileStub) Title() string { return "Edit Profile" }
+func (s *editAssetStub) Title() string { return "Edit Asset" }
 
 // StatusKeys exposes [Back] for the same reason the Settings stub does:
 // the body has no other visible cue for it.
-func (s *editProfileStub) StatusKeys() []key.Binding {
+func (s *editAssetStub) StatusKeys() []key.Binding {
 	return []key.Binding{s.back.Binding()}
 }
 
-func (s *editProfileStub) Body(width, _ int) string {
-	msg := fmt.Sprintf(" Editing profile %q — task 0026", s.profileID)
+func (s *editAssetStub) Body(width, _ int) string {
+	msg := fmt.Sprintf(" Editing asset %q in profile %q — task 0027", s.assetID, s.profileID)
 	back := lipgloss.PlaceHorizontal(width, lipgloss.Right, s.back.View())
 	return lipgloss.JoinVertical(lipgloss.Left, msg, "", back)
 }

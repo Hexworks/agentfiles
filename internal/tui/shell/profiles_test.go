@@ -251,7 +251,7 @@ func TestProfilesScreen_RKeyOpensRegisterProfileModal(t *testing.T) {
 	}
 }
 
-func TestProfilesScreen_EKeyPushesEditProfileStub(t *testing.T) {
+func TestProfilesScreen_EKeyPushesEditProfileScreen(t *testing.T) {
 	f := newProfilesFixture(t)
 	s := newProfilesScreen(f.Actions)
 	withProfiles(s, []*profile.Profile{fakeProfile("alpha", "Alpha", "/tmp/alpha")})
@@ -262,12 +262,12 @@ func TestProfilesScreen_EKeyPushesEditProfileStub(t *testing.T) {
 	if !ok {
 		t.Fatalf("cmd produced %T, want PushScreenMsg", cmd())
 	}
-	stub, ok := push.Screen.(*editProfileStub)
+	edit, ok := push.Screen.(*editProfileScreen)
 	if !ok {
-		t.Fatalf("pushed screen = %T, want *editProfileStub", push.Screen)
+		t.Fatalf("pushed screen = %T, want *editProfileScreen", push.Screen)
 	}
-	if stub.profileID != "alpha" {
-		t.Errorf("stub profileID = %q, want alpha", stub.profileID)
+	if edit.profileID != "alpha" {
+		t.Errorf("editProfileScreen.profileID = %q, want alpha", edit.profileID)
 	}
 }
 

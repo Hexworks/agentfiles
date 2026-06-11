@@ -1,12 +1,17 @@
 ---
 id: 0026
 type: feature
-status: pending
+status: in-review
 topics: go, tui, profile
 depends_on: 0021, 0022
 ---
 
 # Edit Profile screen
+
+## Plan
+
+See [plan.md](./plan.md).
+
 
 Implements **Edit Profile Screen** from
 `0015_task_refactor_ui/description.md`. Two tables (Assets, Projects) with

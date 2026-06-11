@@ -350,7 +350,7 @@ func (s *profilesScreen) onEdit() tea.Cmd {
 	if !ok {
 		return nil
 	}
-	return pushCmd(newEditProfileStub(p.Manifest.ID))
+	return pushCmd(newEditProfileScreen(s.actions, p.Manifest.ID))
 }
 
 func (s *profilesScreen) onDelete() tea.Cmd {
