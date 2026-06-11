@@ -63,43 +63,64 @@ type content struct {
 	keys     keymap
 }
 
-// New constructs a help [modal.Modal] of fixed size (width x height) that
+// New constructs a help [modal.Modal] sized for (width x height) that
 // loads and renders req.Path from [ManualRoot]. The modal closes on `esc`
 // or `q`. Construction never fails — load errors are caught and rendered
-// inside the dialog's own viewport.
+// inside the dialog's own viewport. Subsequent [Modal.SetSize] calls
+// reflow the viewport and re-render the manual at the new wrap width.
 func New(id string, req Request, width, height int) *modal.Modal {
 	c := &content{
-		topic:  req.Topic,
-		path:   req.Path,
-		width:  width,
-		height: height,
-		keys:   defaultKeymap(),
+		topic: req.Topic,
+		path:  req.Path,
+		keys:  defaultKeymap(),
 	}
-
-	innerW := width - 2  // rounded border
-	innerH := height - 2 // rounded border
-	// Layout heights inside the border:
-	//   titleRow (bordered tab joined with a rule): 3
-	//   viewport:                                   vH
-	//   bottomRow (rule joined with bordered %):    3
-	//   help footer:                                1
-	vH := innerH - 7
-	if vH < 1 {
-		vH = 1
-	}
+	innerW, vH := helpInner(width, height)
 
 	vp := viewport.New(viewport.WithWidth(innerW), viewport.WithHeight(vH))
 	vp.SoftWrap = true
+	c.viewport = vp
+	c.applySize(width, height, innerW, vH)
 
+	style := lipgloss.NewStyle().Border(lipgloss.RoundedBorder())
+	return modal.New(id, c, modal.WithStyle(style))
+}
+
+// helpInner translates the outer modal dimensions into the inner
+// viewport width and height after deducting the rounded border (2 each
+// axis) and the four chrome rows inside the border: title row (3) +
+// bottom row (3) + help footer (1) = 7. The height clamps at 1 so the
+// viewport stays valid on very narrow terminals.
+func helpInner(width, height int) (int, int) {
+	innerW := width - 2
+	if innerW < 1 {
+		innerW = 1
+	}
+	vH := height - 2 - 7
+	if vH < 1 {
+		vH = 1
+	}
+	return innerW, vH
+}
+
+// applySize updates the cached width/height, resizes the viewport, and
+// re-renders the manual at the new wrap width. Shared between New and
+// SetSize so the resize path always touches the same fields.
+func (c *content) applySize(width, height, innerW, vH int) {
+	c.width = width
+	c.height = height
+	c.viewport.SetWidth(innerW)
+	c.viewport.SetHeight(vH)
 	body, err := loadManual(c.path, innerW)
 	if err != nil {
 		body = renderLoadError(err)
 	}
-	vp.SetContent(body)
-	c.viewport = vp
+	c.viewport.SetContent(body)
+}
 
-	style := lipgloss.NewStyle().Border(lipgloss.RoundedBorder())
-	return modal.New(id, c, modal.WithStyle(style))
+// SetSize re-runs the help layout for new outer dimensions.
+func (c *content) SetSize(width, height int) {
+	innerW, vH := helpInner(width, height)
+	c.applySize(width, height, innerW, vH)
 }
 
 func (c *content) Init() tea.Cmd { return nil }

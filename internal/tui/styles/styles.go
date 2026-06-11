@@ -66,6 +66,19 @@ func SeverityStyle(s errs.Severity) (string, lipgloss.Style) {
 	return "ℹ", InfoStyle
 }
 
+// SeverityLabel returns the short uppercase label for a severity used
+// by table-shaped renderers (e.g. the notifications modal). Centralized
+// so every severity-aware view picks the same vocabulary.
+func SeverityLabel(s errs.Severity) string {
+	switch s {
+	case errs.SeverityError:
+		return "ERROR"
+	case errs.SeverityWarning:
+		return "WARN"
+	}
+	return "INFO"
+}
+
 // Safe returns s rendered as a terminal-safe string. Without this, a
 // manifest field or attacker-controlled filename containing raw escape
 // sequences (e.g. \x1b[2J or OSC title changes), C1 controls, bidi

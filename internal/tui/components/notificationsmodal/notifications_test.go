@@ -1,4 +1,4 @@
-package notifications
+package notificationsmodal
 
 import (
 	"strings"
@@ -9,17 +9,18 @@ import (
 
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/tui/components/modal"
-	notlog "github.com/hexworks/agentfiles/internal/tui/notifications"
+	"github.com/hexworks/agentfiles/internal/tui/notifications"
+	"github.com/hexworks/agentfiles/internal/tui/styles"
 )
 
 // fakeLog is a fixed-content LogReader for deterministic tests. Real
 // notifications.Log is also safe to use, but a stub avoids importing
 // the ring-buffer's full surface and makes the input list explicit.
 type fakeLog struct {
-	entries []notlog.Notification
+	entries []notifications.Notification
 }
 
-func (f *fakeLog) Entries() []notlog.Notification { return f.entries }
+func (f *fakeLog) Entries() []notifications.Notification { return f.entries }
 
 func mustTime(t *testing.T, value string) time.Time {
 	t.Helper()
@@ -34,7 +35,7 @@ func mustTime(t *testing.T, value string) time.Time {
 // real Log returns from Entries). The modal must preserve that order in
 // the rendered table: the oldest row is the last visible row.
 func TestView_RendersEntriesNewestFirst(t *testing.T) {
-	log := &fakeLog{entries: []notlog.Notification{
+	log := &fakeLog{entries: []notifications.Notification{
 		{Severity: errs.SeverityError, Text: "boom", CreatedAt: mustTime(t, "13:05:15")},
 		{Severity: errs.SeverityWarning, Text: "careful", CreatedAt: mustTime(t, "13:04:50")},
 		{Severity: errs.SeverityInfo, Text: "hello", CreatedAt: mustTime(t, "13:04:42")},
@@ -49,20 +50,32 @@ func TestView_RendersEntriesNewestFirst(t *testing.T) {
 		}
 	}
 
-	boomIdx := strings.Index(view, "boom")
-	helloIdx := strings.Index(view, "hello")
-	if boomIdx == -1 || helloIdx == -1 || boomIdx >= helloIdx {
-		t.Errorf("entries out of order: boom@%d, hello@%d (want boom before hello)\n%s", boomIdx, helloIdx, view)
+	// Newest-first across all three rows: boom < careful < hello.
+	var last int
+	for i, want := range []string{"boom", "careful", "hello"} {
+		idx := strings.Index(view, want)
+		if idx == -1 {
+			t.Fatalf("view missing %q", want)
+		}
+		if i > 0 && idx <= last {
+			t.Errorf("entry %q at %d is not strictly after previous at %d\n%s",
+				want, idx, last, view)
+		}
+		last = idx
 	}
 }
 
-// An empty log must surface the EmptyMessage rather than render a
-// header-only table or crash on a zero-row bubbles/table.
+// An empty log must surface the empty-state message rather than render
+// a header-only table or crash on a zero-row bubbles/table.
 func TestView_EmptyLogShowsPlaceholder(t *testing.T) {
+	const wantEmpty = "No notifications yet"
 	c := newContent(&fakeLog{}, 80, 20)
+	if !c.empty {
+		t.Fatalf("content.empty = false on zero-entry log")
+	}
 	view := c.View()
-	if !strings.Contains(view, EmptyMessage) {
-		t.Errorf("view = %q, want substring %q", view, EmptyMessage)
+	if !strings.Contains(view, wantEmpty) {
+		t.Errorf("view = %q, want substring %q", view, wantEmpty)
 	}
 }
 
@@ -95,16 +108,23 @@ func TestUpdate_CloseKeysCancelLifecycle(t *testing.T) {
 }
 
 // A non-close key must reach the underlying table without flipping the
-// lifecycle; otherwise scrolling closes the modal.
+// lifecycle. Asserts both: lifecycle stays Active *and* the table
+// cursor moves, which is only possible if the message was forwarded.
 func TestUpdate_NonCloseKeyKeepsActive(t *testing.T) {
-	log := &fakeLog{entries: []notlog.Notification{
+	log := &fakeLog{entries: []notifications.Notification{
 		{Severity: errs.SeverityInfo, Text: "row1", CreatedAt: mustTime(t, "10:00:00")},
 		{Severity: errs.SeverityInfo, Text: "row2", CreatedAt: mustTime(t, "10:00:01")},
 	}}
 	c := newContent(log, 80, 20)
+	before := c.table.Cursor()
+
 	_, _ = c.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+
 	if state, _ := c.Lifecycle(); state != modal.Active {
 		t.Fatalf("state = %v, want Active after scroll key", state)
+	}
+	if c.table.Cursor() == before {
+		t.Errorf("table cursor did not move after %q press (still at %d) — key not forwarded", "j", before)
 	}
 }
 
@@ -120,22 +140,21 @@ func TestNew_BuildsModalWithID(t *testing.T) {
 	}
 }
 
-// The level label is what the host can grep for in the rendered string;
-// styles only add ANSI escape codes around it. Locking the label set
-// here protects the visible vocabulary from accidental rename.
-func TestLevelLabel_Vocabulary(t *testing.T) {
-	cases := []struct {
-		severity errs.Severity
-		want     string
-	}{
-		{errs.SeverityInfo, "INFO"},
-		{errs.SeverityWarning, "WARN"},
-		{errs.SeverityError, "ERROR"},
-	}
-	for _, tc := range cases {
-		got := levelLabel(tc.severity)
-		if got != tc.want {
-			t.Errorf("levelLabel(%v) = %q, want %q", tc.severity, got, tc.want)
+// renderSeverity wraps the canonical severity label from the styles
+// package in the matching style. The vocabulary itself is locked by
+// styles.SeverityLabel's own test; this test asserts the modal applies
+// some styling on top.
+func TestRenderSeverity_AppliesStyle(t *testing.T) {
+	cases := []errs.Severity{errs.SeverityInfo, errs.SeverityWarning, errs.SeverityError}
+	for _, s := range cases {
+		label := styles.SeverityLabel(s)
+		rendered := renderSeverity(s)
+		if !strings.Contains(rendered, label) {
+			t.Errorf("renderSeverity(%v) = %q, want substring %q", s, rendered, label)
+		}
+		if len(rendered) <= len(label) {
+			t.Errorf("renderSeverity(%v) = %q (len=%d), expected styling to add ANSI escapes around %q (len=%d)",
+				s, rendered, len(rendered), label, len(label))
 		}
 	}
 }

@@ -58,3 +58,32 @@ func pushCmd(s Screen) tea.Cmd {
 func popCmd() tea.Cmd {
 	return func() tea.Msg { return PopScreenMsg{} }
 }
+
+// modalMinWidth / modalMinHeight is the floor the shell guarantees a
+// modal opens at, even before the first WindowSizeMsg has arrived
+// (when shell.Model.width/height are zero). bubbles/table degrades on
+// non-positive dimensions; the floor keeps the first keystroke safe.
+const (
+	modalMinWidth  = 40
+	modalMinHeight = 10
+	// chromeHeight is the rows the shell reserves outside any modal:
+	// the title bar (3) plus the status bar (1). Kept in sync with
+	// the layout in shell.go::View.
+	chromeHeight = 4
+)
+
+// modalSize returns the (width, height) the shell hands to a modal
+// constructor: the current viewport minus the chrome reservation,
+// floored to (modalMinWidth, modalMinHeight) so a pre-WindowSize open
+// still feeds a usable rectangle to bubbles/table.
+func modalSize(width, height int) (int, int) {
+	w := width
+	if w < modalMinWidth {
+		w = modalMinWidth
+	}
+	h := height - chromeHeight
+	if h < modalMinHeight {
+		h = modalMinHeight
+	}
+	return w, h
+}

@@ -180,7 +180,7 @@ func TestUpdate_GlobalKeysInterceptedBeforeScreen(t *testing.T) {
 	}{
 		{"n notifications", tea.KeyPressMsg{Code: 'n', Text: "n"}, "push:Notifications"},
 		{"s settings", tea.KeyPressMsg{Code: 's', Text: "s"}, "push:Settings"},
-		{"? help", tea.KeyPressMsg{Code: '?', Text: "?"}, "push:Info"},
+		{"? help", tea.KeyPressMsg{Code: '?', Text: "?"}, "push:Help"},
 		{"q quit", tea.KeyPressMsg{Code: 'q', Text: "q"}, "quit"},
 		{"ctrl+c quit", tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}, "quit"},
 	}
@@ -266,8 +266,7 @@ func TestUpdate_NotificationMsgFeedsLog(t *testing.T) {
 	tm, _ := m.Update(notifications.NotificationMsg{Notification: n})
 	m = tm.(Model)
 
-	log := m.log.(*notifications.Log)
-	entries := log.Entries()
+	entries := m.log.Entries()
 	if len(entries) != 1 {
 		t.Fatalf("log has %d entries, want 1", len(entries))
 	}

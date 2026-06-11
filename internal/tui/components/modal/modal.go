@@ -60,6 +60,15 @@ type Content interface {
 	Lifecycle() (state LifecycleState, value any)
 }
 
+// Resizable is the optional interface a [Content] may satisfy to be
+// re-sized when the host terminal changes dimensions. The parent calls
+// [Modal.SetSize] in response to [tea.WindowSizeMsg]; the modal
+// forwards to the content if it satisfies this interface and ignores
+// the request otherwise.
+type Resizable interface {
+	SetSize(width, height int)
+}
+
 // ResolvedMsg is dispatched once when the modal's [Content] reports a terminal
 // state. Parents should clear their modal field on receipt and react to
 // Confirmed / Value as appropriate.
@@ -150,6 +159,18 @@ func (m *Modal) ID() string { return m.id }
 
 func (m *Modal) Init() tea.Cmd {
 	return m.content.Init()
+}
+
+// SetSize hands new outer dimensions to the wrapped content if it
+// satisfies [Resizable]. No-op when the content is dimension-agnostic
+// or when the modal has already resolved.
+func (m *Modal) SetSize(width, height int) {
+	if m.resolved {
+		return
+	}
+	if r, ok := m.content.(Resizable); ok {
+		r.SetSize(width, height)
+	}
 }
 
 // Update forwards the message to the content. If the content reports it is

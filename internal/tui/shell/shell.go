@@ -11,16 +11,6 @@ import (
 	"github.com/hexworks/agentfiles/internal/tui/styles"
 )
 
-// notifier is the slice of *notifications.Log the shell consumes.
-// Add is used by the notification fan-out path; Entries is read by the
-// Notifications modal at push time. Declaring it consumer-side lets
-// shell tests substitute a fake without dragging the ring-buffer
-// implementation into the test setup.
-type notifier interface {
-	Add(notifications.Notification)
-	Entries() []notifications.Notification
-}
-
 // toaster is the slice of *notifications.Toast the shell consumes.
 // Update returns toaster (not the concrete *Toast) so the field can
 // stay typed as the interface across the loop's reassignment.
@@ -37,7 +27,7 @@ type toaster interface {
 type Model struct {
 	actions *actions.Actions
 	toast   toaster
-	log     notifier
+	log     *notifications.Log
 
 	keys  globalKeyMap
 	stack []Screen
@@ -151,10 +141,7 @@ func (m Model) notify(n notifications.Notification) (Model, tea.Cmd) {
 	return m, cmd
 }
 
-// pushScreen appends s to the stack and runs its Init. Idempotent for
-// the three global-key stubs: if s has the same concrete type as the
-// current top, the push is a no-op so auto-repeat on n/s/? cannot
-// grow the stack indefinitely.
+// pushScreen appends s to the stack and runs its Init.
 func (m Model) pushScreen(s Screen) (Model, tea.Cmd) {
 	top := m.stack[len(m.stack)-1]
 	if sameScreenType(top, s) {
