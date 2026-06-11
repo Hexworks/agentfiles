@@ -1,7 +1,7 @@
 ---
 id: 0022
 type: feature
-status: pending
+status: in-review
 topics: go, tui, charm
 depends_on: 0019, 0021
 ---
@@ -98,3 +98,7 @@ returns the typed result so `*huh.Form` does not leak out of the package.
 ```
 make build && make test && make lint
 ```
+
+## Plan
+
+[plan.md](./plan.md)

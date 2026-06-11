@@ -130,7 +130,7 @@ func (s *Service) AddProject(profileRef, name, path string, agents, assetIDs []s
 		return nil, domainErrs
 	}
 	manifest := &project.Manifest{
-		ID:               slug(name),
+		ID:               utils.Slug(name),
 		Name:             name,
 		Path:             path,
 		EnabledAgents:    agents,
@@ -510,21 +510,4 @@ func (s *Service) DeleteProject(profileRef, projectID string) errs.DomainError {
 		return err
 	}
 	return project.Delete(loaded.Root, projectID)
-}
-
-// slug creates a stable file/id friendly name from user-facing input.
-func slug(v string) string {
-	v = strings.ToLower(strings.TrimSpace(v))
-	v = strings.ReplaceAll(v, " ", "-")
-	v = strings.ReplaceAll(v, "_", "-")
-	var b strings.Builder
-	for _, r := range v {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
-			b.WriteRune(r)
-		}
-	}
-	if b.Len() == 0 {
-		return "item"
-	}
-	return b.String()
 }
