@@ -1,0 +1,43 @@
+package shell
+
+import (
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
+
+	"github.com/hexworks/agentfiles/internal/tui/components/modal"
+	notmodal "github.com/hexworks/agentfiles/internal/tui/components/notifications"
+)
+
+// notificationsScreen wraps the [notmodal.Modal] returned from the
+// component package. It exists so the shell's Screen stack can host the
+// modal without the shell needing a native overlay layer: every render
+// the modal's bordered view fills the screen body, and a ResolvedMsg
+// pops the screen.
+type notificationsScreen struct {
+	modal *modal.Modal
+}
+
+// newNotificationsScreen mounts the Notifications modal using the
+// shell's current viewport so the table sizes itself to the open
+// window. The log read snapshot happens inside [notmodal.New].
+func (m Model) newNotificationsScreen() *notificationsScreen {
+	w, h := modalSize(m.width, m.height)
+	return &notificationsScreen{
+		modal: notmodal.New("notifications", m.log, w, h),
+	}
+}
+
+func (s *notificationsScreen) Init() tea.Cmd { return s.modal.Init() }
+
+func (s *notificationsScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
+	if _, ok := msg.(modal.ResolvedMsg); ok {
+		return s, popCmd()
+	}
+	var cmd tea.Cmd
+	s.modal, cmd = s.modal.Update(msg)
+	return s, cmd
+}
+
+func (s *notificationsScreen) Body(_ int, _ int) string  { return s.modal.View() }
+func (s *notificationsScreen) Title() string             { return "Notifications" }
+func (s *notificationsScreen) StatusKeys() []key.Binding { return nil }

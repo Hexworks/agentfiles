@@ -1,7 +1,7 @@
 ---
 id: 0023
 type: feature
-status: pending
+status: in-review
 topics: go, tui, charm
 depends_on: 0019, 0021
 ---
@@ -84,3 +84,7 @@ these modals instead of no-ops.
 make build && make test && make lint
 ./bin/af   # pressing n opens Notifications modal; ? opens Info modal
 ```
+
+## Plan
+
+[plan.md](./plan.md)

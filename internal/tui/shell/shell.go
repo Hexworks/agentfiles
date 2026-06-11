@@ -12,10 +12,13 @@ import (
 )
 
 // notifier is the slice of *notifications.Log the shell consumes.
-// Declaring it consumer-side lets shell tests substitute a fake
-// without dragging the ring-buffer implementation into the test setup.
+// Add is used by the notification fan-out path; Entries is read by the
+// Notifications modal at push time. Declaring it consumer-side lets
+// shell tests substitute a fake without dragging the ring-buffer
+// implementation into the test setup.
 type notifier interface {
 	Add(notifications.Notification)
+	Entries() []notifications.Notification
 }
 
 // toaster is the slice of *notifications.Toast the shell consumes.
