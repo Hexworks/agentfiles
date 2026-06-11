@@ -1,7 +1,10 @@
 # 0020 changes
 
 Two additive component extensions consumed by upcoming screen tasks under the
-0015 UI refactor:
+0015 UI refactor. The shape below incorporates the review pass:
+construction-time validation for both new contracts, sanitization for value
+cells, an O(1) duplicate index inside `Set`, and a `ValueColumn` literal
+shape that is flat rather than embedded.
 
 1. A new `mnemonic.Set` type that registers `*Button` instances under a single
    collection and panics on duplicate mnemonic runes (case-insensitive). The
@@ -23,17 +26,42 @@ unmodified `mnemonic.Button` API both round-trip through pre-existing tests.
 - `Set.Add` panics rather than returning an error — **Why:** duplicate
   mnemonics on the same screen are programmer errors, matching the existing
   `mnemonic.New` constructor convention (`panic` on nil action, missing rune
-  in label, etc.). Behavior stays consistent across the package.
+  in label, etc.). Behavior stays consistent across the package. The panic
+  also covers `Add(nil)` with `mnemonic: nil button` so the failure is
+  attributable instead of surfacing as an opaque nil-deref.
 - `Set.Match` returns the matched button (or nil) instead of triggering it —
   **Why:** routing and side effects belong to the host, mirroring how
   `Button.Matches` / `Button.Trigger` already split responsibility. Set stays
   passive.
-- `ValueColumn` embeds `Column` rather than redeclaring `Title` and `Width` —
-  **Why:** matches the API quoted verbatim in task 0020 and in the parent
-  task 0015's Treetable section. Keeps callers consistent if `Column` grows
-  later.
-- No `Button.Mnemonic()` accessor added — **Why:** it already existed on
-  `*Button` (button.go:112). `Set` uses it directly for uniqueness checks.
+- `Set` keeps both a `[]*Button` (insertion order, used by `View`/`Match`)
+  and a `map[rune]*Button` index keyed by `unicode.ToLower(mnemonic)` —
+  **Why:** the index makes the duplicate check O(1) and self-describing,
+  while the slice preserves render order without paying for sort logic.
+- `Set.View` reads the separator from `Styles.Separator` (default `" "`)
+  instead of taking it as a parameter — **Why:** every host site would
+  otherwise have to invent its own separator, drifting visually. Theming
+  knobs already live on `Styles`; the separator joins them there.
+- `ValueColumn` declares `Title`/`Width`/`Value` as flat fields rather than
+  embedding `Column` — **Why:** the review pass surfaced that embedding
+  forced awkward nested literals at every call site
+  (`ValueColumn{Column: Column{Title: ..., Width: ...}, Value: ...}`),
+  with no method-promotion benefit since `Column` has no methods. Flat
+  shape removes the foot-gun.
+- `ValueColumn.Value == nil` panics at `WithValueColumns` construction —
+  **Why:** matches `mnemonic.New`'s "fail fast at the misconfigured call
+  site" convention, instead of crashing deep inside `refreshRows` with a
+  generic nil-deref.
+- Value cell text is sanitized before reaching `bubbles/table` —
+  **Why:** callbacks compute strings from `Node.Data` which originates in
+  profile manifests; without sanitization an embedded ANSI/OSC sequence in
+  payload data could leak styling, move the cursor, or trigger clipboard
+  side effects on render. CR/LF/TAB collapse to a single space; other
+  non-printable runes are stripped; output is truncated to the column
+  width with ANSI-aware measurement.
+- `treetable.Model` carries a doc comment declaring the three column kinds
+  (name, value, actions) as a closed list — **Why:** the column-kind
+  surface widened with this task. Future maintainers should know the kinds
+  are fixed by design, not by accident.
 
 ## Assumptions
 
@@ -154,14 +182,21 @@ if m.actionsFn != nil { /* unchanged actions cell */ }
 
 ## Tests
 
-- `internal/tui/components/mnemonic/set_test.go` — 6 tests: duplicate
-  same-case panic, duplicate case-insensitive panic, `Match` returns first
-  matching button, unknown key returns nil, `View` preserves insertion order,
-  `Buttons` returns defensive copy.
-- `internal/tui/components/treetable/treetable_value_columns_test.go` — 5
+- `internal/tui/components/mnemonic/set_test.go` — 12 tests: nil-button
+  panic, duplicate same-case panic, duplicate case-insensitive panic,
+  duplicate-panic message names both labels, `Match` returns first matching
+  button, `Match` returns nil for unknown key, `Match` returns nil on empty
+  set, `View` preserves insertion order, `View` honors the configured
+  separator, `View` returns empty string on empty set, `Buttons` returns
+  defensive copy, `Buttons` returns empty on empty set.
+- `internal/tui/components/treetable/treetable_value_columns_test.go` — 9
   tests: zero value columns is transparent, four-column header with actions,
-  cell values come from callbacks, `Value` invoked exactly once per row per
-  render, actions cell remains cursor-only with value columns present.
+  cell values come from callbacks (asserted via `Model.Rows()`),
+  `Value` invoked once per row per `refreshRows` pass, actions cell remains
+  cursor-only with value columns present (asserted by scanning `Model.View()`),
+  nil `Value` panics in `WithValueColumns`, sanitization neutralizes
+  control characters, sanitization truncates to column width, panel frame
+  stays width-square with value columns + title + mnemonic.
 
 ## Verification
 

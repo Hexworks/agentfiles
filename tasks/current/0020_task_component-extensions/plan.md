@@ -57,12 +57,18 @@ Joining uses `strings.Join` over `b.View()` results — same pattern as `main.go
 
 `set_test.go`:
 
-- `TestSetAddPanicsOnDuplicateMnemonic` — register `[Save]` with `'S'`, then register another button with `'s'`; expect panic. Use `defer/recover`.
+- `TestSetAddPanicsOnNilButton` — `Add(nil)` panics with `mnemonic: nil button`.
 - `TestSetAddPanicsOnDuplicateMnemonicSameCase` — basic same-rune duplicate.
+- `TestSetAddPanicsOnDuplicateMnemonicCaseInsensitive` — register `[Save]` with `'S'`, then `[send]` with `'s'`; expect panic.
+- `TestSetAddDuplicatePanicMessageNamesConflictingLabels` — panic message contains both labels.
 - `TestSetMatchReturnsFirstMatchingButton` — register two distinct buttons; build a `tea.KeyPressMsg` for each mnemonic; assert correct button returned.
 - `TestSetMatchReturnsNilForUnknownKey` — unmatched key → nil.
-- `TestSetViewPreservesInsertionOrder` — add three buttons, assert `View(" ")` concatenates `b.View()` outputs in registration order.
+- `TestSetMatchOnEmptySetReturnsNil` — empty Set returns nil for any key.
+- `TestSetViewPreservesInsertionOrder` — add three buttons, assert each label appears in registration order in `View()`.
+- `TestSetViewUsesConfiguredSeparator` — `WithSetStyles(Styles{Separator: " | "})` renders the configured separator between buttons.
+- `TestSetViewOnEmptySetIsEmpty` — `View()` on empty Set returns the empty string.
 - `TestSetButtonsReturnsCopy` — mutate returned slice, assert internal store unchanged.
+- `TestSetButtonsOnEmptySetReturnsEmpty` — empty Set returns a zero-length slice.
 
 Construct keys via the same path the example uses (`bubbles/v2/key.Binding` → simulated `tea.KeyPressMsg`). If there is no easy constructor, use the same fixture shape `Button.Matches` already accepts in `button.go`.
 
@@ -112,11 +118,15 @@ Then the existing actions append runs unchanged.
 
 New file `treetable_value_columns_test.go`. Reuse the helpers from `treetable_test.go` (tree fixture, model construction).
 
-- `TestValueColumnsZeroIsTransparent` — model built with `WithValueColumns()` (no cols) renders identical headers/rows to a model built without the option. Compare `tableColumns()` output and a sample row.
+- `TestValueColumnsZeroIsTransparent` — model built with `WithValueColumns()` (no cols) renders identical headers/rows to a model built without the option.
 - `TestValueColumnsHeaderHasFourColumnsWhenActionsEnabled` — `WithValueColumns(vc1, vc2)` + `WithActions(...)` → header length 4: Name, Status, Current Action, Actions. Titles and widths flow through.
-- `TestValueColumnsCellsRenderFromCallbacks` — for two columns, assert rendered row cells equal the `Value(n)` outputs for the given `*Node`.
-- `TestValueCallbackInvokedOncePerRowPerRender` — counter inside `Value` closure; trigger one render pass over N rows; assert counter == N.
-- `TestActionsStayCursorOnlyWithValueColumns` — with value columns present, the actions cell on non-cursor rows is still empty; on cursor row still rendered. Walk cursor across rows.
+- `TestValueColumnsCellsRenderFromCallbacks` — asserts the materialized cells via `Model.Rows()` equal the `Value(n)` outputs.
+- `TestValueCallbackInvokedForEachRow` — counter inside `Value`; one `refreshRows` pass should fire the callback once per row.
+- `TestActionsStayCursorOnlyWithValueColumns` — scan `Model.View()`: the rendered button label appears exactly once before and after `MoveDown`, proving non-cursor rows render an empty actions cell.
+- `TestValueColumnsPanicOnNilValueCallback` — `WithValueColumns(ValueColumn{...})` with omitted `Value` panics at construction.
+- `TestValueCellSanitizationNeutralizesControlCharacters` — callback returns `"x\ny\x1b]52;c;evil\x07z"`; rendered cell contains no `\n`, `\x1b`, `\x07`, and `\n` becomes a space.
+- `TestValueCellSanitizationTruncatesToWidth` — long payload is truncated using ANSI-aware width to the column width.
+- `TestPanelWidthStaysSquareWithValueColumnsAndTitle` — model with `WithValueColumns`, `WithTitle`, and `WithMnemonicButton`; every line of the rendered panel has identical `lipgloss.Width`.
 
 ## Out of scope (per description.md)
 

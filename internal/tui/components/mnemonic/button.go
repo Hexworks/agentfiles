@@ -23,8 +23,9 @@ import (
 // [tea.Cmd] is valid for actions that only mutate parent state.
 type Action func() tea.Cmd
 
-// Styles centralizes the appearance of a button so callers can theme it
-// without touching the component internals.
+// Styles centralizes the appearance of a button (and the separator a
+// [Set] uses to join buttons) so callers can theme everything in one
+// place without touching the component internals.
 type Styles struct {
 	// Bracket renders the `[` and `]` framing the label.
 	Bracket lipgloss.Style
@@ -32,15 +33,18 @@ type Styles struct {
 	Label lipgloss.Style
 	// Mnemonic renders the single highlighted mnemonic character.
 	Mnemonic lipgloss.Style
+	// Separator joins buttons in [Set.View]. Ignored by [Button.View].
+	Separator string
 }
 
 // DefaultStyles returns palette-neutral styles. Callers that want themed
 // buttons should pass [WithStyles].
 func DefaultStyles() Styles {
 	return Styles{
-		Bracket:  lipgloss.NewStyle(),
-		Label:    lipgloss.NewStyle(),
-		Mnemonic: lipgloss.NewStyle().Bold(true).Underline(true),
+		Bracket:   lipgloss.NewStyle(),
+		Label:     lipgloss.NewStyle(),
+		Mnemonic:  lipgloss.NewStyle().Bold(true).Underline(true),
+		Separator: " ",
 	}
 }
 

@@ -19,7 +19,9 @@
 package treetable
 
 import (
+	"fmt"
 	"strings"
+	"unicode"
 
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
@@ -50,10 +52,19 @@ type Column struct {
 }
 
 // ValueColumn is an intermediate column injected between the name column and
-// the optional actions column. Value is invoked once per (row, render) and
-// returns the cell text for that row.
+// the optional actions column.
+//
+// Value computes the cell text for a given node. It may be invoked on every
+// render and on every [Model.Update] message, so it must be cheap and pure.
+// The returned string is sanitized before display: control characters are
+// stripped, CR/LF/TAB are collapsed to a single space, and the result is
+// truncated to Width using ANSI-aware width measurement.
+//
+// Title and Width follow the same shape as [Column]; declared as fields here
+// (rather than embedded) so call sites can use flat struct literals.
 type ValueColumn struct {
-	Column
+	Title string
+	Width int
 	Value func(*Node) string
 }
 
@@ -84,6 +95,16 @@ func DefaultStyles() Styles {
 }
 
 // Model is the tree-table widget.
+//
+// Exactly three column kinds are supported, always in this fixed order:
+//
+//  1. Name (always present, always first).
+//  2. Value columns (zero or more, via [WithValueColumns]).
+//  3. Actions (optional, always last, via [WithActions]).
+//
+// Adding a new column kind requires editing Model — there is no open
+// extension point. The constraint is deliberate: the three kinds cover
+// the foreseeable need without paying for a generic column-spec abstraction.
 type Model struct {
 	root         *Node
 	nameCol      Column
@@ -113,10 +134,19 @@ func WithRoot(root *Node) Option { return func(m *Model) { m.root = root } }
 func WithNameColumn(c Column) Option { return func(m *Model) { m.nameCol = c } }
 
 // WithValueColumns injects intermediate value columns between the name column
-// and the optional actions column. Each ValueColumn's Value callback is
-// invoked once per (row, render) and returns the cell text. Render order is
-// name → value columns (in order) → actions.
+// and the optional actions column. Each [ValueColumn.Value] is called per row
+// per render-pass to produce the cell text. Render order is name → value
+// columns (in order) → actions.
+//
+// Panics if any column has a nil Value callback — that is a programmer error
+// caught at construction so the failure points at the misconfigured call
+// site instead of the eventual render loop.
 func WithValueColumns(cols ...ValueColumn) Option {
+	for i, c := range cols {
+		if c.Value == nil {
+			panic(fmt.Sprintf("treetable: ValueColumn[%d] %q has nil Value callback", i, c.Title))
+		}
+	}
 	return func(m *Model) { m.valueColumns = cols }
 }
 
@@ -197,31 +227,77 @@ func (m *Model) rebuild() {
 
 // refreshRows rebuilds the bubbles table rows. The actions cell is populated
 // only for the cursor row so non-cursor rows stay visually quiet.
+//
+// Tests in this package may call refreshRows directly to drive a single
+// render pass without going through [Model.Update]. Production code never
+// needs to call it: [Model.Update] and the option pipeline already do.
 func (m *Model) refreshRows() {
 	cursor := m.table.Cursor()
 	m.currentBtns = nil
 	rows := make([]table.Row, len(m.flat))
 	for i, n := range m.flat {
-		name := ""
-		if i < len(m.treeLines) {
-			name = m.treeLines[i]
-		}
-		row := table.Row{name}
-		for _, vc := range m.valueColumns {
-			row = append(row, vc.Value(n))
-		}
-		if m.actionsFn != nil {
-			cell := ""
-			if i == cursor {
-				btns := m.actionsFn(n)
-				m.currentBtns = btns
-				cell = renderButtons(btns)
-			}
-			row = append(row, cell)
-		}
-		rows[i] = row
+		rows[i] = m.buildRow(i, n, cursor)
 	}
 	m.table.SetRows(rows)
+}
+
+// buildRow assembles one row in the order Name → value columns → optional
+// actions cell. The actions cell is populated only when i == cursor.
+func (m *Model) buildRow(i int, n *Node, cursor int) table.Row {
+	name := ""
+	if i < len(m.treeLines) {
+		name = m.treeLines[i]
+	}
+	row := table.Row{name}
+	for _, vc := range m.valueColumns {
+		row = append(row, sanitizeCell(vc.Value(n), vc.Width))
+	}
+	if m.actionsFn != nil {
+		cell := ""
+		if i == cursor {
+			btns := m.actionsFn(n)
+			m.currentBtns = btns
+			cell = renderButtons(btns)
+		}
+		row = append(row, cell)
+	}
+	return row
+}
+
+// sanitizeCell neutralizes untrusted text returned from a value callback
+// before it reaches the table renderer. CR/LF/TAB collapse to a single
+// space so a multi-line payload does not desync the row layout; other
+// non-printable runes (NUL, BEL, ESC and the rest of the ANSI control
+// range) are stripped so embedded terminal escape sequences cannot leak
+// styling, move the cursor, or trigger OSC side channels. If width > 0
+// the result is truncated to that visual width using lipgloss's ANSI-aware
+// measurement.
+func sanitizeCell(s string, width int) string {
+	var sb strings.Builder
+	sb.Grow(len(s))
+	for _, r := range s {
+		switch {
+		case r == '\n' || r == '\r' || r == '\t':
+			sb.WriteByte(' ')
+		case unicode.IsPrint(r):
+			sb.WriteRune(r)
+		}
+	}
+	out := sb.String()
+	if width <= 0 || lipgloss.Width(out) <= width {
+		return out
+	}
+	var trunc strings.Builder
+	w := 0
+	for _, r := range out {
+		rw := lipgloss.Width(string(r))
+		if w+rw > width {
+			break
+		}
+		trunc.WriteRune(r)
+		w += rw
+	}
+	return trunc.String()
 }
 
 func renderButtons(bs []*mnemonic.Button) string {
@@ -257,6 +333,11 @@ func (m *Model) SelectedNode() *Node {
 
 // Cursor returns the cursor row index.
 func (m *Model) Cursor() int { return m.table.Cursor() }
+
+// Rows returns the currently materialized table rows in display order.
+// Useful for tests and hosts that need to inspect rendered cell content
+// without parsing [Model.View] output.
+func (m *Model) Rows() []table.Row { return m.table.Rows() }
 
 // Buttons returns the buttons currently rendered in the cursor row. Hosts use
 // this to include the buttons in a help bar or to forward presses outside of
