@@ -73,6 +73,7 @@ func (s *initSentinelScreen) Update(_ tea.Msg) (Screen, tea.Cmd) { return s, nil
 func (s *initSentinelScreen) Body(_ int) string                  { return "" }
 func (s *initSentinelScreen) Title() string                      { return "init-sentinel" }
 func (s *initSentinelScreen) StatusKeys() []key.Binding          { return nil }
+func (s *initSentinelScreen) InputFocused() bool                 { return false }
 
 type initSentinelMsg struct{}
 
@@ -222,6 +223,7 @@ func (s *recordingScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 func (s *recordingScreen) Body(_ int) string         { return "" }
 func (s *recordingScreen) Title() string             { return "rec" }
 func (s *recordingScreen) StatusKeys() []key.Binding { return nil }
+func (s *recordingScreen) InputFocused() bool        { return false }
 
 func TestUpdate_GlobalKeysInterceptedBeforeScreen(t *testing.T) {
 	cases := []struct {
@@ -382,6 +384,7 @@ func (s *sizingSpy) Update(msg tea.Msg) (Screen, tea.Cmd) {
 func (s *sizingSpy) Body(_ int) string         { return "" }
 func (s *sizingSpy) Title() string             { return "spy" }
 func (s *sizingSpy) StatusKeys() []key.Binding { return nil }
+func (s *sizingSpy) InputFocused() bool        { return false }
 
 // sizingSpy2 is a distinct concrete type from sizingSpy so push-dedup
 // (which compares concrete types) allows stacking the two for the
@@ -495,6 +498,7 @@ func (s *bodyWidthSpy) Init() tea.Cmd                      { return nil }
 func (s *bodyWidthSpy) Update(_ tea.Msg) (Screen, tea.Cmd) { return s, nil }
 func (s *bodyWidthSpy) Title() string                      { return "size" }
 func (s *bodyWidthSpy) StatusKeys() []key.Binding          { return nil }
+func (s *bodyWidthSpy) InputFocused() bool                 { return false }
 func (s *bodyWidthSpy) Body(w int) string {
 	s.width = w
 	return ""

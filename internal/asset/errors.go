@@ -81,3 +81,50 @@ func (AssetFolderRemoveError) Severity() errs.Severity {
 func (e AssetFolderRemoveError) Unwrap() error {
 	return e.Err
 }
+
+// FileRemoveError reports a failure while deleting a file inside an asset
+// directory.
+type FileRemoveError struct {
+	Path string
+	Err  error
+}
+
+func (e FileRemoveError) Error() string {
+	return fmt.Sprintf("remove asset file %q: %v", e.Path, e.Err)
+}
+
+func (FileRemoveError) Severity() errs.Severity { return errs.SeverityError }
+
+func (e FileRemoveError) Unwrap() error { return e.Err }
+
+// FileCreateError reports a failure while creating a file inside an asset
+// directory (either the mkdir-all of the parent or the write itself).
+type FileCreateError struct {
+	Path string
+	Err  error
+}
+
+func (e FileCreateError) Error() string {
+	return fmt.Sprintf("create asset file %q: %v", e.Path, e.Err)
+}
+
+func (FileCreateError) Severity() errs.Severity { return errs.SeverityError }
+
+func (e FileCreateError) Unwrap() error { return e.Err }
+
+// FilePathError reports a relative path that resolves outside the asset
+// directory or names a reserved file (the asset manifest itself, or a
+// hidden dotfile that RelativeFiles would refuse to list anyway).
+type FilePathError struct {
+	Path   string
+	Reason string
+}
+
+func (e FilePathError) Error() string {
+	if e.Reason == "" {
+		return fmt.Sprintf("asset file path %q is rejected", e.Path)
+	}
+	return fmt.Sprintf("asset file path %q is rejected: %s", e.Path, e.Reason)
+}
+
+func (FilePathError) Severity() errs.Severity { return errs.SeverityError }

@@ -99,3 +99,19 @@ type DeleteAssetInput struct {
 	ProfileRef string
 	AssetID    string
 }
+
+// AddAssetFileInput carries the relative path of a file to create inside
+// the asset's directory. Containment + reserved-name policy lives in the
+// asset domain; the TUI never names a path the service must trust.
+type AddAssetFileInput struct {
+	ProfileRef string
+	AssetID    string
+	Rel        string
+}
+
+// RemoveAssetFileInput is the symmetric input for in-asset file deletion.
+type RemoveAssetFileInput struct {
+	ProfileRef string
+	AssetID    string
+	Rel        string
+}

@@ -24,3 +24,13 @@ func (a *Actions) UpdateAsset(in UpdateAssetInput) (struct{}, errs.DomainError) 
 func (a *Actions) DeleteAsset(in DeleteAssetInput) (struct{}, errs.DomainError) {
 	return struct{}{}, a.svc.DeleteAsset(in.ProfileRef, in.AssetID)
 }
+
+// AddAssetFile creates an empty file inside the asset's directory.
+func (a *Actions) AddAssetFile(in AddAssetFileInput) (struct{}, errs.DomainError) {
+	return struct{}{}, a.svc.AddAssetFile(in.ProfileRef, in.AssetID, in.Rel)
+}
+
+// RemoveAssetFile deletes a file inside the asset's directory.
+func (a *Actions) RemoveAssetFile(in RemoveAssetFileInput) (struct{}, errs.DomainError) {
+	return struct{}{}, a.svc.RemoveAssetFile(in.ProfileRef, in.AssetID, in.Rel)
+}

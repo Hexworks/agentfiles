@@ -29,20 +29,21 @@ import (
 // bindings. The screen's labelled buttons (e.g. `[Create]`) must not
 // appear here: they are already visible on the screen body and must
 // not be duplicated in the bar.
+//
+// InputFocused reports whether the screen currently hosts a focused
+// text input. The shell consults it before applying the single-rune
+// global key set (`n` notifications, `s` settings, `?` help, `q` quit)
+// so the focused input receives those characters as text. The
+// non-printable safety path (ctrl+c) stays active regardless. Screens
+// that host no text input return false — promoting this to a required
+// method means a new screen with a `huh.Input` cannot silently lose
+// keystrokes to the global intercept.
 type Screen interface {
 	Init() tea.Cmd
 	Update(msg tea.Msg) (Screen, tea.Cmd)
 	Body(width int) string
 	Title() string
 	StatusKeys() []key.Binding
-}
-
-// inputFocused is the optional interface a [Screen] implements when it
-// hosts a focused text input. The shell consults it before applying the
-// single-rune global key set (`n` notifications, `s` settings, `?` help,
-// `q` quit) so the focused input receives those characters as text. The
-// non-printable safety path (ctrl+c) stays active regardless.
-type inputFocused interface {
 	InputFocused() bool
 }
 
@@ -54,10 +55,7 @@ func screenWantsRawKey(s Screen, kp tea.KeyPressMsg) bool {
 	if kp.String() == "ctrl+c" {
 		return false
 	}
-	if f, ok := s.(inputFocused); ok {
-		return f.InputFocused()
-	}
-	return false
+	return s.InputFocused()
 }
 
 // PushScreenMsg pushes Screen onto the shell's stack. The shell runs

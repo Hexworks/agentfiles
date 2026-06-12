@@ -19,20 +19,19 @@ func TestEditAssetScreen_CompatibleToggleViaScreenUpdate(t *testing.T) {
 	s := newEditAssetScreen(f.Actions, f.Profile.ID, f.AssetID)
 	f.loadInto(t, s)
 
-	// Focus compatible (index 3).
-	if cmd := s.handler.FocusIndex(3); cmd != nil {
+	if cmd := s.handler.FocusIndex(s.compatibleIdx); cmd != nil {
 		_ = drainCmd(t, cmd)
 	}
 
-	if got := s.handler.Focused(); got != 3 {
-		t.Fatalf("focused index = %d, want 3", got)
+	if got := s.handler.Focused(); got != s.compatibleIdx {
+		t.Fatalf("focused index = %d, want %d", got, s.compatibleIdx)
 	}
 
 	// Drive space through editAssetScreen.Update.
 	_, _ = s.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
 
-	t.Logf("compatible after space = %v", s.state.compatible)
-	if len(s.state.compatible) == 0 {
+	t.Logf("compatible after space = %v", s.form.compatibleAgents)
+	if len(s.form.compatibleAgents) == 0 {
 		t.Fatalf("space did not toggle any option")
 	}
 }

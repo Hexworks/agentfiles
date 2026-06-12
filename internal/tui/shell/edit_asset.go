@@ -2,10 +2,7 @@ package shell
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
-	"reflect"
-	"sort"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
@@ -22,7 +19,6 @@ import (
 	"github.com/hexworks/agentfiles/internal/tui/components/treetable"
 	"github.com/hexworks/agentfiles/internal/tui/editor"
 	"github.com/hexworks/agentfiles/internal/tui/modals"
-	"github.com/hexworks/agentfiles/internal/tui/styles"
 )
 
 // editAssetActions is the narrow slice of *actions.Actions the Edit
@@ -32,63 +28,72 @@ import (
 type editAssetActions interface {
 	LoadAsset(in actions.LoadAssetInput) (*asset.Asset, errs.DomainError)
 	UpdateAsset(in actions.UpdateAssetInput) (struct{}, errs.DomainError)
+	AddAssetFile(in actions.AddAssetFileInput) (struct{}, errs.DomainError)
+	RemoveAssetFile(in actions.RemoveAssetFileInput) (struct{}, errs.DomainError)
 }
 
-// ModalKindAsset identifies which modal flow the Edit Asset screen
-// currently hosts. Exposed so tests can assert intent
-// (`ModalKindAssetDeleteFile`) instead of the raw modal-id string the
-// dialog happens to carry.
-type ModalKindAsset int
+// modalKindAsset identifies which modal flow the Edit Asset screen
+// currently hosts. Tests assert intent through this enum rather than the
+// raw modal-id string the dialog carries.
+type modalKindAsset int
 
 const (
-	ModalKindAssetNone ModalKindAsset = iota
-	ModalKindAssetDeleteFile
-	ModalKindAssetCreateFile
-	ModalKindAssetBackUnsaved
+	modalKindAssetNone modalKindAsset = iota
+	modalKindAssetDeleteFile
+	modalKindAssetCreateFile
+	modalKindAssetBackUnsaved
 )
 
-// fileKind discriminates treetable row payloads so the action func
-// knows which buttons to render. Directories expose [Delete] only; files
-// expose [Open] [Delete].
-type fileKind int
+// nodeKind classifies a treetable row payload. The root row is its own
+// kind so callers don't have to special-case `rel == ""`.
+type nodeKind int
 
 const (
-	kindAssetDir fileKind = iota
-	kindAssetFile
+	nodeRoot nodeKind = iota
+	nodeDir
+	nodeFile
 )
 
-// fileData is the opaque payload attached to every treetable node. The
-// path is relative to asset.Dir (empty for the root).
-type fileData struct {
-	kind fileKind
+// assetNode is the payload attached to every treetable node. The path is
+// relative to asset.Dir; the root row has kind nodeRoot and an empty rel.
+type assetNode struct {
+	kind nodeKind
 	rel  string
 }
 
-// editAssetState is the comma-string + slice mirror the embedded huh
-// fields bind to. The screen reads from this struct in
-// syncFieldsToAsset; huh writes to it on every Update.
-type editAssetState struct {
-	description string
-	tagsCSV     string
-	compatible  []string
-	exclusive   string
+// editAssetForm is the form-state mirror the embedded huh fields bind to.
+// It is the single source of truth for user-typed values; the in-memory
+// *asset.Asset stays immutable between load and save. dirty() compares
+// this struct against snapshot.
+type editAssetForm struct {
+	descriptionText  string
+	tagsCSV          string
+	compatibleAgents []string
+	exclusiveGroup   string
 }
+
+// treetableHeight is the row count handed to treetable.WithHeight. The
+// constant lives next to the tree builder so a future tweak does not
+// have to scroll the file.
+const treetableHeight = 8
 
 // editAssetScreen is the management screen reached from the Edit Profile
 // row-level `[Edit]` action on an asset row. It hosts a left-pane files
 // treetable + a right-pane Summary (read-only) and Customize (editable
 // huh fields) layout, mnemonic-driven row actions, modal-composited
-// confirmation dialogs, and per-action mutationCmd dispatch.
+// confirmation dialogs, and typed-message mutations.
 type editAssetScreen struct {
 	actions   editAssetActions
 	profileID string
 	assetID   string
 
-	asset            *asset.Asset
-	originalManifest asset.Manifest
-	files            []string
-
-	state editAssetState
+	// asset is the loaded aggregate. It stays immutable between
+	// editAssetLoadedMsg and the next loadCmd — every user edit lives in
+	// form. The pointer doubles as a "loaded" sentinel.
+	asset    *asset.Asset
+	files    []string
+	form     editAssetForm
+	snapshot editAssetForm
 
 	handler     *focus.Handler
 	tree        *treetable.Model
@@ -97,8 +102,17 @@ type editAssetScreen struct {
 	compatible  *huh.MultiSelect[string]
 	exclusive   *huh.Input
 
+	// per-field focus indices captured at registration time so
+	// renderCustomize and the tests stay aligned with the actual order
+	// the focus.Handler hands out.
+	treeIdx       int
+	descIdx       int
+	tagsIdx       int
+	compatibleIdx int
+	exclusiveIdx  int
+
 	openBtn   *mnemonic.Button // o (treetable, leaf rows only)
-	deleteBtn *mnemonic.Button // d (treetable, any row)
+	deleteBtn *mnemonic.Button // d (treetable, file or dir rows)
 	addBtn    *mnemonic.Button // a (treetable focus)
 	saveBtn   *mnemonic.Button // e
 	backBtn   *mnemonic.Button // b + esc
@@ -108,19 +122,36 @@ type editAssetScreen struct {
 
 	set *mnemonic.Set
 
-	modal             *modal.Modal
-	modalKind         ModalKindAsset
-	pendingDeleteFile string
-	pendingOpenFile   string
+	modal         *modal.Modal
+	modalKind     modalKindAsset
+	modalHandlers map[modalKindAsset]func(modal.ResolvedMsg) tea.Cmd
+	deletingFile  string // pending delete relative path
+	editingFile   string // pending editor relative path (survives external editor suspend/resume)
 
 	width, height int
 }
 
-// editAssetLoadedMsg carries the loaded asset (or load error) that
-// Init's command produces.
+// editAssetLoadedMsg carries the loaded asset (or load error) that Init's
+// command produces.
 type editAssetLoadedMsg struct {
 	a   *asset.Asset
 	err errs.DomainError
+}
+
+// filesChangedMsg is dispatched by a successful Add / Delete mutation so
+// the Update goroutine — not the Cmd goroutine — refreshes the file list
+// and rebuilds the treetable. info is the success text the screen
+// surfaces as a notification.
+type filesChangedMsg struct {
+	files []string
+	info  string
+}
+
+// saveSucceededMsg is dispatched by a successful Save so Update refreshes
+// the dirty-tracking snapshot atomically with the toast emission.
+type saveSucceededMsg struct {
+	snapshot editAssetForm
+	info     string
 }
 
 func newEditAssetScreen(a editAssetActions, profileID, assetID string) *editAssetScreen {
@@ -142,18 +173,26 @@ func newEditAssetScreen(a editAssetActions, profileID, assetID string) *editAsse
 	s.buildButtons()
 	s.buildTree()
 	s.handler = focus.New(focus.WithModifier(focus.ModCtrl))
+	// Capture each focus index as the registration runs so renderer and
+	// tests stay aligned with the actual order the handler hands out.
+	s.treeIdx = 0
 	s.treeMnemonic = s.handler.AddMnemonic(s.tree, '1')
 	s.tree.SetMnemonicButton(s.treeMnemonic)
+	s.descIdx = 1
 	s.descMnemonic = s.handler.AddMnemonic(s.description, '2')
+	s.tagsIdx = 2
 	s.handler.Add(s.tags)
+	s.compatibleIdx = 3
 	s.handler.Add(s.compatible)
+	s.exclusiveIdx = 4
 	s.handler.Add(s.exclusive)
+	s.registerModalHandlers()
 	s.rebuildSet()
 	return s
 }
 
-// ProfileID + AssetID expose the captured ids so tests don't reach
-// into unexported fields.
+// ProfileID + AssetID expose the captured ids so tests don't reach into
+// unexported fields.
 func (s *editAssetScreen) ProfileID() string { return s.profileID }
 func (s *editAssetScreen) AssetID() string   { return s.assetID }
 
@@ -162,14 +201,14 @@ func (s *editAssetScreen) AssetID() string   { return s.assetID }
 // intercept so `s`, `n`, `?`, `q` flow as text into the focused input
 // instead of pushing a global screen.
 func (s *editAssetScreen) InputFocused() bool {
-	return s.handler != nil && s.handler.Focused() > 0
+	return s.handler != nil && s.handler.Focused() > s.treeIdx
 }
 
 func (s *editAssetScreen) buildFields() {
 	// huh fields default to a zero-value KeyMap + nil theme when
-	// constructed outside a huh.Form. That silently breaks the
-	// Toggle/Up/Down shortcuts on MultiSelect and leaves selectors blank.
-	// Apply the default keymap and Charm theme explicitly so every field
+	// constructed outside a huh.Form. That silently breaks Toggle / Up /
+	// Down shortcuts on MultiSelect and leaves selectors blank. Apply
+	// the default keymap and Charm theme explicitly so every field
 	// honors upstream defaults (space/x toggle, j/k navigation, visible
 	// `[x]` / `[ ]` selectors).
 	keymap := huh.NewDefaultKeyMap()
@@ -178,21 +217,21 @@ func (s *editAssetScreen) buildFields() {
 		Key("description").
 		Title("Description").
 		Description("Free-form description shown to selectors").
-		Value(&s.state.description)
+		Value(&s.form.descriptionText)
 	s.description.WithKeyMap(keymap)
 	s.description.WithTheme(theme)
 	s.tags = huh.NewInput().
 		Key("tags").
 		Title("Tags").
 		Description(`Comma-separated, eg "git, build"`).
-		Value(&s.state.tagsCSV)
+		Value(&s.form.tagsCSV)
 	s.tags.WithKeyMap(keymap)
 	s.tags.WithTheme(theme)
 	s.compatible = huh.NewMultiSelect[string]().
 		Key("compatible_agents").
 		Title("Compatible Agents").
 		Description(`Empty means "all enabled agents"`).
-		Value(&s.state.compatible).
+		Value(&s.form.compatibleAgents).
 		Options(modals.AgentOptions()...)
 	s.compatible.WithKeyMap(keymap)
 	s.compatible.WithTheme(theme)
@@ -200,7 +239,7 @@ func (s *editAssetScreen) buildFields() {
 		Key("exclusive_group").
 		Title("Exclusive Group").
 		Description("Optional mutual-exclusion key, eg `main-agents-doc`").
-		Value(&s.state.exclusive)
+		Value(&s.form.exclusiveGroup)
 	s.exclusive.WithKeyMap(keymap)
 	s.exclusive.WithTheme(theme)
 }
@@ -227,51 +266,36 @@ func (s *editAssetScreen) buildTree() {
 			s.treeActionsFn(),
 		),
 		treetable.WithTitle("Files"),
-		treetable.WithHeight(treetableMinHeight),
+		treetable.WithHeight(treetableHeight),
 		treetable.WithStyles(focusAwareTreetableStyles()),
 	)
 }
 
-// focusAwareTreetableStyles returns the default treetable styles with
-// cyan focused border + muted blurred border. Treetable picks between
-// them on its own based on its focus state.
-func focusAwareTreetableStyles() treetable.Styles {
-	st := treetable.DefaultStyles()
-	st.Border = lipgloss.NewStyle().Foreground(styles.ColorMuted)
-	st.BorderFocused = lipgloss.NewStyle().Foreground(styles.ColorCyan)
-	return st
-}
-
-// emptyTreeRoot is the placeholder used before the load command
-// completes — a non-nil node satisfies treetable's `Label must not be
-// empty` invariant.
-func emptyTreeRoot() *treetable.Node {
-	return &treetable.Node{
-		Label: "(no asset loaded)",
-		Data:  fileData{kind: kindAssetDir},
+// registerModalHandlers wires the (kind, handler) registry consulted by
+// handleResolved. Adding a new modal kind = add the constant + a method +
+// one line here, instead of editing a switch.
+func (s *editAssetScreen) registerModalHandlers() {
+	s.modalHandlers = map[modalKindAsset]func(modal.ResolvedMsg) tea.Cmd{
+		modalKindAssetDeleteFile:  s.afterDeleteFile,
+		modalKindAssetCreateFile:  s.afterCreateFile,
+		modalKindAssetBackUnsaved: s.afterBackUnsaved,
 	}
 }
 
-const treetableMinHeight = 8
-
 // treeActionsFn returns the per-row action button list. The treetable
 // invokes it only for the cursor row, so always-fresh button instances
-// are cheap. Leaf rows expose [Open] [Delete]; the root and directory
-// rows expose [Delete] only (the root delete is a no-op handled by the
-// confirm modal's path-empty guard, kept symmetric with the rest of the
-// treetable contract).
+// are cheap. File rows expose [Open] [Delete]; directory rows expose
+// [Delete] only; the root row exposes nothing.
 func (s *editAssetScreen) treeActionsFn() treetable.ActionsFunc {
 	return func(n *treetable.Node) []*mnemonic.Button {
-		d, _ := n.Data.(fileData)
-		if d.rel == "" {
-			// Root row: no row-level actions. Returning nil keeps the
-			// actions cell blank.
-			return nil
-		}
-		if d.kind == kindAssetFile {
+		d, _ := n.Data.(assetNode)
+		switch d.kind {
+		case nodeFile:
 			return []*mnemonic.Button{s.openBtn, s.deleteBtn}
+		case nodeDir:
+			return []*mnemonic.Button{s.deleteBtn}
 		}
-		return []*mnemonic.Button{s.deleteBtn}
+		return nil
 	}
 }
 
@@ -282,7 +306,7 @@ func (s *editAssetScreen) treeActionsFn() treetable.ActionsFunc {
 // as text into the focused huh field.
 func (s *editAssetScreen) rebuildSet() {
 	set := mnemonic.NewSet()
-	if s.handler.Focused() == 0 {
+	if s.handler.Focused() == s.treeIdx {
 		if s.treeMnemonic != nil {
 			set.Add(s.treeMnemonic)
 		}
@@ -290,13 +314,11 @@ func (s *editAssetScreen) rebuildSet() {
 			set.Add(s.descMnemonic)
 		}
 		switch s.selectedKind() {
-		case kindAssetFile:
+		case nodeFile:
 			set.Add(s.openBtn)
 			set.Add(s.deleteBtn)
-		case kindAssetDir:
-			if s.selectedRel() != "" {
-				set.Add(s.deleteBtn)
-			}
+		case nodeDir:
+			set.Add(s.deleteBtn)
 		}
 		set.Add(s.addBtn)
 		set.Add(s.saveBtn)
@@ -306,25 +328,40 @@ func (s *editAssetScreen) rebuildSet() {
 }
 
 // selectedKind reports the kind of the treetable's selected row. A nil
-// selection returns kindAssetDir (root-like) so callers fall through to
-// the empty-folder branch.
-func (s *editAssetScreen) selectedKind() fileKind {
+// selection returns nodeRoot so callers fall through to the empty-folder
+// branch.
+func (s *editAssetScreen) selectedKind() nodeKind {
 	n := s.tree.SelectedNode()
 	if n == nil {
-		return kindAssetDir
+		return nodeRoot
 	}
-	d, _ := n.Data.(fileData)
+	d, _ := n.Data.(assetNode)
 	return d.kind
 }
 
-// selectedRel returns the relative path of the selected node, or empty
-// for the root / no selection.
+// selectedFileRel returns the cursor row's relative path when that row is
+// a file. The second value is false for directory / root / no-selection
+// rows so callers don't need a separate nil + kind + empty-string check.
+func (s *editAssetScreen) selectedFileRel() (string, bool) {
+	n := s.tree.SelectedNode()
+	if n == nil {
+		return "", false
+	}
+	d, _ := n.Data.(assetNode)
+	if d.kind != nodeFile {
+		return "", false
+	}
+	return d.rel, true
+}
+
+// selectedRel returns the relative path of the selected node (any kind),
+// or empty for the root / no selection.
 func (s *editAssetScreen) selectedRel() string {
 	n := s.tree.SelectedNode()
 	if n == nil {
 		return ""
 	}
-	d, _ := n.Data.(fileData)
+	d, _ := n.Data.(assetNode)
 	return d.rel
 }
 
@@ -341,15 +378,17 @@ func (s *editAssetScreen) loadCmd() tea.Cmd {
 }
 
 func (s *editAssetScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
-	// Single modal-guard for messages the modal owns. WindowSizeMsg + the
-	// load/mutation/editor messages still need to update screen state
-	// before being forwarded, so they have explicit branches below.
+	// Single modal-guard for messages the modal owns. The typed state
+	// messages below still need to update screen state before being
+	// forwarded, so they get explicit branches.
 	if s.modal != nil {
 		switch msg.(type) {
 		case modal.ResolvedMsg,
 			tea.WindowSizeMsg,
 			editAssetLoadedMsg,
 			mutationDoneMsg,
+			filesChangedMsg,
+			saveSucceededMsg,
 			editor.FinishedMsg:
 			// fall through to type-specific handling
 		default:
@@ -363,7 +402,11 @@ func (s *editAssetScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 	case editAssetLoadedMsg:
 		return s.handleLoaded(m)
 	case mutationDoneMsg:
-		return s, tea.Batch(notificationCmd(m.severity, m.text), s.loadCmd())
+		return s, notificationCmd(m.severity, m.text)
+	case filesChangedMsg:
+		return s.handleFilesChanged(m)
+	case saveSucceededMsg:
+		return s.handleSaveSucceeded(m)
 	case editor.FinishedMsg:
 		return s.handleEditorFinished(m)
 	case modal.ResolvedMsg:
@@ -395,39 +438,78 @@ func (s *editAssetScreen) handleLoaded(m editAssetLoadedMsg) (Screen, tea.Cmd) {
 		return s, nil
 	}
 	s.asset = m.a
-	s.originalManifest = cloneManifest(m.a.Manifest)
 	s.files = sortedRelativeFiles(m.a.Dir)
-	s.state.description = m.a.Description
-	s.state.tagsCSV = modals.JoinTags(m.a.Tags)
-	s.state.compatible = append([]string(nil), m.a.CompatibleAgents...)
-	s.state.exclusive = m.a.ExclusiveGroup
+	s.hydrateForm(m.a)
+	s.snapshot = s.form
 	s.tree.SetRoot(buildAssetTree(m.a, s.files))
-	focusCmd := s.handler.FocusIndex(0)
+	focusCmd := s.handler.FocusIndex(s.treeIdx)
 	s.rebuildSet()
 	return s, focusCmd
 }
 
+// hydrateForm copies manifest fields into the form on load.
+// syncForm (further down) is the inverse: it copies form values into a
+// fresh manifest for save. Keeping the pair adjacent in this file makes
+// "a new Manifest field needs both sides" obvious.
+func (s *editAssetScreen) hydrateForm(a *asset.Asset) {
+	s.form = editAssetForm{
+		descriptionText:  a.Description,
+		tagsCSV:          modals.JoinTags(a.Tags),
+		compatibleAgents: append([]string(nil), a.CompatibleAgents...),
+		exclusiveGroup:   a.ExclusiveGroup,
+	}
+}
+
+// composeManifest builds the asset.Manifest the Save flow persists by
+// overlaying the form on top of the immutable s.asset's identity fields.
+// The pair (hydrateForm, composeManifest) is the only place manifest
+// fields appear — adding a field touches both, and only both.
+func (s *editAssetScreen) composeManifest() asset.Manifest {
+	return asset.Manifest{
+		ID:               s.asset.ID,
+		Name:             s.asset.Name,
+		Type:             s.asset.Type,
+		Description:      s.form.descriptionText,
+		Tags:             modals.ParseTags(s.form.tagsCSV),
+		CompatibleAgents: append([]string(nil), s.form.compatibleAgents...),
+		ExclusiveGroup:   s.form.exclusiveGroup,
+		Projections:      append([]asset.Projection(nil), s.asset.Projections...),
+	}
+}
+
+func (s *editAssetScreen) handleFilesChanged(m filesChangedMsg) (Screen, tea.Cmd) {
+	s.files = m.files
+	s.tree.SetRoot(buildAssetTree(s.asset, s.files))
+	s.rebuildSet()
+	if m.info == "" {
+		return s, nil
+	}
+	return s, notificationCmd(errs.SeverityInfo, m.info)
+}
+
+func (s *editAssetScreen) handleSaveSucceeded(m saveSucceededMsg) (Screen, tea.Cmd) {
+	s.snapshot = m.snapshot
+	if m.info == "" {
+		return s, nil
+	}
+	return s, notificationCmd(errs.SeverityInfo, m.info)
+}
+
 func (s *editAssetScreen) handleEditorFinished(m editor.FinishedMsg) (Screen, tea.Cmd) {
-	rel := s.pendingOpenFile
-	s.pendingOpenFile = ""
+	rel := s.editingFile
+	s.editingFile = ""
 	if m.Err != nil {
 		return s, notificationCmd(errs.SeverityError, fmt.Sprintf("Editor failed: %v", m.Err))
 	}
-	// The editor wrote to disk; refresh the file list so a newly-created
-	// neighbour does not get lost, and re-save the manifest so any future
-	// per-file hash store (see app/service.go:432-437) refreshes.
-	s.files = sortedRelativeFiles(s.asset.Dir)
+	// The editor wrote to disk; refresh the file list (a brand-new
+	// neighbour file would otherwise be invisible) and persist the
+	// manifest so a future per-file hash store (see app/service.go's
+	// UpdateAsset comment) refreshes too.
+	dir := s.asset.Dir
+	files := sortedRelativeFiles(dir)
+	s.files = files
 	s.tree.SetRoot(buildAssetTree(s.asset, s.files))
-	return s, mutationCmd(
-		func() errs.DomainError {
-			_, err := s.actions.UpdateAsset(actions.UpdateAssetInput{
-				ProfileRef: s.profileID,
-				Manifest:   &s.asset.Manifest,
-			})
-			return err
-		},
-		fmt.Sprintf("Edited %q", rel),
-	)
+	return s, s.saveManifestCmd(fmt.Sprintf("Edited %q", rel))
 }
 
 func (s *editAssetScreen) handleKey(m tea.KeyPressMsg) (Screen, tea.Cmd) {
@@ -436,7 +518,6 @@ func (s *editAssetScreen) handleKey(m tea.KeyPressMsg) (Screen, tea.Cmd) {
 	}
 	// Focus handler consumes tab / shift+tab / ctrl+1 / ctrl+2.
 	if handled, cmd := s.handler.Update(m); handled {
-		s.syncFieldsToAsset()
 		s.rebuildSet()
 		return s, cmd
 	}
@@ -456,7 +537,8 @@ func (s *editAssetScreen) forwardToModal(msg tea.Msg) (Screen, tea.Cmd) {
 // set did not consume to whichever component the handler currently
 // considers focused. For the treetable we additionally rebuild the
 // mnemonic set when the cursor moves so the row-action buttons reflect
-// the newly-selected row.
+// the newly-selected row. An unrecognised focusable kind panics — silent
+// no-op would swallow keys when a new focusable type is added.
 func (s *editAssetScreen) routeToFocusedComponent(m tea.KeyPressMsg) tea.Cmd {
 	c := s.handler.FocusedComponent()
 	switch v := c.(type) {
@@ -471,8 +553,12 @@ func (s *editAssetScreen) routeToFocusedComponent(m tea.KeyPressMsg) tea.Cmd {
 	case huh.Field:
 		_, cmd := v.Update(m)
 		return cmd
+	case nil:
+		// Pre-load: handler has no focused component yet.
+		return nil
+	default:
+		panic(fmt.Sprintf("editAssetScreen: unsupported focusable %T", c))
 	}
-	return nil
 }
 
 func (s *editAssetScreen) Title() string { return "Edit Asset" }
@@ -484,14 +570,12 @@ func (s *editAssetScreen) Title() string { return "Edit Asset" }
 // it is already visible on the body button row.
 func (s *editAssetScreen) StatusKeys() []key.Binding {
 	out := make([]key.Binding, 0, 4)
-	if s.handler.Focused() == 0 {
+	if s.handler.Focused() == s.treeIdx {
 		switch s.selectedKind() {
-		case kindAssetFile:
+		case nodeFile:
 			out = append(out, s.openBtn.Binding(), s.deleteBtn.Binding())
-		case kindAssetDir:
-			if s.selectedRel() != "" {
-				out = append(out, s.deleteBtn.Binding())
-			}
+		case nodeDir:
+			out = append(out, s.deleteBtn.Binding())
 		}
 	}
 	out = append(out, s.saveBtn.Binding(), s.backBtn.Binding())
@@ -506,9 +590,6 @@ func (s *editAssetScreen) Body(width int) string {
 	return s.modal.Render(background, width, lipgloss.Height(background))
 }
 
-// renderBody composes the two-column layout. Width is split 50/50; the
-// shell still controls outer width and height (we render at natural
-// height).
 func (s *editAssetScreen) renderBody(width int) string {
 	leftWidth, rightWidth := splitWidth(width)
 	left := s.renderLeft(leftWidth)
@@ -516,18 +597,6 @@ func (s *editAssetScreen) renderBody(width int) string {
 	row := lipgloss.JoinHorizontal(lipgloss.Top, left, right)
 	buttons := " " + s.addBtn.View() + "  " + s.saveBtn.View() + "  " + s.backBtn.View()
 	return lipgloss.JoinVertical(lipgloss.Left, row, "", buttons)
-}
-
-// splitWidth divides the body width into a 50/50 left/right split, with
-// the right column absorbing the rounding bit so totals add back to
-// width when width is odd.
-func splitWidth(width int) (int, int) {
-	if width <= 0 {
-		return 40, 40
-	}
-	left := width / 2
-	right := width - left
-	return left, right
 }
 
 func (s *editAssetScreen) renderLeft(_ int) string {
@@ -541,21 +610,14 @@ func (s *editAssetScreen) renderRight(width int) string {
 }
 
 func (s *editAssetScreen) renderSummary(_ int) string {
-	header := styles.HeaderStyle.Render("Summary")
+	header := assetHeader("Summary")
 	name := "Name: " + assetSummaryValue(s.asset, func(a *asset.Asset) string { return a.Name })
 	typ := "Type: " + assetSummaryValue(s.asset, func(a *asset.Asset) string { return string(a.Type) })
 	return lipgloss.JoinVertical(lipgloss.Left, header, name, typ)
 }
 
-func assetSummaryValue(a *asset.Asset, pick func(*asset.Asset) string) string {
-	if a == nil {
-		return ""
-	}
-	return styles.Safe(pick(a))
-}
-
 func (s *editAssetScreen) renderCustomize(width int) string {
-	header := styles.HeaderStyle.Render("Customize")
+	header := assetHeader("Customize")
 	clamp := width
 	if clamp <= 0 {
 		clamp = 40
@@ -574,14 +636,14 @@ func (s *editAssetScreen) renderCustomize(width int) string {
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
 		header,
-		panelBorderFor(focus == 1).Render(s.description.View()),
-		panelBorderFor(focus == 2).Render(s.tags.View()),
-		panelBorderFor(focus == 3).Render(s.compatible.View()),
-		panelBorderFor(focus == 4).Render(s.exclusive.View()),
+		panelBorderFor(focus == s.descIdx).Render(s.description.View()),
+		panelBorderFor(focus == s.tagsIdx).Render(s.tags.View()),
+		panelBorderFor(focus == s.compatibleIdx).Render(s.compatible.View()),
+		panelBorderFor(focus == s.exclusiveIdx).Render(s.exclusive.View()),
 	)
 }
 
-func (s *editAssetScreen) openModal(m *modal.Modal, kind ModalKindAsset) {
+func (s *editAssetScreen) openModal(m *modal.Modal, kind modalKindAsset) {
 	s.modal = m
 	s.modalKind = kind
 	if s.width > 0 && s.height > 0 {
@@ -590,116 +652,104 @@ func (s *editAssetScreen) openModal(m *modal.Modal, kind ModalKindAsset) {
 	}
 }
 
-// handleResolved dispatches a modal ResolvedMsg to the right post-action
-// handler. The modal field + pending paths are cleared up-front so
-// unrelated modal lifecycles cannot leave a stale id behind regardless
-// of which arm fires.
+// handleResolved dispatches a modal ResolvedMsg via the (kind, handler)
+// registry. Clearing the modal + pending state up-front means an unknown
+// kind cannot leave a stale id behind.
 func (s *editAssetScreen) handleResolved(msg modal.ResolvedMsg) tea.Cmd {
 	s.modal = nil
 	kind := s.modalKind
-	s.modalKind = ModalKindAssetNone
-	pendingDelete := s.pendingDeleteFile
-	s.pendingDeleteFile = ""
-	switch kind {
-	case ModalKindAssetDeleteFile:
-		return s.afterDeleteFile(msg, pendingDelete)
-	case ModalKindAssetCreateFile:
-		return s.afterCreateFile(msg)
-	case ModalKindAssetBackUnsaved:
-		return s.afterBackUnsaved(msg)
+	s.modalKind = modalKindAssetNone
+	if handler, ok := s.modalHandlers[kind]; ok {
+		return handler(msg)
 	}
 	return nil
 }
 
 func (s *editAssetScreen) onOpen() tea.Cmd {
-	s.syncFieldsToAsset()
-	if s.asset == nil {
+	rel, ok := s.selectedFileRel()
+	if !ok {
 		return nil
 	}
-	if s.selectedKind() != kindAssetFile {
-		return nil
-	}
-	rel := s.selectedRel()
-	if rel == "" {
-		return nil
-	}
-	s.pendingOpenFile = rel
+	s.editingFile = rel
 	return editor.Open(filepath.Join(s.asset.Dir, rel))
 }
 
 func (s *editAssetScreen) onDeleteFile() tea.Cmd {
-	s.syncFieldsToAsset()
-	if s.asset == nil {
+	rel, ok := s.selectedFileRel()
+	if !ok {
 		return nil
 	}
-	rel := s.selectedRel()
-	if rel == "" {
-		return nil
-	}
-	s.pendingDeleteFile = rel
+	s.deletingFile = rel
 	prompt := fmt.Sprintf("Delete file %q from the asset folder?", rel)
-	s.openModal(modal.NewConfirm("delete-file", prompt, nil), ModalKindAssetDeleteFile)
+	s.openModal(modal.NewConfirm("delete-file", prompt, nil), modalKindAssetDeleteFile)
 	return s.modal.Init()
 }
 
 func (s *editAssetScreen) onAdd() tea.Cmd {
-	s.syncFieldsToAsset()
 	if s.asset == nil {
 		return nil
 	}
-	s.openModal(modals.NewCreateFile(modals.CreateFileInput{}), ModalKindAssetCreateFile)
+	s.openModal(modals.NewCreateFile(modals.CreateFileInput{}), modalKindAssetCreateFile)
 	return s.modal.Init()
 }
 
 func (s *editAssetScreen) onSave() tea.Cmd {
-	s.syncFieldsToAsset()
 	if s.asset == nil {
 		return nil
 	}
-	return mutationCmd(
-		func() errs.DomainError {
-			_, err := s.actions.UpdateAsset(actions.UpdateAssetInput{
-				ProfileRef: s.profileID,
-				Manifest:   &s.asset.Manifest,
-			})
-			if err == nil {
-				s.originalManifest = cloneManifest(s.asset.Manifest)
-			}
-			return err
-		},
-		fmt.Sprintf("Asset %q saved", s.assetID),
-	)
+	return s.saveManifestCmd(fmt.Sprintf("Asset %q saved", s.assetID))
+}
+
+// saveManifestCmd is the single chokepoint for "persist current form as
+// a manifest" — called from Save and from any post-mutation path that
+// also wants pending edits committed (file create / delete, editor
+// finished). On success it emits saveSucceededMsg so Update refreshes
+// snapshot atomically; on failure it emits a mutationDoneMsg so the
+// caller still sees the toast but the snapshot stays stale (which leaves
+// dirty() returning true).
+func (s *editAssetScreen) saveManifestCmd(info string) tea.Cmd {
+	manifest := s.composeManifest()
+	snapshot := s.form
+	profileRef := s.profileID
+	return func() tea.Msg {
+		if _, err := s.actions.UpdateAsset(actions.UpdateAssetInput{
+			ProfileRef: profileRef,
+			Manifest:   &manifest,
+		}); err != nil {
+			return mutationDoneMsg{severity: err.Severity(), text: err.Error()}
+		}
+		return saveSucceededMsg{snapshot: snapshot, info: info}
+	}
 }
 
 func (s *editAssetScreen) onBack() tea.Cmd {
-	s.syncFieldsToAsset()
 	if !s.dirty() {
 		return popCmd()
 	}
-	s.openModal(modal.NewConfirm("back-unsaved", "Discard unsaved changes?", nil), ModalKindAssetBackUnsaved)
+	s.openModal(modal.NewConfirm("back-unsaved", "Discard unsaved changes?", nil), modalKindAssetBackUnsaved)
 	return s.modal.Init()
 }
 
-func (s *editAssetScreen) afterDeleteFile(msg modal.ResolvedMsg, rel string) tea.Cmd {
+func (s *editAssetScreen) afterDeleteFile(msg modal.ResolvedMsg) tea.Cmd {
+	rel := s.deletingFile
+	s.deletingFile = ""
 	if !msg.Confirmed || rel == "" || s.asset == nil {
 		return nil
 	}
-	abs := filepath.Join(s.asset.Dir, rel)
-	return mutationCmd(
-		func() errs.DomainError {
-			if err := os.Remove(abs); err != nil && !os.IsNotExist(err) {
-				return assetFileRemoveError{Path: rel, Err: err}
-			}
-			s.files = sortedRelativeFiles(s.asset.Dir)
-			s.tree.SetRoot(buildAssetTree(s.asset, s.files))
-			_, err := s.actions.UpdateAsset(actions.UpdateAssetInput{
-				ProfileRef: s.profileID,
-				Manifest:   &s.asset.Manifest,
-			})
-			return err
-		},
-		fmt.Sprintf("Deleted %q", rel),
-	)
+	dir := s.asset.Dir
+	profileRef := s.profileID
+	assetID := s.assetID
+	info := fmt.Sprintf("Deleted %q", rel)
+	return func() tea.Msg {
+		if _, err := s.actions.RemoveAssetFile(actions.RemoveAssetFileInput{
+			ProfileRef: profileRef,
+			AssetID:    assetID,
+			Rel:        rel,
+		}); err != nil {
+			return mutationDoneMsg{severity: err.Severity(), text: err.Error()}
+		}
+		return filesChangedMsg{files: sortedRelativeFiles(dir), info: info}
+	}
 }
 
 func (s *editAssetScreen) afterCreateFile(msg modal.ResolvedMsg) tea.Cmd {
@@ -714,28 +764,20 @@ func (s *editAssetScreen) afterCreateFile(msg modal.ResolvedMsg) tea.Cmd {
 	if rel == "" {
 		return nil
 	}
-	abs := filepath.Join(s.asset.Dir, rel)
-	return mutationCmd(
-		func() errs.DomainError {
-			if err := assertInsideAssetDir(s.asset.Dir, abs); err != nil {
-				return err
-			}
-			if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
-				return assetFileCreateError{Path: rel, Err: err}
-			}
-			if err := os.WriteFile(abs, nil, 0o644); err != nil {
-				return assetFileCreateError{Path: rel, Err: err}
-			}
-			s.files = sortedRelativeFiles(s.asset.Dir)
-			s.tree.SetRoot(buildAssetTree(s.asset, s.files))
-			_, err := s.actions.UpdateAsset(actions.UpdateAssetInput{
-				ProfileRef: s.profileID,
-				Manifest:   &s.asset.Manifest,
-			})
-			return err
-		},
-		fmt.Sprintf("Created %q", rel),
-	)
+	dir := s.asset.Dir
+	profileRef := s.profileID
+	assetID := s.assetID
+	info := fmt.Sprintf("Created %q", rel)
+	return func() tea.Msg {
+		if _, err := s.actions.AddAssetFile(actions.AddAssetFileInput{
+			ProfileRef: profileRef,
+			AssetID:    assetID,
+			Rel:        rel,
+		}); err != nil {
+			return mutationDoneMsg{severity: err.Severity(), text: err.Error()}
+		}
+		return filesChangedMsg{files: sortedRelativeFiles(dir), info: info}
+	}
 }
 
 func (s *editAssetScreen) afterBackUnsaved(msg modal.ResolvedMsg) tea.Cmd {
@@ -745,113 +787,13 @@ func (s *editAssetScreen) afterBackUnsaved(msg modal.ResolvedMsg) tea.Cmd {
 	return popCmd()
 }
 
-// syncFieldsToAsset copies the comma-string + slice mirrors back into
-// the in-memory asset manifest. Safe to call with a nil asset (no-op).
-func (s *editAssetScreen) syncFieldsToAsset() {
-	if s.asset == nil {
-		return
-	}
-	s.asset.Description = s.state.description
-	s.asset.Tags = modals.ParseTags(s.state.tagsCSV)
-	s.asset.CompatibleAgents = append([]string(nil), s.state.compatible...)
-	s.asset.ExclusiveGroup = s.state.exclusive
-}
-
-// dirty reports whether the in-memory asset manifest differs from the
-// snapshot taken on load.
+// dirty reports whether the user has typed changes that have not been
+// saved. The comparison is field-by-field against the snapshot captured
+// on load and refreshed on save success — no reflect.DeepEqual
+// nil-vs-empty subtleties.
 func (s *editAssetScreen) dirty() bool {
 	if s.asset == nil {
 		return false
 	}
-	return !reflect.DeepEqual(s.asset.Manifest, s.originalManifest)
-}
-
-// cloneManifest deep-copies the slice fields of an asset.Manifest so the
-// snapshot does not alias the live manifest's slices.
-func cloneManifest(m asset.Manifest) asset.Manifest {
-	out := m
-	out.Tags = append([]string(nil), m.Tags...)
-	out.CompatibleAgents = append([]string(nil), m.CompatibleAgents...)
-	out.Projections = append([]asset.Projection(nil), m.Projections...)
-	return out
-}
-
-// sortedRelativeFiles wraps asset.RelativeFiles and returns a stable
-// sort order so the treetable rebuild is deterministic. A missing
-// directory yields an empty slice.
-func sortedRelativeFiles(dir string) []string {
-	if dir == "" {
-		return nil
-	}
-	files, err := asset.RelativeFiles(dir)
-	if err != nil {
-		return nil
-	}
-	sort.Strings(files)
-	return files
-}
-
-// buildAssetTree turns the relative-file slice into a directory tree
-// rooted at the asset's display name.
-func buildAssetTree(a *asset.Asset, files []string) *treetable.Node {
-	rootLabel := "(asset)"
-	if a != nil {
-		rootLabel = a.Name + "/"
-	}
-	root := &treetable.Node{
-		Label: rootLabel,
-		Data:  fileData{kind: kindAssetDir, rel: ""},
-	}
-	// Track directory nodes by relative path so siblings nest under the
-	// same parent regardless of file insertion order.
-	dirs := map[string]*treetable.Node{"": root}
-	for _, rel := range files {
-		parts := strings.Split(rel, string(filepath.Separator))
-		parent := root
-		acc := ""
-		for i, part := range parts {
-			if i == len(parts)-1 {
-				parent.Children = append(parent.Children, &treetable.Node{
-					Label: part,
-					Data:  fileData{kind: kindAssetFile, rel: rel},
-				})
-				continue
-			}
-			if acc == "" {
-				acc = part
-			} else {
-				acc = acc + string(filepath.Separator) + part
-			}
-			node, ok := dirs[acc]
-			if !ok {
-				node = &treetable.Node{
-					Label: part + "/",
-					Data:  fileData{kind: kindAssetDir, rel: acc},
-				}
-				dirs[acc] = node
-				parent.Children = append(parent.Children, node)
-			}
-			parent = node
-		}
-	}
-	return root
-}
-
-// assertInsideAssetDir refuses writes whose absolute path escapes
-// asset.Dir (e.g. a `../sibling/file.txt` Path). The check is cheap and
-// is the only safety rail we ship for the in-screen file mutations.
-func assertInsideAssetDir(assetDir, abs string) errs.DomainError {
-	cleanRoot, err := filepath.Abs(assetDir)
-	if err != nil {
-		return assetFileCreateError{Path: abs, Err: err}
-	}
-	cleanTarget, err := filepath.Abs(abs)
-	if err != nil {
-		return assetFileCreateError{Path: abs, Err: err}
-	}
-	rel, err := filepath.Rel(cleanRoot, cleanTarget)
-	if err != nil || strings.HasPrefix(rel, "..") || rel == ".." {
-		return assetFilePathError{Path: abs}
-	}
-	return nil
+	return !formsEqual(s.form, s.snapshot)
 }

@@ -44,6 +44,7 @@ func (s *selectProjectAssetsStub) Update(msg tea.Msg) (Screen, tea.Cmd) {
 
 func (s *selectProjectAssetsStub) Title() string             { return "Select Project Assets" }
 func (s *selectProjectAssetsStub) StatusKeys() []key.Binding { return s.statusKeys() }
+func (s *selectProjectAssetsStub) InputFocused() bool        { return false }
 func (s *selectProjectAssetsStub) Body(width int) string {
 	sentence := fmt.Sprintf(" Selecting assets for project %q in profile %q — task 0028", s.projectID, s.profileID)
 	return s.renderBody(width, sentence)

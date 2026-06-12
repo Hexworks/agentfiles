@@ -280,8 +280,8 @@ func TestEditProfileScreen_AssetsDKeyOpensDeleteAssetConfirm(t *testing.T) {
 	if s.modal == nil {
 		t.Fatalf("modal nil after 'd'")
 	}
-	if got := s.modalKind; got != ModalKindDeleteAsset {
-		t.Errorf("modalKind = %v, want ModalKindDeleteAsset", got)
+	if got := s.modalKind; got != modalKindDeleteAsset {
+		t.Errorf("modalKind = %v, want modalKindDeleteAsset", got)
 	}
 	if s.pendingDeleteAssetID != "skill-1" {
 		t.Errorf("pendingDeleteAssetID = %q, want skill-1", s.pendingDeleteAssetID)
@@ -362,8 +362,8 @@ func TestEditProfileScreen_ProjectsEKeyOpensEditProjectModal(t *testing.T) {
 	if s.modal == nil {
 		t.Fatalf("modal nil after 'e' on projects")
 	}
-	if got := s.modalKind; got != ModalKindEditProject {
-		t.Errorf("modalKind = %v, want ModalKindEditProject", got)
+	if got := s.modalKind; got != modalKindEditProject {
+		t.Errorf("modalKind = %v, want modalKindEditProject", got)
 	}
 }
 
@@ -429,8 +429,8 @@ func TestEditProfileScreen_ProjectsDKeyOpensDeleteProjectConfirm(t *testing.T) {
 	if s.modal == nil {
 		t.Fatalf("modal nil after 'd' on projects")
 	}
-	if got := s.modalKind; got != ModalKindDeleteProject {
-		t.Errorf("modalKind = %v, want ModalKindDeleteProject", got)
+	if got := s.modalKind; got != modalKindDeleteProject {
+		t.Errorf("modalKind = %v, want modalKindDeleteProject", got)
 	}
 	if s.pendingDeleteProjectID != "proj-1" {
 		t.Errorf("pendingDeleteProjectID = %q, want proj-1", s.pendingDeleteProjectID)
@@ -492,8 +492,8 @@ func TestEditProfileScreen_CKeyOpensCreateAssetModal(t *testing.T) {
 	if s.modal == nil {
 		t.Fatalf("modal nil after 'c'")
 	}
-	if got := s.modalKind; got != ModalKindCreateAsset {
-		t.Errorf("modalKind = %v, want ModalKindCreateAsset", got)
+	if got := s.modalKind; got != modalKindCreateAsset {
+		t.Errorf("modalKind = %v, want modalKindCreateAsset", got)
 	}
 }
 
@@ -507,8 +507,8 @@ func TestEditProfileScreen_RKeyOpensRegisterProjectModal(t *testing.T) {
 	if s.modal == nil {
 		t.Fatalf("modal nil after 'r'")
 	}
-	if got := s.modalKind; got != ModalKindRegisterProject {
-		t.Errorf("modalKind = %v, want ModalKindRegisterProject", got)
+	if got := s.modalKind; got != modalKindRegisterProject {
+		t.Errorf("modalKind = %v, want modalKindRegisterProject", got)
 	}
 }
 
@@ -809,7 +809,7 @@ func TestEditProfileScreen_MutationErrorEmitsErrorNotification(t *testing.T) {
 	// runs the service call which returns an AssetNotFoundError; the screen
 	// must surface that as SeverityError, not a SeverityInfo "deleted" toast.
 	s.pendingDeleteAssetID = "does-not-exist"
-	s.modalKind = ModalKindDeleteAsset
+	s.modalKind = modalKindDeleteAsset
 
 	_, cmd := s.Update(modal.ResolvedMsg{ID: "delete-asset", Confirmed: true})
 	done, ok := drainCmd(t, cmd).(mutationDoneMsg)

@@ -450,6 +450,28 @@ func (s *Service) UpdateAsset(profileRef string, manifest *asset.Manifest) errs.
 	return asset.SaveManifest(target.Dir, *manifest)
 }
 
+// AddAssetFile creates an empty file at rel inside the asset folder.
+// Containment + reserved-name policy lives in asset.AddFile; the service
+// only resolves the asset directory from the loaded profile so a tampered
+// caller cannot redirect the write outside the profile root.
+func (s *Service) AddAssetFile(profileRef, assetID, rel string) errs.DomainError {
+	_, target, err := s.resolveAsset(profileRef, assetID)
+	if err != nil {
+		return err
+	}
+	return asset.AddFile(target.Dir, rel)
+}
+
+// RemoveAssetFile deletes the file at rel inside the asset folder.
+// Symmetric with AddAssetFile; pre-missing file → success.
+func (s *Service) RemoveAssetFile(profileRef, assetID, rel string) errs.DomainError {
+	_, target, err := s.resolveAsset(profileRef, assetID)
+	if err != nil {
+		return err
+	}
+	return asset.RemoveFile(target.Dir, rel)
+}
+
 // DeleteAsset removes the asset folder from the profile and unselects the
 // asset id from every project in the profile. Already-synced files in
 // project repos remain on disk as orphaned files (see docs/glossary.md);

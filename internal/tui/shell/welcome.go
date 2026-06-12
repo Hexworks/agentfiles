@@ -72,6 +72,8 @@ func (s *welcomeScreen) Title() string { return "Agentfiles" }
 
 func (s *welcomeScreen) StatusKeys() []key.Binding { return nil }
 
+func (s *welcomeScreen) InputFocused() bool { return false }
+
 func (s *welcomeScreen) Body(width int) string {
 	bar := styles.MutedStyle.Render("┃")
 	rows := make([]string, 0, len(s.items)+1)

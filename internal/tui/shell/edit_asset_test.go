@@ -14,7 +14,9 @@ import (
 	"github.com/hexworks/agentfiles/internal/asset"
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/registry"
+	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
 	"github.com/hexworks/agentfiles/internal/tui/components/modal"
+	"github.com/hexworks/agentfiles/internal/tui/components/treetable"
 	"github.com/hexworks/agentfiles/internal/tui/editor"
 	"github.com/hexworks/agentfiles/internal/tui/modals"
 )
@@ -23,11 +25,11 @@ import (
 // seeds one profile + one asset so tests can exercise LoadAsset /
 // UpdateAsset end-to-end.
 type editAssetFixture struct {
-	Root    string
-	Service *app.Service
-	Actions *actions.Actions
-	Profile *registry.ProfileRef
-	AssetID string
+	Root     string
+	Service  *app.Service
+	Actions  *actions.Actions
+	Profile  *registry.ProfileRef
+	AssetID  string
 	AssetDir string
 }
 
@@ -91,7 +93,6 @@ func (f *editAssetFixture) loadInto(t *testing.T, s *editAssetScreen) {
 		t.Fatalf("Init produced %T, want editAssetLoadedMsg", msg)
 	}
 	if _, cmd := s.Update(loaded); cmd != nil {
-		// drain follow-ups (focus cmd, etc.) so the test ends in a clean state.
 		_ = drainCmd(t, cmd)
 	}
 }
@@ -126,8 +127,6 @@ func fakeLoadedAsset(t *testing.T, dir string, m asset.Manifest, relFiles []stri
 	return &asset.Asset{Manifest: m, Dir: dir}
 }
 
-// pushFakeLoad drives a fake asset into the screen without spinning the
-// service. Useful for UI-state tests.
 func pushFakeLoad(t *testing.T, s *editAssetScreen, a *asset.Asset) {
 	t.Helper()
 	if _, cmd := s.Update(editAssetLoadedMsg{a: a}); cmd != nil {
@@ -135,9 +134,8 @@ func pushFakeLoad(t *testing.T, s *editAssetScreen, a *asset.Asset) {
 	}
 }
 
-// advanceTreeUntilRel walks the treetable cursor down until SelectedNode's
-// relative path matches target. Fails the test if the walk wraps without
-// finding the target — keeps an infinite loop from happening on a typo.
+// advanceTreeUntilRel walks the treetable cursor down until the cursor
+// node's relative path matches target.
 func advanceTreeUntilRel(t *testing.T, s *editAssetScreen, target string) {
 	t.Helper()
 	const maxSteps = 64
@@ -178,7 +176,6 @@ func TestEditAssetScreen_TreetableFocusedLeafSet_HasExpectedMnemonics(t *testing
 	s := newEditAssetScreen(f.Actions, f.Profile.ID, f.AssetID)
 	f.loadInto(t, s)
 
-	// Move cursor to the leaf row (root is row 0; leaf is row 1).
 	_, _ = s.tree.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	s.rebuildSet()
 
@@ -190,17 +187,15 @@ func TestEditAssetScreen_TreetableFocusedLeafSet_HasExpectedMnemonics(t *testing
 }
 
 func TestEditAssetScreen_TreetableFocusedDirectorySet_OmitsOpen(t *testing.T) {
-	// TypeRule has no scaffold file, so the tree is exactly root → scripts/ → inner.sh.
 	f := newEditAssetFixture(t, "rule", asset.TypeRule)
 	f.seedFile(t, "scripts/inner.sh", "x")
 	s := newEditAssetScreen(f.Actions, f.Profile.ID, f.AssetID)
 	f.loadInto(t, s)
 
-	// Move cursor to the "scripts/" directory row (row 1).
 	_, _ = s.tree.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	s.rebuildSet()
-	if got := s.selectedKind(); got != kindAssetDir {
-		t.Fatalf("selectedKind = %v, want kindAssetDir at rel=%q", got, s.selectedRel())
+	if got := s.selectedKind(); got != nodeDir {
+		t.Fatalf("selectedKind = %v, want nodeDir at rel=%q", got, s.selectedRel())
 	}
 
 	got := mnemonicLabels(s.set)
@@ -212,7 +207,6 @@ func TestEditAssetScreen_TreetableFocusedDirectorySet_OmitsOpen(t *testing.T) {
 
 func TestEditAssetScreen_TreetableFocusedEmptyFolder_OmitsRowMnemonics(t *testing.T) {
 	f := newEditAssetFixture(t, "rule", asset.TypeRule)
-	// TypeRule produces no scaffolded file → asset folder starts empty.
 	s := newEditAssetScreen(f.Actions, f.Profile.ID, f.AssetID)
 	f.loadInto(t, s)
 
@@ -228,75 +222,110 @@ func TestEditAssetScreen_RightColumnFocusedSet_IsEmpty(t *testing.T) {
 	s := newEditAssetScreen(f.Actions, f.Profile.ID, f.AssetID)
 	f.loadInto(t, s)
 
-	_ = s.handler.FocusIndex(1) // description
+	_ = s.handler.FocusIndex(s.descIdx)
 	s.rebuildSet()
-
 	if got := mnemonicLabels(s.set); len(got) != 0 {
 		t.Errorf("set labels (description focused) = %v, want empty", got)
 	}
 
-	_ = s.handler.FocusIndex(2) // tags
+	_ = s.handler.FocusIndex(s.tagsIdx)
 	s.rebuildSet()
 	if got := mnemonicLabels(s.set); len(got) != 0 {
 		t.Errorf("set labels (tags focused) = %v, want empty", got)
 	}
 }
 
+// TestEditAssetScreen_MnemonicUniquenessExhaustive walks (focus index)
+// × (cursor state) and asserts both no-panic AND no-duplicate-mnemonic
+// across visible buttons. The cross-product covers the three load-bearing
+// cursor states: leaf, directory, empty folder.
 func TestEditAssetScreen_MnemonicUniquenessExhaustive(t *testing.T) {
-	f := newEditAssetFixture(t, "skill", asset.TypeSkill)
-	f.seedFile(t, "scripts/run.sh", "x")
-	f.seedFile(t, "doc.md", "x")
-	s := newEditAssetScreen(f.Actions, f.Profile.ID, f.AssetID)
-	f.loadInto(t, s)
-
-	for focusIdx := 0; focusIdx < 5; focusIdx++ {
-		_ = s.handler.FocusIndex(focusIdx)
-		// Walk cursor across every row.
-		s.tree.SetRoot(buildAssetTree(s.asset, s.files))
-		for row := 0; row < len(s.files)+3; row++ {
-			func() {
-				defer func() {
-					if r := recover(); r != nil {
-						t.Errorf("rebuildSet panic at focus=%d row=%d: %v", focusIdx, row, r)
-					}
-				}()
-				s.rebuildSet()
-			}()
-			_, _ = s.tree.Update(tea.KeyPressMsg{Code: tea.KeyDown})
-		}
+	cases := []struct {
+		name  string
+		seed  func(*editAssetFixture, *testing.T)
+		atype asset.Type
+	}{
+		{"leaf-and-dir", func(f *editAssetFixture, t *testing.T) {
+			f.seedFile(t, "scripts/run.sh", "x")
+			f.seedFile(t, "doc.md", "x")
+		}, asset.TypeSkill},
+		{"dir-only", func(f *editAssetFixture, t *testing.T) {
+			f.seedFile(t, "scripts/inner.sh", "x")
+		}, asset.TypeRule},
+		{"empty", func(f *editAssetFixture, t *testing.T) {}, asset.TypeRule},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newEditAssetFixture(t, "asset", tc.atype)
+			tc.seed(f, t)
+			s := newEditAssetScreen(f.Actions, f.Profile.ID, f.AssetID)
+			f.loadInto(t, s)
+			for focusIdx := 0; focusIdx < 5; focusIdx++ {
+				_ = s.handler.FocusIndex(focusIdx)
+				// Walk cursor across every row plus a buffer.
+				rowMax := len(s.files) + 3
+				for row := 0; row < rowMax; row++ {
+					func() {
+						defer func() {
+							if r := recover(); r != nil {
+								t.Errorf("rebuildSet panic at focus=%d row=%d: %v", focusIdx, row, r)
+							}
+						}()
+						s.rebuildSet()
+					}()
+					assertUniqueMnemonics(t, s.set, focusIdx, row)
+					_, _ = s.tree.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+				}
+			}
+		})
 	}
 }
 
-func TestEditAssetScreen_OpenButtonRenderedOnlyOnLeafNodes(t *testing.T) {
-	// TypeRule keeps the asset folder empty except for what the test seeds:
-	// scripts/ (dir) → run.sh (leaf). Row 0 root, row 1 scripts/, row 2 run.sh.
+func assertUniqueMnemonics(t *testing.T, set *mnemonic.Set, focusIdx, row int) {
+	t.Helper()
+	seen := make(map[rune]string)
+	for _, b := range set.Buttons() {
+		r := b.Mnemonic()
+		if prev, dup := seen[r]; dup {
+			t.Errorf("duplicate mnemonic %q at focus=%d row=%d: %q vs %q", r, focusIdx, row, prev, b.Label())
+			continue
+		}
+		seen[r] = b.Label()
+	}
+}
+
+func TestEditAssetScreen_TreeActionsForLeafAndDir(t *testing.T) {
+	f := newEditAssetFixture(t, "rule", asset.TypeRule)
+	f.seedFile(t, "scripts/run.sh", "x")
+	s := newEditAssetScreen(f.Actions, f.Profile.ID, f.AssetID)
+	f.loadInto(t, s)
+	fn := s.treeActionsFn()
+
+	leafNode := &treetable.Node{Data: assetNode{kind: nodeFile, rel: "scripts/run.sh"}}
+	dirNode := &treetable.Node{Data: assetNode{kind: nodeDir, rel: "scripts"}}
+	rootNode := &treetable.Node{Data: assetNode{kind: nodeRoot}}
+
+	if got := fn(leafNode); len(got) != 2 {
+		t.Errorf("leaf actions = %d buttons, want 2 ([Open] [Delete])", len(got))
+	}
+	if got := fn(dirNode); len(got) != 1 {
+		t.Errorf("dir actions = %d buttons, want 1 ([Delete])", len(got))
+	}
+	if got := fn(rootNode); got != nil {
+		t.Errorf("root actions = %v, want nil", got)
+	}
+}
+
+func TestEditAssetScreen_OpenButtonRenderedOnlyOnLeafLeafRow(t *testing.T) {
 	f := newEditAssetFixture(t, "rule", asset.TypeRule)
 	f.seedFile(t, "scripts/run.sh", "x")
 	s := newEditAssetScreen(f.Actions, f.Profile.ID, f.AssetID)
 	f.loadInto(t, s)
 
-	// Cursor on root (row 0): no Open.
-	if got := stripANSI(s.tree.View()); strings.Contains(got, "[Open]") {
-		t.Errorf("root row shows [Open]:\n%s", got)
-	}
-
-	// Move to the directory row.
-	_, _ = s.tree.Update(tea.KeyPressMsg{Code: tea.KeyDown})
-	if got := s.selectedKind(); got != kindAssetDir {
-		t.Fatalf("after Down: selectedKind = %v, want kindAssetDir; rel=%q", got, s.selectedRel())
-	}
-	if got := stripANSI(s.tree.View()); strings.Contains(got, "[Open]") {
-		t.Errorf("directory row shows [Open]:\n%s", got)
-	}
-
-	// Move to the leaf row.
-	_, _ = s.tree.Update(tea.KeyPressMsg{Code: tea.KeyDown})
-	if got := s.selectedKind(); got != kindAssetFile {
-		t.Fatalf("after second Down: selectedKind = %v, want kindAssetFile; rel=%q", got, s.selectedRel())
-	}
-	leafView := stripANSI(s.tree.View())
-	if !strings.Contains(leafView, "[Open]") {
-		t.Errorf("leaf row missing [Open]:\n%s", leafView)
+	// Walk to leaf to verify the smoke test: rendered output contains [Open].
+	advanceTreeUntilRel(t, s, "scripts/run.sh")
+	if got := stripANSI(s.tree.View()); !strings.Contains(got, "[Open]") {
+		t.Errorf("leaf row missing [Open]:\n%s", got)
 	}
 }
 
@@ -306,15 +335,14 @@ func TestEditAssetScreen_OpenLeafTriggersEditor(t *testing.T) {
 	s := newEditAssetScreen(f.Actions, f.Profile.ID, f.AssetID)
 	f.loadInto(t, s)
 
-	// Move to leaf row.
 	_, _ = s.tree.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	s.rebuildSet()
 
 	if got := s.onOpen(); got == nil {
 		t.Fatalf("onOpen on leaf returned nil cmd")
 	}
-	if s.pendingOpenFile == "" {
-		t.Errorf("pendingOpenFile = empty, want leaf.txt")
+	if s.editingFile == "" {
+		t.Errorf("editingFile = empty, want leaf.txt")
 	}
 }
 
@@ -323,15 +351,29 @@ func TestEditAssetScreen_EditorFinishedTriggersUpdateAsset(t *testing.T) {
 	f.seedFile(t, "leaf.txt", "x")
 	s := newEditAssetScreen(f.Actions, f.Profile.ID, f.AssetID)
 	f.loadInto(t, s)
-	s.pendingOpenFile = "leaf.txt"
+	s.editingFile = "leaf.txt"
 
 	_, cmd := s.Update(editor.FinishedMsg{Err: nil})
-	done, ok := drainCmd(t, cmd).(mutationDoneMsg)
-	if !ok {
-		t.Fatalf("editor.FinishedMsg produced %T, want mutationDoneMsg", drainCmd(t, cmd))
+	got := drainCmd(t, cmd)
+	if _, ok := got.(saveSucceededMsg); !ok {
+		t.Fatalf("editor.FinishedMsg produced %T, want saveSucceededMsg", got)
 	}
-	if done.severity != errs.SeverityInfo {
-		t.Errorf("severity = %v, want SeverityInfo", done.severity)
+}
+
+func TestEditAssetScreen_EditorFinishedErrorEmitsNotificationAndSkipsUpdate(t *testing.T) {
+	f := newEditAssetFixture(t, "skill", asset.TypeSkill)
+	f.seedFile(t, "leaf.txt", "x")
+	s := newEditAssetScreen(f.Actions, f.Profile.ID, f.AssetID)
+	f.loadInto(t, s)
+	s.editingFile = "leaf.txt"
+
+	_, cmd := s.Update(editor.FinishedMsg{Err: os.ErrPermission})
+	if cmd == nil {
+		t.Fatalf("editor failure produced nil cmd, want notification")
+	}
+	msg := drainCmd(t, cmd)
+	if _, ok := msg.(saveSucceededMsg); ok {
+		t.Errorf("editor failure produced saveSucceededMsg, want notification only")
 	}
 }
 
@@ -345,20 +387,21 @@ func TestEditAssetScreen_DeleteFileConfirmedRemovesFileAndCallsUpdate(t *testing
 	advanceTreeUntilRel(t, s, target)
 
 	_ = s.onDeleteFile()
-	if s.modal == nil || s.modalKind != ModalKindAssetDeleteFile {
+	if s.modal == nil || s.modalKind != modalKindAssetDeleteFile {
 		t.Fatalf("modal not opened: modal=%v kind=%v", s.modal, s.modalKind)
 	}
-	if s.pendingDeleteFile != target {
-		t.Errorf("pendingDeleteFile = %q, want %q", s.pendingDeleteFile, target)
+	if s.deletingFile != target {
+		t.Errorf("deletingFile = %q, want %q", s.deletingFile, target)
 	}
 
 	_, cmd := s.Update(modal.ResolvedMsg{ID: "delete-file", Confirmed: true})
-	done, ok := drainCmd(t, cmd).(mutationDoneMsg)
+	msg := drainCmd(t, cmd)
+	changed, ok := msg.(filesChangedMsg)
 	if !ok {
-		t.Fatalf("delete cmd produced %T, want mutationDoneMsg", drainCmd(t, cmd))
+		t.Fatalf("delete cmd produced %T, want filesChangedMsg", msg)
 	}
-	if done.severity != errs.SeverityInfo {
-		t.Errorf("severity = %v, want SeverityInfo, text=%q", done.severity, done.text)
+	if changed.info == "" {
+		t.Errorf("filesChangedMsg.info empty, want success text")
 	}
 	if _, err := os.Stat(filepath.Join(f.AssetDir, target)); !os.IsNotExist(err) {
 		t.Errorf("file still exists: %v", err)
@@ -382,8 +425,8 @@ func TestEditAssetScreen_DeleteFileRejectedMakesNoFsChange(t *testing.T) {
 	if s.modal != nil {
 		t.Errorf("modal still open after No")
 	}
-	if s.pendingDeleteFile != "" {
-		t.Errorf("pendingDeleteFile = %q, want empty", s.pendingDeleteFile)
+	if s.deletingFile != "" {
+		t.Errorf("deletingFile = %q, want empty", s.deletingFile)
 	}
 	if _, err := os.Stat(filepath.Join(f.AssetDir, target)); err != nil {
 		t.Errorf("file gone: %v", err)
@@ -404,15 +447,63 @@ func TestEditAssetScreen_AddFileConfirmedCreatesPhysicalFile(t *testing.T) {
 		Confirmed: true,
 		Value:     modals.CreateFileInput{Path: "scripts/hello.sh"},
 	})
-	done, ok := drainCmd(t, cmd).(mutationDoneMsg)
-	if !ok {
-		t.Fatalf("add cmd produced %T, want mutationDoneMsg", drainCmd(t, cmd))
-	}
-	if done.severity != errs.SeverityInfo {
-		t.Errorf("severity = %v, want SeverityInfo", done.severity)
+	msg := drainCmd(t, cmd)
+	if _, ok := msg.(filesChangedMsg); !ok {
+		t.Fatalf("add cmd produced %T, want filesChangedMsg", msg)
 	}
 	if _, err := os.Stat(filepath.Join(f.AssetDir, "scripts", "hello.sh")); err != nil {
 		t.Errorf("file not created: %v", err)
+	}
+}
+
+// TestEditAssetScreen_AddFileRejectsPathTraversal covers the safety rail
+// at the integration level: the user pastes "../escape.txt" into the
+// create modal and the create cmd produces an error notification (not a
+// filesChangedMsg) and writes nothing outside the asset folder.
+func TestEditAssetScreen_AddFileRejectsPathTraversal(t *testing.T) {
+	f := newEditAssetFixture(t, "skill", asset.TypeSkill)
+	s := newEditAssetScreen(f.Actions, f.Profile.ID, f.AssetID)
+	f.loadInto(t, s)
+	_ = s.onAdd()
+
+	_, cmd := s.Update(modal.ResolvedMsg{
+		ID:        "create-file",
+		Confirmed: true,
+		Value:     modals.CreateFileInput{Path: "../escape.txt"},
+	})
+	msg := drainCmd(t, cmd)
+	done, ok := msg.(mutationDoneMsg)
+	if !ok {
+		t.Fatalf("traversal cmd produced %T, want mutationDoneMsg (error)", msg)
+	}
+	if done.severity != errs.SeverityError {
+		t.Errorf("severity = %v, want SeverityError", done.severity)
+	}
+	// File must not have escaped the asset folder.
+	parentDir := filepath.Dir(f.AssetDir)
+	if _, err := os.Stat(filepath.Join(parentDir, "escape.txt")); !os.IsNotExist(err) {
+		t.Errorf("traversal wrote outside asset folder: %v", err)
+	}
+}
+
+// TestAssetResolveRelative_TraversalRejected unit-tests the safety rail
+// directly so the domain rule has a focused test even when the screen
+// flow is refactored away.
+func TestAssetResolveRelative_TraversalRejected(t *testing.T) {
+	dir := t.TempDir()
+	for _, rel := range []string{"../escape.txt", "../../etc/passwd"} {
+		if _, err := asset.ResolveRelative(dir, rel); err == nil {
+			t.Errorf("ResolveRelative(%q) = nil, want error", rel)
+		}
+	}
+}
+
+func TestAssetResolveRelative_ReservedNamesRejected(t *testing.T) {
+	dir := t.TempDir()
+	for _, rel := range []string{"asset.json", ".secret", "sub/.hidden"} {
+		if _, err := asset.ResolveRelative(dir, rel); err == nil {
+			t.Errorf("ResolveRelative(%q) = nil, want error", rel)
+		}
 	}
 }
 
@@ -429,18 +520,18 @@ func TestEditAssetScreen_TagsRoundTrip(t *testing.T) {
 	s := newEditAssetScreen(f.Actions, f.Profile.ID, f.AssetID)
 	pushFakeLoad(t, s, a)
 
-	if got := s.state.tagsCSV; got != "foo, bar" {
+	if got := s.form.tagsCSV; got != "foo, bar" {
 		t.Errorf("tagsCSV = %q, want %q", got, "foo, bar")
 	}
 
-	s.state.tagsCSV = "baz, qux"
-	s.syncFieldsToAsset()
-	if got := s.asset.Tags; !slices.Equal(got, []string{"baz", "qux"}) {
+	s.form.tagsCSV = "baz, qux"
+	got := s.composeManifest().Tags
+	if !slices.Equal(got, []string{"baz", "qux"}) {
 		t.Errorf("Tags = %v, want [baz qux]", got)
 	}
 }
 
-func TestEditAssetScreen_SyncCopiesFieldsToAsset(t *testing.T) {
+func TestEditAssetScreen_ComposeManifestReflectsForm(t *testing.T) {
 	f := newEditAssetFixture(t, "skill", asset.TypeSkill)
 	dir := filepath.Join(t.TempDir(), "asset")
 	a := fakeLoadedAsset(t, dir, asset.Manifest{
@@ -452,28 +543,27 @@ func TestEditAssetScreen_SyncCopiesFieldsToAsset(t *testing.T) {
 	s := newEditAssetScreen(f.Actions, f.Profile.ID, f.AssetID)
 	pushFakeLoad(t, s, a)
 
-	s.state.description = "hello"
-	s.state.tagsCSV = "a, b"
-	s.state.compatible = []string{"codex"}
-	s.state.exclusive = "main"
+	s.form.descriptionText = "hello"
+	s.form.tagsCSV = "a, b"
+	s.form.compatibleAgents = []string{"codex"}
+	s.form.exclusiveGroup = "main"
 
-	s.syncFieldsToAsset()
-
-	if s.asset.Description != "hello" {
-		t.Errorf("Description = %q, want hello", s.asset.Description)
+	got := s.composeManifest()
+	if got.Description != "hello" {
+		t.Errorf("Description = %q, want hello", got.Description)
 	}
-	if !slices.Equal(s.asset.Tags, []string{"a", "b"}) {
-		t.Errorf("Tags = %v, want [a b]", s.asset.Tags)
+	if !slices.Equal(got.Tags, []string{"a", "b"}) {
+		t.Errorf("Tags = %v, want [a b]", got.Tags)
 	}
-	if !slices.Equal(s.asset.CompatibleAgents, []string{"codex"}) {
-		t.Errorf("CompatibleAgents = %v, want [codex]", s.asset.CompatibleAgents)
+	if !slices.Equal(got.CompatibleAgents, []string{"codex"}) {
+		t.Errorf("CompatibleAgents = %v, want [codex]", got.CompatibleAgents)
 	}
-	if s.asset.ExclusiveGroup != "main" {
-		t.Errorf("ExclusiveGroup = %q, want main", s.asset.ExclusiveGroup)
+	if got.ExclusiveGroup != "main" {
+		t.Errorf("ExclusiveGroup = %q, want main", got.ExclusiveGroup)
 	}
 }
 
-func TestEditAssetScreen_BackWithCleanChangesPopsDirectly(t *testing.T) {
+func TestEditAssetScreen_BackWhenClean_Pops(t *testing.T) {
 	f := newEditAssetFixture(t, "skill", asset.TypeSkill)
 	s := newEditAssetScreen(f.Actions, f.Profile.ID, f.AssetID)
 	f.loadInto(t, s)
@@ -487,26 +577,38 @@ func TestEditAssetScreen_BackWithCleanChangesPopsDirectly(t *testing.T) {
 	}
 }
 
-func TestEditAssetScreen_BackWithUnsavedChangesOpensConfirmModal(t *testing.T) {
+// TestEditAssetScreen_BackWhenDirty_OpensConfirm drives a keystroke through
+// Update with the tags field focused so the dirty signal flows through
+// the same path a real user does: huh field binding → form mirror →
+// dirty().
+func TestEditAssetScreen_BackWhenDirty_OpensConfirm(t *testing.T) {
 	f := newEditAssetFixture(t, "skill", asset.TypeSkill)
 	s := newEditAssetScreen(f.Actions, f.Profile.ID, f.AssetID)
 	f.loadInto(t, s)
 
-	s.state.tagsCSV = "newtag"
+	if cmd := s.handler.FocusIndex(s.tagsIdx); cmd != nil {
+		_ = drainCmd(t, cmd)
+	}
+	_, _ = s.Update(tea.KeyPressMsg{Code: 'x', Text: "x"})
+
+	if !s.dirty() {
+		t.Fatalf("dirty() = false after typing into tags input")
+	}
+
 	_ = s.onBack()
 	if s.modal == nil {
 		t.Fatalf("modal not opened")
 	}
-	if s.modalKind != ModalKindAssetBackUnsaved {
-		t.Errorf("modalKind = %v, want ModalKindAssetBackUnsaved", s.modalKind)
+	if s.modalKind != modalKindAssetBackUnsaved {
+		t.Errorf("modalKind = %v, want modalKindAssetBackUnsaved", s.modalKind)
 	}
 }
 
-func TestEditAssetScreen_BackUnsavedConfirmedPops(t *testing.T) {
+func TestEditAssetScreen_BackWhenDirty_Confirmed_Pops(t *testing.T) {
 	f := newEditAssetFixture(t, "skill", asset.TypeSkill)
 	s := newEditAssetScreen(f.Actions, f.Profile.ID, f.AssetID)
 	f.loadInto(t, s)
-	s.state.tagsCSV = "newtag"
+	s.form.tagsCSV = "newtag"
 	_ = s.onBack()
 
 	_, cmd := s.Update(modal.ResolvedMsg{ID: "back-unsaved", Confirmed: true})
@@ -518,11 +620,11 @@ func TestEditAssetScreen_BackUnsavedConfirmedPops(t *testing.T) {
 	}
 }
 
-func TestEditAssetScreen_BackUnsavedRejectedKeepsScreen(t *testing.T) {
+func TestEditAssetScreen_BackWhenDirty_Rejected_KeepsScreen(t *testing.T) {
 	f := newEditAssetFixture(t, "skill", asset.TypeSkill)
 	s := newEditAssetScreen(f.Actions, f.Profile.ID, f.AssetID)
 	f.loadInto(t, s)
-	s.state.tagsCSV = "newtag"
+	s.form.tagsCSV = "newtag"
 	_ = s.onBack()
 
 	_, cmd := s.Update(modal.ResolvedMsg{ID: "back-unsaved", Confirmed: false})
@@ -539,15 +641,12 @@ func TestEditAssetScreen_SavePersistsManifest(t *testing.T) {
 	s := newEditAssetScreen(f.Actions, f.Profile.ID, f.AssetID)
 	f.loadInto(t, s)
 
-	s.state.description = "updated body"
+	s.form.descriptionText = "updated body"
 
 	_, cmd := s.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
-	done, ok := drainCmd(t, cmd).(mutationDoneMsg)
-	if !ok {
-		t.Fatalf("save cmd produced %T, want mutationDoneMsg", drainCmd(t, cmd))
-	}
-	if done.severity != errs.SeverityInfo {
-		t.Errorf("severity = %v, want SeverityInfo", done.severity)
+	msg := drainCmd(t, cmd)
+	if _, ok := msg.(saveSucceededMsg); !ok {
+		t.Fatalf("save cmd produced %T, want saveSucceededMsg", msg)
 	}
 
 	fresh, lerr := f.Service.LoadAsset(f.Profile.ID, f.AssetID)
@@ -559,17 +658,89 @@ func TestEditAssetScreen_SavePersistsManifest(t *testing.T) {
 	}
 }
 
+// TestEditAssetScreen_SaveFailureKeepsManifestDirty: the save cmd
+// returns mutationDoneMsg on error, and the snapshot is NOT refreshed —
+// so dirty() still reports true.
+func TestEditAssetScreen_SaveFailureKeepsManifestDirty(t *testing.T) {
+	f := newEditAssetFixture(t, "skill", asset.TypeSkill)
+	// Use a bogus asset id so the service returns AssetNotFoundError
+	// from the save chokepoint (UpdateAsset's resolveAsset).
+	s := newEditAssetScreen(f.Actions, f.Profile.ID, f.AssetID)
+	f.loadInto(t, s)
+
+	// Make form dirty.
+	s.form.descriptionText = "dirty change"
+	if !s.dirty() {
+		t.Fatalf("dirty() = false after edit")
+	}
+
+	// Force a save failure by mangling the captured asset id on the
+	// screen. The save cmd reads s.profileID + the composed manifest's
+	// ID; flipping the id makes UpdateAsset's resolveAsset fail.
+	s.asset.ID = "no-such-asset"
+
+	_, cmd := s.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
+	msg := drainCmd(t, cmd)
+	if _, ok := msg.(mutationDoneMsg); !ok {
+		t.Fatalf("failure cmd produced %T, want mutationDoneMsg", msg)
+	}
+	if !s.dirty() {
+		t.Errorf("dirty() = false after save failure, want true")
+	}
+}
+
+// TestEditAssetScreen_DirtyClearsWhenStateRevertsToOriginal covers the
+// edit-then-revert round trip: typing then deleting back to the original
+// must zero out dirty().
+func TestEditAssetScreen_DirtyClearsWhenStateRevertsToOriginal(t *testing.T) {
+	f := newEditAssetFixture(t, "skill", asset.TypeSkill)
+	s := newEditAssetScreen(f.Actions, f.Profile.ID, f.AssetID)
+	f.loadInto(t, s)
+
+	original := s.form.descriptionText
+	s.form.descriptionText = original + "edit"
+	if !s.dirty() {
+		t.Fatalf("dirty() = false after edit")
+	}
+	s.form.descriptionText = original
+	if s.dirty() {
+		t.Errorf("dirty() = true after reverting to original, want false")
+	}
+}
+
+// TestEditAssetScreen_KeyPressForwardedToModalWhenOpen verifies the
+// modal-open guard: an `e` keystroke while the back-unsaved confirm is
+// open must not trigger onSave.
+func TestEditAssetScreen_KeyPressForwardedToModalWhenOpen(t *testing.T) {
+	f := newEditAssetFixture(t, "skill", asset.TypeSkill)
+	s := newEditAssetScreen(f.Actions, f.Profile.ID, f.AssetID)
+	f.loadInto(t, s)
+	s.form.tagsCSV = "newtag" // make dirty
+	_ = s.onBack()
+	if s.modal == nil {
+		t.Fatalf("setup failure: back-unsaved modal not open")
+	}
+
+	// `e` would otherwise invoke onSave; while modal is open it must be
+	// forwarded into the modal (which does not interpret `e`).
+	_, cmd := s.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
+	if cmd != nil {
+		// The modal may emit a cmd of its own; what we forbid is the
+		// save cmd, which we identify by its returned msg type.
+		msg := drainCmd(t, cmd)
+		if _, ok := msg.(saveSucceededMsg); ok {
+			t.Errorf("e key while back-unsaved modal open triggered save")
+		}
+	}
+}
+
 func TestEditAssetScreen_StatusKeysTreetableFocused_IncludesSaveAndBack(t *testing.T) {
 	f := newEditAssetFixture(t, "skill", asset.TypeSkill)
 	f.seedFile(t, "leaf.txt", "x")
 	s := newEditAssetScreen(f.Actions, f.Profile.ID, f.AssetID)
 	f.loadInto(t, s)
 
-	// cursor on leaf row.
-	for s.selectedRel() != "leaf.txt" {
-		_, _ = s.tree.Update(tea.KeyPressMsg{Code: tea.KeyDown})
-	}
-	s.rebuildSet()
+	advanceTreeUntilRel(t, s, "leaf.txt")
 
 	keys := s.StatusKeys()
 	helps := make([]string, len(keys))
@@ -599,7 +770,7 @@ func TestEditAssetScreen_RightColumnFocusedStatusBarSkipsRowKeys(t *testing.T) {
 	f.seedFile(t, "leaf.txt", "x")
 	s := newEditAssetScreen(f.Actions, f.Profile.ID, f.AssetID)
 	f.loadInto(t, s)
-	_ = s.handler.FocusIndex(1)
+	_ = s.handler.FocusIndex(s.descIdx)
 	s.rebuildSet()
 
 	keys := s.StatusKeys()
@@ -609,7 +780,6 @@ func TestEditAssetScreen_RightColumnFocusedStatusBarSkipsRowKeys(t *testing.T) {
 			t.Errorf("StatusKeys (description focus) leaks row key %q", k.Help().Key)
 		}
 	}
-	// Save + Back must still be advertised.
 	helps := make(map[string]bool)
 	for _, k := range keys {
 		helps[k.Help().Key] = true
@@ -641,17 +811,17 @@ func TestEditAssetScreen_InputFocused_FollowsHandler(t *testing.T) {
 	if s.InputFocused() {
 		t.Errorf("InputFocused() = true with treetable focus, want false")
 	}
-	_ = s.handler.FocusIndex(1)
+	_ = s.handler.FocusIndex(s.descIdx)
 	if !s.InputFocused() {
 		t.Errorf("InputFocused() = false with description focused, want true")
 	}
-	_ = s.handler.FocusIndex(0)
+	_ = s.handler.FocusIndex(s.treeIdx)
 	if s.InputFocused() {
 		t.Errorf("InputFocused() = true after returning to treetable, want false")
 	}
 }
 
-func TestShell_GlobalKeysSkippedWhenInputFocused(t *testing.T) {
+func TestEditAssetScreen_InputFocusedSuppressesGlobalKeys(t *testing.T) {
 	f := newEditAssetFixture(t, "skill", asset.TypeSkill)
 	s := newEditAssetScreen(f.Actions, f.Profile.ID, f.AssetID)
 
@@ -659,7 +829,7 @@ func TestShell_GlobalKeysSkippedWhenInputFocused(t *testing.T) {
 		t.Errorf("treetable-focused screen wants raw 's', should not")
 	}
 	f.loadInto(t, s)
-	_ = s.handler.FocusIndex(1)
+	_ = s.handler.FocusIndex(s.descIdx)
 
 	for _, k := range []tea.KeyPressMsg{
 		{Code: 's', Text: "s"},
@@ -671,7 +841,6 @@ func TestShell_GlobalKeysSkippedWhenInputFocused(t *testing.T) {
 			t.Errorf("screenWantsRawKey(%q) = false when input focused, want true", k.Text)
 		}
 	}
-	// ctrl+c always escapes — safety rail.
 	ctrlC := tea.KeyPressMsg{Code: 'c', Text: "", Mod: tea.ModCtrl}
 	if screenWantsRawKey(s, ctrlC) {
 		t.Errorf("screenWantsRawKey(ctrl+c) = true, want false (safety abort path)")
@@ -679,9 +848,7 @@ func TestShell_GlobalKeysSkippedWhenInputFocused(t *testing.T) {
 }
 
 // stripANSI strips every CSI SGR escape sequence so substring assertions
-// like "[Open]" survive lipgloss's per-rune style switching. The codes
-// match the form `\x1b[...m`; we accept any digits / semicolons in
-// between.
+// like "[Open]" survive lipgloss's per-rune style switching.
 func stripANSI(s string) string {
 	out := make([]byte, 0, len(s))
 	i := 0

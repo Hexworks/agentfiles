@@ -50,6 +50,8 @@ func (s *settingsScreen) StatusKeys() []key.Binding {
 	return []key.Binding{s.back.Binding()}
 }
 
+func (s *settingsScreen) InputFocused() bool { return false }
+
 func (s *settingsScreen) Body(width int) string {
 	msg := " Coming soon."
 	back := lipgloss.PlaceHorizontal(width, lipgloss.Right, s.back.View())

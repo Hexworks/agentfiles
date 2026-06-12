@@ -185,6 +185,8 @@ func (s *profilesScreen) StatusKeys() []key.Binding {
 	return []key.Binding{s.edit.Binding(), s.delete.Binding()}
 }
 
+func (s *profilesScreen) InputFocused() bool { return false }
+
 func (s *profilesScreen) Body(width int) string {
 	background := s.bodyContent()
 	if s.modal == nil {

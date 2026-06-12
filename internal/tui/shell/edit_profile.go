@@ -20,34 +20,41 @@ import (
 	"github.com/hexworks/agentfiles/internal/tui/styles"
 )
 
-// editProfileActions is the narrow slice of *actions.Actions the Edit
-// Profile screen actually uses. Naming the interface here keeps the
-// dependency direction tui→app explicit and lets tests (or future
-// alternative back-ends) substitute without depending on the full Actions
-// surface.
-type editProfileActions interface {
+// editProfileOwnActions is the slice the Edit Profile screen invokes
+// itself. Kept separate from editAssetActions so a reader can see at a
+// glance which interface widening reflects an own dependency versus a
+// child-screen pass-through.
+type editProfileOwnActions interface {
 	LoadProfile(in actions.LoadProfileInput) (*profile.Profile, errs.DomainError)
-	LoadAsset(in actions.LoadAssetInput) (*asset.Asset, errs.DomainError)
 	CreateAsset(in actions.CreateAssetInput) (string, errs.DomainError)
-	UpdateAsset(in actions.UpdateAssetInput) (struct{}, errs.DomainError)
 	DeleteAsset(in actions.DeleteAssetInput) (struct{}, errs.DomainError)
 	AddProject(in actions.AddProjectInput) (*project.Manifest, errs.DomainError)
 	UpdateProject(in actions.UpdateProjectInput) (struct{}, errs.DomainError)
 	DeleteProject(in actions.DeleteProjectInput) (struct{}, errs.DomainError)
 }
 
-// ModalKind identifies which modal flow the Edit Profile screen currently
-// hosts. Exposed so tests can assert intent (`modalKindDeleteAsset`)
-// instead of the raw modal-id string the dialog happens to carry.
-type ModalKind int
+// editProfileActions composes the screen's own dependencies with the
+// child Edit Asset screen's dependencies so `s.actions` can be forwarded
+// to newEditAssetScreen without a type assertion. The composition makes
+// the dependency union visible at the declaration instead of widening a
+// single flat interface for methods the parent screen never calls.
+type editProfileActions interface {
+	editProfileOwnActions
+	editAssetActions
+}
+
+// modalKind identifies which modal flow the Edit Profile screen
+// currently hosts. Tests assert intent through this enum rather than the
+// raw modal-id string the dialog carries.
+type modalKind int
 
 const (
-	ModalKindNone ModalKind = iota
-	ModalKindDeleteAsset
-	ModalKindDeleteProject
-	ModalKindCreateAsset
-	ModalKindRegisterProject
-	ModalKindEditProject
+	modalKindNone modalKind = iota
+	modalKindDeleteAsset
+	modalKindDeleteProject
+	modalKindCreateAsset
+	modalKindRegisterProject
+	modalKindEditProject
 )
 
 // editProfileScreen is the Edit Profile management screen reached from
@@ -83,7 +90,7 @@ type editProfileScreen struct {
 	set *mnemonic.Set
 
 	modal                  *modal.Modal
-	modalKind              ModalKind
+	modalKind              modalKind
 	pendingDeleteAssetID   string
 	pendingDeleteProjectID string
 
@@ -303,6 +310,8 @@ func (s *editProfileScreen) Title() string { return "Edit Profile" }
 // are excluded because they're visible on the body. Back is the same
 // explicit exception the Settings + Profiles screens make so the user
 // can still see the back hint.
+func (s *editProfileScreen) InputFocused() bool { return false }
+
 func (s *editProfileScreen) StatusKeys() []key.Binding {
 	out := make([]key.Binding, 0, 5)
 	switch s.handler.Focused() {
@@ -537,7 +546,7 @@ func (s *editProfileScreen) onDeleteAsset() tea.Cmd {
 		"Delete asset %q? It will also be removed from every project's selection.",
 		a.Name,
 	)
-	s.openModal(modal.NewConfirm("delete-asset", prompt, nil), ModalKindDeleteAsset)
+	s.openModal(modal.NewConfirm("delete-asset", prompt, nil), modalKindDeleteAsset)
 	return s.modal.Init()
 }
 
@@ -550,7 +559,7 @@ func (s *editProfileScreen) onEditProject() tea.Cmd {
 		Name:          p.Name,
 		Path:          p.Path,
 		EnabledAgents: append([]string(nil), p.EnabledAgents...),
-	}), ModalKindEditProject)
+	}), modalKindEditProject)
 	return s.modal.Init()
 }
 
@@ -580,21 +589,21 @@ func (s *editProfileScreen) onDeleteProject() tea.Cmd {
 		"Delete project manifest %q? Files in the target repo become orphaned files and are kept on disk.",
 		p.Name,
 	)
-	s.openModal(modal.NewConfirm("delete-project", prompt, nil), ModalKindDeleteProject)
+	s.openModal(modal.NewConfirm("delete-project", prompt, nil), modalKindDeleteProject)
 	return s.modal.Init()
 }
 
 func (s *editProfileScreen) onCreateAsset() tea.Cmd {
-	s.openModal(modals.NewCreateAsset(asset.Manifest{}), ModalKindCreateAsset)
+	s.openModal(modals.NewCreateAsset(asset.Manifest{}), modalKindCreateAsset)
 	return s.modal.Init()
 }
 
 func (s *editProfileScreen) onRegisterProject() tea.Cmd {
-	s.openModal(modals.NewRegisterProject(modals.RegisterProjectInput{}), ModalKindRegisterProject)
+	s.openModal(modals.NewRegisterProject(modals.RegisterProjectInput{}), modalKindRegisterProject)
 	return s.modal.Init()
 }
 
-func (s *editProfileScreen) openModal(m *modal.Modal, kind ModalKind) {
+func (s *editProfileScreen) openModal(m *modal.Modal, kind modalKind) {
 	s.modal = m
 	s.modalKind = kind
 	if s.width > 0 && s.height > 0 {
@@ -610,21 +619,21 @@ func (s *editProfileScreen) openModal(m *modal.Modal, kind ModalKind) {
 func (s *editProfileScreen) handleResolved(msg modal.ResolvedMsg) tea.Cmd {
 	s.modal = nil
 	kind := s.modalKind
-	s.modalKind = ModalKindNone
+	s.modalKind = modalKindNone
 	pendingAsset := s.pendingDeleteAssetID
 	pendingProject := s.pendingDeleteProjectID
 	s.pendingDeleteAssetID = ""
 	s.pendingDeleteProjectID = ""
 	switch kind {
-	case ModalKindDeleteAsset:
+	case modalKindDeleteAsset:
 		return s.afterDeleteAsset(msg, pendingAsset)
-	case ModalKindDeleteProject:
+	case modalKindDeleteProject:
 		return s.afterDeleteProject(msg, pendingProject)
-	case ModalKindCreateAsset:
+	case modalKindCreateAsset:
 		return s.afterCreateAsset(msg)
-	case ModalKindRegisterProject:
+	case modalKindRegisterProject:
 		return s.afterRegisterProject(msg)
-	case ModalKindEditProject:
+	case modalKindEditProject:
 		return s.afterEditProject(msg)
 	}
 	return nil
