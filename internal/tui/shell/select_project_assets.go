@@ -2,8 +2,6 @@ package shell
 
 import (
 	"fmt"
-	"slices"
-	"strings"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/table"
@@ -25,8 +23,9 @@ import (
 // fake.
 type selectProjectAssetsActions interface {
 	LoadProfile(in actions.LoadProfileInput) (*profile.Profile, errs.DomainError)
-	SelectAsset(in actions.SelectAssetInput) (struct{}, errs.DomainError)
-	UnselectAsset(in actions.UnselectAssetInput) (struct{}, errs.DomainError)
+	LoadProject(in actions.LoadProjectInput) (*project.Manifest, errs.DomainError)
+	SelectAsset(in actions.SelectAssetInput) ([]string, errs.DomainError)
+	UnselectAsset(in actions.UnselectAssetInput) ([]string, errs.DomainError)
 }
 
 // selectProjectAssetsLoadedMsg is the result of the Init load command:
@@ -38,7 +37,10 @@ type selectProjectAssetsLoadedMsg struct {
 }
 
 // selectionChangedMsg is the success envelope row actions emit so Update
-// can refresh the local selection mirror atomically with the notification.
+// can refresh the local selection mirror atomically with the
+// notification. selectedIDs carries the post-persistence selection
+// returned by the service so the screen never projects the next state
+// itself.
 type selectionChangedMsg struct {
 	selectedIDs []string
 	info        string
@@ -56,28 +58,27 @@ type selectProjectAssetsScreen struct {
 	profileID string
 	projectID string
 
+	prof        *profile.Profile
 	projectName string
 	profileName string
-	assetsByID  map[string]*asset.Asset
+	selectedIDs []string
 	available   []*asset.Asset
 	selected    []*asset.Asset
 
 	handler        *focus.Handler
 	selectedTable  *table.Model
 	availableTable *table.Model
-	selectedMnemo  *mnemonic.Button // [1]
-	availableMnemo *mnemonic.Button // [2]
-	unselectBtn    *mnemonic.Button // u
-	selectBtn      *mnemonic.Button // l
-	planBtn        *mnemonic.Button // p
-	backBtn        *mnemonic.Button // b + esc
+	selectedMnemo  *mnemonic.Button
+	availableMnemo *mnemonic.Button
+	unselectBtn    *mnemonic.Button
+	selectBtn      *mnemonic.Button
+	planBtn        *mnemonic.Button
+	backBtn        *mnemonic.Button
 	set            *mnemonic.Set
-	selectedIdx    int // focus.Handler index of selected table
-	availableIdx   int // focus.Handler index of available table
+	selectedIdx    int
+	availableIdx   int
 
 	loaded bool
-
-	width, height int
 }
 
 var selectProjectAssetsColumnTitles = []string{"ID", "Name", "Type", "Exclusive Group", "Actions"}
@@ -93,10 +94,9 @@ func newSelectProjectAssetsScreen(a selectProjectAssetsActions, profileID, proje
 		panic("shell.newSelectProjectAssetsScreen: empty projectID")
 	}
 	s := &selectProjectAssetsScreen{
-		actions:    a,
-		profileID:  profileID,
-		projectID:  projectID,
-		assetsByID: map[string]*asset.Asset{},
+		actions:   a,
+		profileID: profileID,
+		projectID: projectID,
 	}
 	s.buildTables()
 	s.buildButtons()
@@ -173,23 +173,30 @@ func (s *selectProjectAssetsScreen) ProjectID() string { return s.projectID }
 
 func (s *selectProjectAssetsScreen) Init() tea.Cmd { return s.loadCmd() }
 
+// loadCmd resolves the project first (typed ProjectNotFoundError when
+// missing) and then the parent profile for the screen-header metadata.
+// Either failure routes through the existing notification path; both
+// successes deliver the matched pair so handleLoaded never has to guard
+// against a silent miss.
 func (s *selectProjectAssetsScreen) loadCmd() tea.Cmd {
 	return func() tea.Msg {
-		prof, err := s.actions.LoadProfile(actions.LoadProfileInput{ProfileRef: s.profileID})
-		if err != nil {
-			return selectProjectAssetsLoadedMsg{err: err}
+		proj, projErr := s.actions.LoadProject(actions.LoadProjectInput{
+			ProfileRef: s.profileID,
+			ProjectID:  s.projectID,
+		})
+		if projErr != nil {
+			return selectProjectAssetsLoadedMsg{err: projErr}
 		}
-		proj := prof.Projects[s.projectID]
+		prof, profErr := s.actions.LoadProfile(actions.LoadProfileInput{ProfileRef: s.profileID})
+		if profErr != nil {
+			return selectProjectAssetsLoadedMsg{err: profErr}
+		}
 		return selectProjectAssetsLoadedMsg{prof: prof, proj: proj}
 	}
 }
 
 func (s *selectProjectAssetsScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 	switch m := msg.(type) {
-	case tea.WindowSizeMsg:
-		s.width = m.Width
-		s.height = m.Height
-		return s, nil
 	case selectProjectAssetsLoadedMsg:
 		return s.handleLoaded(m)
 	case selectionChangedMsg:
@@ -206,50 +213,33 @@ func (s *selectProjectAssetsScreen) handleLoaded(m selectProjectAssetsLoadedMsg)
 	if m.err != nil {
 		return s, notificationCmd(m.err.Severity(), m.err.Error())
 	}
-	if m.prof == nil || m.proj == nil {
-		return s, nil
-	}
 	s.loaded = true
+	s.prof = m.prof
 	s.profileName = m.prof.Manifest.Name
 	s.projectName = m.proj.Name
-	s.assetsByID = map[string]*asset.Asset{}
-	for _, a := range m.prof.AssetList() {
-		s.assetsByID[a.ID] = a
-	}
-	s.rebuildPartition(m.proj.SelectedAssetIDs)
+	s.selectedIDs = append([]string(nil), m.proj.SelectedAssetIDs...)
+	s.rebuildPartition()
 	s.rebuildTables()
 	focusCmd := s.handler.FocusIndex(s.selectedIdx)
 	s.rebuildSet()
 	return s, focusCmd
 }
 
-// rebuildPartition splits the profile's full asset list into the selected
-// and available slices based on selectedIDs. Ordering follows AssetList
-// (sorted by display name), so reloads stay stable.
-func (s *selectProjectAssetsScreen) rebuildPartition(selectedIDs []string) {
-	inSelection := make(map[string]struct{}, len(selectedIDs))
-	for _, id := range selectedIDs {
-		inSelection[id] = struct{}{}
+// rebuildPartition refreshes the selected/available slices using the
+// profile's PartitionAssets so the screen never re-implements the
+// ordering or membership rule.
+func (s *selectProjectAssetsScreen) rebuildPartition() {
+	if s.prof == nil {
+		s.selected = nil
+		s.available = nil
+		return
 	}
-	all := make([]*asset.Asset, 0, len(s.assetsByID))
-	for _, a := range s.assetsByID {
-		all = append(all, a)
-	}
-	// Order matches profile.AssetList — sort by Name ascending.
-	sortAssetsByName(all)
-	s.selected = s.selected[:0]
-	s.available = s.available[:0]
-	for _, a := range all {
-		if _, ok := inSelection[a.ID]; ok {
-			s.selected = append(s.selected, a)
-		} else {
-			s.available = append(s.available, a)
-		}
-	}
+	s.selected, s.available = s.prof.PartitionAssets(s.selectedIDs)
 }
 
 func (s *selectProjectAssetsScreen) handleSelectionChanged(m selectionChangedMsg) (Screen, tea.Cmd) {
-	s.rebuildPartition(m.selectedIDs)
+	s.selectedIDs = append([]string(nil), m.selectedIDs...)
+	s.rebuildPartition()
 	s.rebuildTables()
 	s.rebuildSet()
 	return s, notificationCmd(errs.SeverityInfo, m.info)
@@ -324,10 +314,9 @@ func (s *selectProjectAssetsScreen) Body(width int) string {
 
 	selectedCols := naturalColumns(selectProjectAssetsColumnTitles, selectedRows)
 	availableCols := naturalColumns(selectProjectAssetsColumnTitles, availableRows)
-	// Equalize the elastic Name column across both tables so they share
-	// width. Index 1 is Name in selectProjectAssetsColumnTitles.
-	const elasticIdx = 1
-	equalizePanelWidth(selectedCols, availableCols, elasticIdx, elasticIdx)
+	const selectedElasticIdx = 1
+	const availableElasticIdx = 1
+	equalizePanelWidth(selectedCols, availableCols, selectedElasticIdx, availableElasticIdx)
 
 	applyTable(s.selectedTable, selectedCols, selectedRows)
 	applyTable(s.availableTable, availableCols, availableRows)
@@ -400,7 +389,7 @@ func selectActionsCell() string {
 	return "[Se" + underline("l") + "ect]"
 }
 
-func (s *selectProjectAssetsScreen) selectedAvailable() (*asset.Asset, bool) {
+func (s *selectProjectAssetsScreen) availableAtCursor() (*asset.Asset, bool) {
 	if len(s.available) == 0 {
 		return nil, false
 	}
@@ -411,7 +400,7 @@ func (s *selectProjectAssetsScreen) selectedAvailable() (*asset.Asset, bool) {
 	return s.available[cur], true
 }
 
-func (s *selectProjectAssetsScreen) selectedSelected() (*asset.Asset, bool) {
+func (s *selectProjectAssetsScreen) selectedAtCursor() (*asset.Asset, bool) {
 	if len(s.selected) == 0 {
 		return nil, false
 	}
@@ -423,50 +412,47 @@ func (s *selectProjectAssetsScreen) selectedSelected() (*asset.Asset, bool) {
 }
 
 func (s *selectProjectAssetsScreen) onSelect() tea.Cmd {
-	a, ok := s.selectedAvailable()
+	a, ok := s.availableAtCursor()
 	if !ok {
 		return nil
 	}
 	return s.applySelectionChange(
-		func() errs.DomainError {
-			_, err := s.actions.SelectAsset(actions.SelectAssetInput{
+		func() ([]string, errs.DomainError) {
+			return s.actions.SelectAsset(actions.SelectAssetInput{
 				ProfileRef: s.profileID,
 				ProjectID:  s.projectID,
 				AssetID:    a.ID,
 			})
-			return err
 		},
-		appendUnique(idsOf(s.selected), a.ID),
 		fmt.Sprintf("Asset %q selected", a.Name),
 	)
 }
 
 func (s *selectProjectAssetsScreen) onUnselect() tea.Cmd {
-	a, ok := s.selectedSelected()
+	a, ok := s.selectedAtCursor()
 	if !ok {
 		return nil
 	}
 	return s.applySelectionChange(
-		func() errs.DomainError {
-			_, err := s.actions.UnselectAsset(actions.UnselectAssetInput{
+		func() ([]string, errs.DomainError) {
+			return s.actions.UnselectAsset(actions.UnselectAssetInput{
 				ProfileRef: s.profileID,
 				ProjectID:  s.projectID,
 				AssetID:    a.ID,
 			})
-			return err
 		},
-		removeID(idsOf(s.selected), a.ID),
 		fmt.Sprintf("Asset %q unselected", a.Name),
 	)
 }
 
-// applySelectionChange runs the persistence action synchronously and, on
-// success, emits a selectionChangedMsg carrying the projected new
-// selection set. On failure, a mutationDoneMsg surfaces the error in the
-// notification area and the local state stays as-is.
-func (s *selectProjectAssetsScreen) applySelectionChange(action func() errs.DomainError, next []string, info string) tea.Cmd {
+// applySelectionChange runs the persistence action and, on success,
+// emits a selectionChangedMsg carrying the server-side selection slice
+// the action returned. On failure, a mutationDoneMsg surfaces the error
+// in the notification area and the local state stays as-is.
+func (s *selectProjectAssetsScreen) applySelectionChange(action func() ([]string, errs.DomainError), info string) tea.Cmd {
 	return func() tea.Msg {
-		if err := action(); err != nil {
+		next, err := action()
+		if err != nil {
 			return mutationDoneMsg{text: err.Error(), severity: err.Severity()}
 		}
 		return selectionChangedMsg{selectedIDs: next, info: info}
@@ -475,38 +461,6 @@ func (s *selectProjectAssetsScreen) applySelectionChange(action func() errs.Doma
 
 func (s *selectProjectAssetsScreen) onPlan() tea.Cmd {
 	return pushCmd(newPlanProjectStub(s.profileID, s.projectID))
-}
-
-func sortAssetsByName(list []*asset.Asset) {
-	slices.SortFunc(list, func(a, b *asset.Asset) int {
-		return strings.Compare(a.Name, b.Name)
-	})
-}
-
-func idsOf(list []*asset.Asset) []string {
-	out := make([]string, len(list))
-	for i, a := range list {
-		out[i] = a.ID
-	}
-	return out
-}
-
-func appendUnique(ids []string, id string) []string {
-	for _, existing := range ids {
-		if existing == id {
-			return ids
-		}
-	}
-	return append(ids, id)
-}
-
-func removeID(ids []string, id string) []string {
-	for i, existing := range ids {
-		if existing == id {
-			return append(ids[:i], ids[i+1:]...)
-		}
-	}
-	return ids
 }
 
 func (s *selectProjectAssetsScreen) rebuildTables() {

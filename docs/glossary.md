@@ -53,6 +53,15 @@ The first-class category of an asset. Current types are `skill`, `agents_doc`,
 An asset that has been explicitly attached to a project through the project's
 manifest.
 
+## Available Asset
+
+The complement of Selected Asset for one project: any asset present in the
+profile whose id is not in the project's `SelectedAssetIDs`. The Select
+Project Assets screen partitions `Profile.AssetList()` into Selected and
+Available using exactly this rule. `Compatible Agents` filters and
+`Exclusive Group` conflicts are *not* applied here — they are reported at
+plan time so the selection screen never silently hides a chosen asset.
+
 ## Enabled Agent
 
 An LLM tool that the project should render for. Current names are `codex`,

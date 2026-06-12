@@ -756,7 +756,7 @@ func TestEditProfileScreen_EditProjectModalPreservesNonEditableFields(t *testing
 	f.seedAsset(t, "Some Asset", asset.TypeSkill)
 	projectPath := filepath.Join(f.Root, "proj-edit")
 	manifest := f.seedProject(t, "Proj", projectPath)
-	if err := f.Service.SelectAsset(f.Profile.ID, manifest.ID, "some-asset"); err != nil {
+	if _, err := f.Service.SelectAsset(f.Profile.ID, manifest.ID, "some-asset"); err != nil {
 		t.Fatalf("seed SelectAsset: %v", err)
 	}
 

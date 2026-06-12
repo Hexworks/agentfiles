@@ -19,30 +19,50 @@ import (
 // Compile-time guard.
 var _ Screen = (*selectProjectAssetsScreen)(nil)
 
-// fakeSelectActions records every action invocation and returns the
-// preconfigured error (nil by default). Used so screen tests stay
-// hermetic — no filesystem, no real registry.
+// fakeSelectActions records every action invocation and returns either
+// the preconfigured slice or error. The slice it returns from
+// SelectAsset / UnselectAsset is the post-persistence selection — the
+// real service returns the same shape so the screen can trust it.
 type fakeSelectActions struct {
-	prof         *profile.Profile
-	loadErr      errs.DomainError
-	selectErr    errs.DomainError
-	unselectErr  errs.DomainError
-	selectCalls  []actions.SelectAssetInput
-	unselectCall []actions.UnselectAssetInput
+	prof           *profile.Profile
+	loadErr        errs.DomainError
+	loadProjectErr errs.DomainError
+	selectResult   []string
+	selectErr      errs.DomainError
+	unselectResult []string
+	unselectErr    errs.DomainError
+	selectInputs   []actions.SelectAssetInput
+	unselectInputs []actions.UnselectAssetInput
 }
 
 func (f *fakeSelectActions) LoadProfile(in actions.LoadProfileInput) (*profile.Profile, errs.DomainError) {
 	return f.prof, f.loadErr
 }
 
-func (f *fakeSelectActions) SelectAsset(in actions.SelectAssetInput) (struct{}, errs.DomainError) {
-	f.selectCalls = append(f.selectCalls, in)
-	return struct{}{}, f.selectErr
+func (f *fakeSelectActions) LoadProject(in actions.LoadProjectInput) (*project.Manifest, errs.DomainError) {
+	if f.loadProjectErr != nil {
+		return nil, f.loadProjectErr
+	}
+	if f.prof == nil {
+		return nil, nil
+	}
+	return f.prof.Projects[in.ProjectID], nil
 }
 
-func (f *fakeSelectActions) UnselectAsset(in actions.UnselectAssetInput) (struct{}, errs.DomainError) {
-	f.unselectCall = append(f.unselectCall, in)
-	return struct{}{}, f.unselectErr
+func (f *fakeSelectActions) SelectAsset(in actions.SelectAssetInput) ([]string, errs.DomainError) {
+	f.selectInputs = append(f.selectInputs, in)
+	if f.selectErr != nil {
+		return nil, f.selectErr
+	}
+	return append([]string(nil), f.selectResult...), nil
+}
+
+func (f *fakeSelectActions) UnselectAsset(in actions.UnselectAssetInput) ([]string, errs.DomainError) {
+	f.unselectInputs = append(f.unselectInputs, in)
+	if f.unselectErr != nil {
+		return nil, f.unselectErr
+	}
+	return append([]string(nil), f.unselectResult...), nil
 }
 
 func newSelectActionsFake(assets []*asset.Asset, proj *project.Manifest) *fakeSelectActions {
@@ -80,6 +100,16 @@ func newAsset(id, name string, typ asset.Type, group string) *asset.Asset {
 	}
 }
 
+// idsOf is a tiny test helper to project an asset list to ids for slice
+// equality assertions.
+func idsOf(list []*asset.Asset) []string {
+	out := make([]string, len(list))
+	for i, a := range list {
+		out[i] = a.ID
+	}
+	return out
+}
+
 func TestSelectProjectAssets_PanicsOnInvalidConstruction(t *testing.T) {
 	f := newSelectActionsFake(nil, nil)
 	cases := []struct {
@@ -110,7 +140,7 @@ func TestSelectProjectAssets_Title(t *testing.T) {
 	}
 }
 
-func TestSelectProjectAssets_InitLoadsProfile(t *testing.T) {
+func TestSelectProjectAssets_InitLoadsProfileAndProject(t *testing.T) {
 	proj := &project.Manifest{ID: "proj-1", Name: "Proj"}
 	f := newSelectActionsFake(nil, proj)
 	s := newSelectProjectAssetsScreen(f, "alpha", "proj-1")
@@ -125,6 +155,30 @@ func TestSelectProjectAssets_InitLoadsProfile(t *testing.T) {
 	}
 	if loaded.prof == nil || loaded.proj == nil {
 		t.Fatalf("missing prof or proj in loaded msg: %+v", loaded)
+	}
+}
+
+func TestSelectProjectAssets_LoadProjectErrorEmitsNotification(t *testing.T) {
+	f := newSelectActionsFake(nil, nil)
+	f.loadProjectErr = stubDomainErr{msg: "no such project", sev: errs.SeverityError}
+	s := newSelectProjectAssetsScreen(f, "alpha", "proj-1")
+
+	msg := s.Init()()
+	loaded, ok := msg.(selectProjectAssetsLoadedMsg)
+	if !ok {
+		t.Fatalf("got %T, want selectProjectAssetsLoadedMsg", msg)
+	}
+	if loaded.err == nil || !strings.Contains(loaded.err.Error(), "no such project") {
+		t.Fatalf("err = %v, want to contain 'no such project'", loaded.err)
+	}
+
+	_, cmd := s.Update(loaded)
+	n, ok := drainCmd(t, cmd).(notifications.NotificationMsg)
+	if !ok {
+		t.Fatalf("expected notification cmd, got %T", cmd)
+	}
+	if !strings.Contains(n.Notification.Text, "no such project") {
+		t.Errorf("notification = %q, want to contain 'no such project'", n.Notification.Text)
 	}
 }
 
@@ -145,6 +199,25 @@ func TestSelectProjectAssets_LoadedSplitsSelectedAndAvailable(t *testing.T) {
 	}
 	if !s.loaded {
 		t.Errorf("loaded flag = false")
+	}
+}
+
+// TestSelectProjectAssets_AvailableOrderingMatchesAssetList pins the
+// ordering invariant in one named place: a change to
+// profile.AssetList's sort key fails exactly this test, with a self-
+// explanatory name, so partition / movement tests never have to encode
+// the order rule.
+func TestSelectProjectAssets_AvailableOrderingMatchesAssetList(t *testing.T) {
+	a1 := newAsset("z-asset", "Aardvark", asset.TypeSkill, "")
+	a2 := newAsset("a-asset", "Zebra", asset.TypeSkill, "")
+	proj := &project.Manifest{ID: "proj-1", Name: "Proj"}
+	f := newSelectActionsFake([]*asset.Asset{a1, a2}, proj)
+	s := newSelectProjectAssetsScreen(f, "alpha", "proj-1")
+	loadInto(t, s, f, "proj-1")
+
+	want := idsOf(f.prof.AssetList())
+	if got := idsOf(s.available); !slices.Equal(got, want) {
+		t.Errorf("available order = %v, want AssetList order %v", got, want)
 	}
 }
 
@@ -170,11 +243,12 @@ func TestSelectProjectAssets_LoadErrorEmitsNotification(t *testing.T) {
 	}
 }
 
-func TestSelectProjectAssets_SelectMovesAssetAndCallsAction(t *testing.T) {
+func TestSelectProjectAssets_SelectInvokesActionWithCursorAssetID(t *testing.T) {
 	a1 := newAsset("a1", "A1", asset.TypeSkill, "")
 	a2 := newAsset("a2", "A2", asset.TypeSkill, "")
 	proj := &project.Manifest{ID: "proj-1", Name: "Proj"}
 	f := newSelectActionsFake([]*asset.Asset{a1, a2}, proj)
+	f.selectResult = []string{"a1"}
 	s := newSelectProjectAssetsScreen(f, "alpha", "proj-1")
 	loadInto(t, s, f, "proj-1")
 	_ = s.handler.FocusIndex(s.availableIdx)
@@ -185,20 +259,49 @@ func TestSelectProjectAssets_SelectMovesAssetAndCallsAction(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("expected cmd")
 	}
+	_ = drainCmd(t, cmd)
+
+	if len(f.selectInputs) != 1 || f.selectInputs[0].AssetID != "a1" {
+		t.Fatalf("SelectAsset calls = %v, want one call for a1", f.selectInputs)
+	}
+	if f.selectInputs[0].ProfileRef != "alpha" || f.selectInputs[0].ProjectID != "proj-1" {
+		t.Errorf("SelectAsset input ids = (%q,%q), want (alpha, proj-1)",
+			f.selectInputs[0].ProfileRef, f.selectInputs[0].ProjectID)
+	}
+}
+
+func TestSelectProjectAssets_SelectEmitsSelectionChangedMsg(t *testing.T) {
+	a1 := newAsset("a1", "A1", asset.TypeSkill, "")
+	a2 := newAsset("a2", "A2", asset.TypeSkill, "")
+	proj := &project.Manifest{ID: "proj-1", Name: "Proj"}
+	f := newSelectActionsFake([]*asset.Asset{a1, a2}, proj)
+	f.selectResult = []string{"a1"}
+	s := newSelectProjectAssetsScreen(f, "alpha", "proj-1")
+	loadInto(t, s, f, "proj-1")
+	_ = s.handler.FocusIndex(s.availableIdx)
+	s.rebuildSet()
+	s.availableTable.SetCursor(0)
+
+	_, cmd := s.Update(tea.KeyPressMsg{Code: 'l', Text: "l"})
 	msg := drainCmd(t, cmd)
 	changed, ok := msg.(selectionChangedMsg)
 	if !ok {
 		t.Fatalf("got %T, want selectionChangedMsg", msg)
 	}
-	if !slices.Contains(changed.selectedIDs, "a1") {
-		t.Errorf("new selectedIDs = %v, want to contain a1", changed.selectedIDs)
+	if !slices.Equal(changed.selectedIDs, []string{"a1"}) {
+		t.Errorf("selectedIDs = %v, want [a1] (server-side slice)", changed.selectedIDs)
 	}
-	if len(f.selectCalls) != 1 || f.selectCalls[0].AssetID != "a1" {
-		t.Errorf("SelectAsset calls = %v, want one call for a1", f.selectCalls)
-	}
+}
 
-	// Apply the change and verify the partition rebuilt.
-	_, _ = s.Update(changed)
+func TestSelectProjectAssets_SelectionChangedMsgRebuildsPartition(t *testing.T) {
+	a1 := newAsset("a1", "A1", asset.TypeSkill, "")
+	a2 := newAsset("a2", "A2", asset.TypeSkill, "")
+	proj := &project.Manifest{ID: "proj-1", Name: "Proj"}
+	f := newSelectActionsFake([]*asset.Asset{a1, a2}, proj)
+	s := newSelectProjectAssetsScreen(f, "alpha", "proj-1")
+	loadInto(t, s, f, "proj-1")
+
+	_, _ = s.Update(selectionChangedMsg{selectedIDs: []string{"a1"}, info: "added a1"})
 	if !slices.Contains(idsOf(s.selected), "a1") {
 		t.Errorf("after change, selected = %v, want to contain a1", idsOf(s.selected))
 	}
@@ -207,10 +310,11 @@ func TestSelectProjectAssets_SelectMovesAssetAndCallsAction(t *testing.T) {
 	}
 }
 
-func TestSelectProjectAssets_UnselectMovesAssetAndCallsAction(t *testing.T) {
+func TestSelectProjectAssets_UnselectInvokesActionWithCursorAssetID(t *testing.T) {
 	a1 := newAsset("a1", "A1", asset.TypeSkill, "")
 	proj := &project.Manifest{ID: "proj-1", Name: "Proj", SelectedAssetIDs: []string{"a1"}}
 	f := newSelectActionsFake([]*asset.Asset{a1}, proj)
+	f.unselectResult = []string{}
 	s := newSelectProjectAssetsScreen(f, "alpha", "proj-1")
 	loadInto(t, s, f, "proj-1")
 	_ = s.handler.FocusIndex(s.selectedIdx)
@@ -221,24 +325,94 @@ func TestSelectProjectAssets_UnselectMovesAssetAndCallsAction(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("expected cmd")
 	}
+	_ = drainCmd(t, cmd)
+
+	if len(f.unselectInputs) != 1 || f.unselectInputs[0].AssetID != "a1" {
+		t.Fatalf("UnselectAsset calls = %v, want one call for a1", f.unselectInputs)
+	}
+}
+
+func TestSelectProjectAssets_UnselectEmitsSelectionChangedMsg(t *testing.T) {
+	a1 := newAsset("a1", "A1", asset.TypeSkill, "")
+	proj := &project.Manifest{ID: "proj-1", Name: "Proj", SelectedAssetIDs: []string{"a1"}}
+	f := newSelectActionsFake([]*asset.Asset{a1}, proj)
+	f.unselectResult = []string{}
+	s := newSelectProjectAssetsScreen(f, "alpha", "proj-1")
+	loadInto(t, s, f, "proj-1")
+	_ = s.handler.FocusIndex(s.selectedIdx)
+	s.rebuildSet()
+	s.selectedTable.SetCursor(0)
+
+	_, cmd := s.Update(tea.KeyPressMsg{Code: 'u', Text: "u"})
 	msg := drainCmd(t, cmd)
 	changed, ok := msg.(selectionChangedMsg)
 	if !ok {
 		t.Fatalf("got %T, want selectionChangedMsg", msg)
 	}
 	if slices.Contains(changed.selectedIDs, "a1") {
-		t.Errorf("new selectedIDs = %v, want a1 removed", changed.selectedIDs)
+		t.Errorf("selectedIDs = %v, want a1 removed (server-side slice)", changed.selectedIDs)
 	}
-	if len(f.unselectCall) != 1 || f.unselectCall[0].AssetID != "a1" {
-		t.Errorf("UnselectAsset calls = %v, want one call for a1", f.unselectCall)
-	}
+}
 
-	_, _ = s.Update(changed)
+func TestSelectProjectAssets_UnselectionChangedMsgRebuildsPartition(t *testing.T) {
+	a1 := newAsset("a1", "A1", asset.TypeSkill, "")
+	proj := &project.Manifest{ID: "proj-1", Name: "Proj", SelectedAssetIDs: []string{"a1"}}
+	f := newSelectActionsFake([]*asset.Asset{a1}, proj)
+	s := newSelectProjectAssetsScreen(f, "alpha", "proj-1")
+	loadInto(t, s, f, "proj-1")
+
+	_, _ = s.Update(selectionChangedMsg{selectedIDs: []string{}, info: "removed a1"})
 	if slices.Contains(idsOf(s.selected), "a1") {
 		t.Errorf("after change, selected still contains a1: %v", idsOf(s.selected))
 	}
 	if !slices.Contains(idsOf(s.available), "a1") {
 		t.Errorf("after change, available = %v, want to contain a1", idsOf(s.available))
+	}
+}
+
+// TestSelectProjectAssets_SelectOnAlreadySelectedIsIdempotent verifies
+// that triggering select on an asset id the server already considers
+// selected does not crash the screen and leaves a single occurrence. The
+// fake echoes back the existing selection slice (mirrors the real
+// Service.SelectAsset idempotency contract).
+func TestSelectProjectAssets_SelectOnAlreadySelectedIsIdempotent(t *testing.T) {
+	a1 := newAsset("a1", "A1", asset.TypeSkill, "")
+	proj := &project.Manifest{ID: "proj-1", Name: "Proj", SelectedAssetIDs: []string{"a1"}}
+	f := newSelectActionsFake([]*asset.Asset{a1}, proj)
+	f.selectResult = []string{"a1"}
+	s := newSelectProjectAssetsScreen(f, "alpha", "proj-1")
+	loadInto(t, s, f, "proj-1")
+
+	// Replay the selectionChangedMsg path with the same selection — the
+	// partition must still place a1 in selected exactly once.
+	_, _ = s.Update(selectionChangedMsg{selectedIDs: []string{"a1"}, info: "idempotent"})
+	if got := idsOf(s.selected); !slices.Equal(got, []string{"a1"}) {
+		t.Errorf("selected = %v, want [a1] (no duplicates after idempotent replay)", got)
+	}
+}
+
+// TestSelectProjectAssets_UnselectOnEmptySelectionIsNoOp verifies the
+// screen survives an unselect path on an empty selection — no panic,
+// row mnemonic gated by `availableAtCursor` / `selectedAtCursor`, and
+// the selection stays empty.
+func TestSelectProjectAssets_UnselectOnEmptySelectionIsNoOp(t *testing.T) {
+	a1 := newAsset("a1", "A1", asset.TypeSkill, "")
+	proj := &project.Manifest{ID: "proj-1", Name: "Proj"}
+	f := newSelectActionsFake([]*asset.Asset{a1}, proj)
+	s := newSelectProjectAssetsScreen(f, "alpha", "proj-1")
+	loadInto(t, s, f, "proj-1")
+	_ = s.handler.FocusIndex(s.selectedIdx)
+	s.rebuildSet()
+
+	cmd := s.onUnselect()
+	if cmd != nil {
+		t.Errorf("onUnselect with empty selection produced a cmd; want nil no-op")
+	}
+	if len(f.unselectInputs) != 0 {
+		t.Errorf("UnselectAsset called on empty selection: %v", f.unselectInputs)
+	}
+	if len(s.selected) != 0 {
+		t.Errorf("selected = %v, want empty", idsOf(s.selected))
 	}
 }
 
@@ -391,35 +565,31 @@ func TestSelectProjectAssets_EmptyFocusedTableDropsRowMnemonicFromStatusBar(t *t
 // TestSelectProjectAssets_MnemonicUniquenessExhaustive walks every focus
 // + selection-state combination and asserts every registered button has
 // a unique mnemonic rune. Reused safety pattern from the Edit Asset
-// exhaustive test.
+// exhaustive test. selCount covers empty/half/full selected which also
+// covers empty/half/full available implicitly (the two are complements
+// of the two-asset universe).
 func TestSelectProjectAssets_MnemonicUniquenessExhaustive(t *testing.T) {
 	a1 := newAsset("a1", "A1", asset.TypeSkill, "")
 	a2 := newAsset("a2", "A2", asset.TypeSkill, "")
 
 	for selCount := 0; selCount <= 2; selCount++ {
-		for avlExtra := 0; avlExtra <= 1; avlExtra++ {
-			assets := []*asset.Asset{a1, a2}
-			selected := []string{}
-			if selCount >= 1 {
-				selected = append(selected, "a1")
-			}
-			if selCount == 2 {
-				selected = append(selected, "a2")
-			}
-			if avlExtra == 0 {
-				// shrink available to 0 by selecting everything not already selected.
-				// (already covered by selCount=2)
-			}
-			proj := &project.Manifest{ID: "proj-1", Name: "Proj", SelectedAssetIDs: selected}
-			f := newSelectActionsFake(assets, proj)
-			s := newSelectProjectAssetsScreen(f, "alpha", "proj-1")
-			loadInto(t, s, f, "proj-1")
+		assets := []*asset.Asset{a1, a2}
+		selected := []string{}
+		if selCount >= 1 {
+			selected = append(selected, "a1")
+		}
+		if selCount == 2 {
+			selected = append(selected, "a2")
+		}
+		proj := &project.Manifest{ID: "proj-1", Name: "Proj", SelectedAssetIDs: selected}
+		f := newSelectActionsFake(assets, proj)
+		s := newSelectProjectAssetsScreen(f, "alpha", "proj-1")
+		loadInto(t, s, f, "proj-1")
 
-			for _, focusIdx := range []int{s.selectedIdx, s.availableIdx} {
-				_ = s.handler.FocusIndex(focusIdx)
-				s.rebuildSet()
-				assertUniqueMnemonicsSPA(t, s.set, focusIdx, selCount)
-			}
+		for _, focusIdx := range []int{s.selectedIdx, s.availableIdx} {
+			_ = s.handler.FocusIndex(focusIdx)
+			s.rebuildSet()
+			assertUniqueMnemonicsSPA(t, s.set, focusIdx, selCount)
 		}
 	}
 }

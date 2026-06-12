@@ -206,6 +206,16 @@ func SaveManifest(dir string, manifest Manifest) errs.DomainError {
 	return utils.WriteJSON(filepath.Join(dir, config.AssetManifestFileName), manifest)
 }
 
+// SortByName sorts list in place by display name ascending. It is the
+// single source of truth for asset ordering used by both
+// profile.AssetList and screens that derive their own subsets, so the
+// rule does not drift between callers.
+func SortByName(list []*Asset) {
+	slices.SortFunc(list, func(a, b *Asset) int {
+		return strings.Compare(a.Name, b.Name)
+	})
+}
+
 // SupportsAgent implements the "empty compatible_agents means all agents"
 // convention used across rendering.
 func SupportsAgent(a *Asset, agent string) bool {

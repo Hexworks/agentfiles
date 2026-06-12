@@ -524,38 +524,43 @@ func (s *Service) UpdateProject(profileRef, projectID, name, path string, enable
 }
 
 // SelectAsset appends assetID to the project's SelectedAssetIDs if not
-// already present and persists the change. Returns AssetNotFoundError
-// when the asset is unknown in the profile; ProjectNotFoundError when
-// the project is missing.
-func (s *Service) SelectAsset(profileRef, projectID, assetID string) errs.DomainError {
+// already present and persists the change. The returned slice is the
+// authoritative selection after the call so callers do not project the
+// next state TUI-side; idempotent on duplicates. Returns
+// AssetNotFoundError when the asset is unknown in the profile and
+// ProjectNotFoundError when the project is missing.
+func (s *Service) SelectAsset(profileRef, projectID, assetID string) ([]string, errs.DomainError) {
 	loaded, p, err := s.resolveProject(profileRef, projectID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if loaded.Assets[assetID] == nil {
-		return AssetNotFoundError{AssetID: assetID}
+		return nil, AssetNotFoundError{AssetID: assetID}
 	}
 	for _, existing := range p.SelectedAssetIDs {
 		if existing == assetID {
-			return nil
+			return append([]string(nil), p.SelectedAssetIDs...), nil
 		}
 	}
 	p.SelectedAssetIDs = append(p.SelectedAssetIDs, assetID)
-	return project.Save(loaded.Root, p)
+	if saveErr := project.Save(loaded.Root, p); saveErr != nil {
+		return nil, saveErr
+	}
+	return append([]string(nil), p.SelectedAssetIDs...), nil
 }
 
 // UnselectAsset removes assetID from the project's SelectedAssetIDs if
-// present and persists the change. The call is idempotent: an asset that
-// is not selected returns nil with no write. Returns AssetNotFoundError
-// when the asset is unknown in the profile and ProjectNotFoundError when
-// the project is missing.
-func (s *Service) UnselectAsset(profileRef, projectID, assetID string) errs.DomainError {
+// present and persists the change. The returned slice is the
+// authoritative selection after the call (idempotent on a not-present
+// id). Returns AssetNotFoundError when the asset is unknown in the
+// profile and ProjectNotFoundError when the project is missing.
+func (s *Service) UnselectAsset(profileRef, projectID, assetID string) ([]string, errs.DomainError) {
 	loaded, p, err := s.resolveProject(profileRef, projectID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if loaded.Assets[assetID] == nil {
-		return AssetNotFoundError{AssetID: assetID}
+		return nil, AssetNotFoundError{AssetID: assetID}
 	}
 	idx := -1
 	for i, existing := range p.SelectedAssetIDs {
@@ -565,10 +570,13 @@ func (s *Service) UnselectAsset(profileRef, projectID, assetID string) errs.Doma
 		}
 	}
 	if idx == -1 {
-		return nil
+		return append([]string(nil), p.SelectedAssetIDs...), nil
 	}
 	p.SelectedAssetIDs = append(p.SelectedAssetIDs[:idx], p.SelectedAssetIDs[idx+1:]...)
-	return project.Save(loaded.Root, p)
+	if saveErr := project.Save(loaded.Root, p); saveErr != nil {
+		return nil, saveErr
+	}
+	return append([]string(nil), p.SelectedAssetIDs...), nil
 }
 
 // DeleteProject removes the project manifest from the profile. Files in

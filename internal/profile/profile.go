@@ -212,14 +212,33 @@ func (l *Profile) ProjectList() []*project.Manifest {
 // TUI rendering stays stable across reloads without each screen re-implementing
 // the ordering rule.
 func (l *Profile) AssetList() []*asset.Asset {
-	var list []*asset.Asset
+	list := make([]*asset.Asset, 0, len(l.Assets))
 	for _, a := range l.Assets {
 		list = append(list, a)
 	}
-	slices.SortFunc(list, func(a, b *asset.Asset) int {
-		return strings.Compare(a.Name, b.Name)
-	})
+	asset.SortByName(list)
 	return list
+}
+
+// PartitionAssets splits the profile's AssetList into selected and
+// available slices using selectedIDs as the membership rule. Both halves
+// keep the AssetList ordering so screens render the same vocabulary in
+// the same order without re-implementing the partition or the sort.
+// Asset ids in selectedIDs that are not present in the profile are
+// silently dropped — render handles the "missing asset" error path.
+func (l *Profile) PartitionAssets(selectedIDs []string) (selected, available []*asset.Asset) {
+	inSelection := make(map[string]struct{}, len(selectedIDs))
+	for _, id := range selectedIDs {
+		inSelection[id] = struct{}{}
+	}
+	for _, a := range l.AssetList() {
+		if _, ok := inSelection[a.ID]; ok {
+			selected = append(selected, a)
+		} else {
+			available = append(available, a)
+		}
+	}
+	return selected, available
 }
 
 // slug converts a profile name into a stable id suitable for manifest storage.

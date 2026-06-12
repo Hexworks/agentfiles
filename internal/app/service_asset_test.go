@@ -223,6 +223,138 @@ func TestDeleteAsset_UnselectsAcrossMultipleProjects(t *testing.T) {
 	}
 }
 
+func TestService_SelectAsset_AddsToProject(t *testing.T) {
+	svc, profileID, projectID := seedServiceWithProjectAndAsset(t, "agents")
+
+	got, err := svc.SelectAsset(profileID, projectID, "agents")
+	if err != nil {
+		t.Fatalf("SelectAsset: %v", err)
+	}
+	if len(got) != 1 || got[0] != "agents" {
+		t.Fatalf("returned selection = %v, want [agents]", got)
+	}
+	p, err := svc.LoadProject(profileID, projectID)
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if len(p.SelectedAssetIDs) != 1 || p.SelectedAssetIDs[0] != "agents" {
+		t.Fatalf("persisted selection = %v, want [agents]", p.SelectedAssetIDs)
+	}
+}
+
+func TestService_SelectAsset_IdempotentOnDuplicate(t *testing.T) {
+	svc, profileID, projectID := seedServiceWithProjectAndAsset(t, "agents")
+	if _, err := svc.SelectAsset(profileID, projectID, "agents"); err != nil {
+		t.Fatalf("seed first call: %v", err)
+	}
+
+	got, err := svc.SelectAsset(profileID, projectID, "agents")
+	if err != nil {
+		t.Fatalf("second call: %v", err)
+	}
+	if len(got) != 1 || got[0] != "agents" {
+		t.Fatalf("returned selection = %v, want [agents] (no duplicate)", got)
+	}
+	p, _ := svc.LoadProject(profileID, projectID)
+	if len(p.SelectedAssetIDs) != 1 {
+		t.Fatalf("expected single occurrence, got %v", p.SelectedAssetIDs)
+	}
+}
+
+func TestService_SelectAsset_MissingAssetReturnsAssetNotFoundError(t *testing.T) {
+	svc, profileID, projectID := seedServiceWithProjectAndAsset(t, "agents")
+
+	_, err := svc.SelectAsset(profileID, projectID, "missing")
+	var typed AssetNotFoundError
+	if !errors.As(err, &typed) {
+		t.Fatalf("expected AssetNotFoundError, got %T: %v", err, err)
+	}
+}
+
+func TestService_SelectAsset_MissingProjectReturnsProjectNotFoundError(t *testing.T) {
+	root := t.TempDir()
+	svc := New(filepath.Join(root, "registry.json"))
+	if _, err := svc.CreateProfile("Personal", filepath.Join(root, "profile")); err != nil {
+		t.Fatalf("create profile: %v", err)
+	}
+	if _, err := svc.InitAsset("personal", asset.Manifest{
+		ID: "agents", Name: "agents", Type: asset.TypeAgentsDoc,
+	}); err != nil {
+		t.Fatalf("init asset: %v", err)
+	}
+
+	_, err := svc.SelectAsset("personal", "missing-project", "agents")
+	var typed ProjectNotFoundError
+	if !errors.As(err, &typed) {
+		t.Fatalf("expected ProjectNotFoundError, got %T: %v", err, err)
+	}
+}
+
+func TestService_UnselectAsset_RemovesFromProject(t *testing.T) {
+	svc, profileID, projectID := seedServiceWithProjectAndAsset(t, "agents")
+	if _, err := svc.SelectAsset(profileID, projectID, "agents"); err != nil {
+		t.Fatalf("seed select: %v", err)
+	}
+
+	got, err := svc.UnselectAsset(profileID, projectID, "agents")
+	if err != nil {
+		t.Fatalf("UnselectAsset: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("returned selection = %v, want []", got)
+	}
+	p, _ := svc.LoadProject(profileID, projectID)
+	if len(p.SelectedAssetIDs) != 0 {
+		t.Fatalf("persisted selection = %v, want []", p.SelectedAssetIDs)
+	}
+}
+
+func TestService_UnselectAsset_IdempotentOnNeverSelected(t *testing.T) {
+	svc, profileID, projectID := seedServiceWithProjectAndAsset(t, "agents")
+
+	got, err := svc.UnselectAsset(profileID, projectID, "agents")
+	if err != nil {
+		t.Fatalf("UnselectAsset on never-selected asset: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("returned selection = %v, want []", got)
+	}
+}
+
+func TestService_UnselectAsset_MissingAssetReturnsAssetNotFoundError(t *testing.T) {
+	svc, profileID, projectID := seedServiceWithProjectAndAsset(t, "agents")
+
+	_, err := svc.UnselectAsset(profileID, projectID, "missing")
+	var typed AssetNotFoundError
+	if !errors.As(err, &typed) {
+		t.Fatalf("expected AssetNotFoundError, got %T: %v", err, err)
+	}
+}
+
+// seedServiceWithProjectAndAsset creates a temp-rooted service with one
+// profile, one asset, and one project so the Select/Unselect tests can
+// share the boilerplate.
+func seedServiceWithProjectAndAsset(t *testing.T, assetID string) (svc *Service, profileID, projectID string) {
+	t.Helper()
+	root := t.TempDir()
+	svc = New(filepath.Join(root, "registry.json"))
+	if _, err := svc.CreateProfile("Personal", filepath.Join(root, "profile")); err != nil {
+		t.Fatalf("create profile: %v", err)
+	}
+	profileID = "personal"
+	if _, err := svc.InitAsset(profileID, asset.Manifest{
+		ID: assetID, Name: assetID, Type: asset.TypeAgentsDoc,
+	}); err != nil {
+		t.Fatalf("init asset: %v", err)
+	}
+	if _, addErrs := svc.AddProject(profileID, "Repo", filepath.Join(root, "repo"),
+		[]string{"codex"}, nil); len(addErrs) > 0 {
+		t.Fatalf("add project: %v", addErrs)
+	}
+	projectID = "repo"
+	return svc, profileID, projectID
+}
+
 func TestDeleteAsset_PartialFailureLeavesRecoverableState(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("permission-based failure injection cannot run as root")
