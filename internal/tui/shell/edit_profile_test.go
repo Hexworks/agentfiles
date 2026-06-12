@@ -244,7 +244,7 @@ func TestEditProfileScreen_EscTriggersPop(t *testing.T) {
 	}
 }
 
-func TestEditProfileScreen_AssetsEKeyPushesEditAssetStub(t *testing.T) {
+func TestEditProfileScreen_AssetsEKeyPushesEditAssetScreen(t *testing.T) {
 	f := newEditProfileFixture(t)
 	s := newEditProfileScreen(f.Actions, f.Profile.ID)
 	withProfile(s, fakeLoadedProfile(t, "/tmp/x",
@@ -258,12 +258,12 @@ func TestEditProfileScreen_AssetsEKeyPushesEditAssetStub(t *testing.T) {
 	if !ok {
 		t.Fatalf("cmd produced %T, want PushScreenMsg", cmd())
 	}
-	stub, ok := push.Screen.(*editAssetStub)
+	screen, ok := push.Screen.(*editAssetScreen)
 	if !ok {
-		t.Fatalf("pushed screen = %T, want *editAssetStub", push.Screen)
+		t.Fatalf("pushed screen = %T, want *editAssetScreen", push.Screen)
 	}
-	if stub.profileID != f.Profile.ID || stub.assetID != "skill-1" {
-		t.Errorf("stub ids = (%q, %q), want (%q, %q)", stub.profileID, stub.assetID, f.Profile.ID, "skill-1")
+	if screen.ProfileID() != f.Profile.ID || screen.AssetID() != "skill-1" {
+		t.Errorf("screen ids = (%q, %q), want (%q, %q)", screen.ProfileID(), screen.AssetID(), f.Profile.ID, "skill-1")
 	}
 }
 

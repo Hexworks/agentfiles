@@ -34,7 +34,7 @@ func buildCreateAsset(initial asset.Manifest) (*huh.Form, *createAssetState, fun
 		Name:             initial.Name,
 		Type:             initial.Type,
 		Description:      initial.Description,
-		Tags:             joinTags(initial.Tags),
+		Tags:             JoinTags(initial.Tags),
 		CompatibleAgents: append([]string(nil), initial.CompatibleAgents...),
 		ExclusiveGroup:   initial.ExclusiveGroup,
 	}
@@ -56,13 +56,15 @@ func assetManifestFromState(state *createAssetState) asset.Manifest {
 		Name:             state.Name,
 		Type:             state.Type,
 		Description:      state.Description,
-		Tags:             parseTags(state.Tags),
+		Tags:             ParseTags(state.Tags),
 		CompatibleAgents: state.CompatibleAgents,
 		ExclusiveGroup:   state.ExclusiveGroup,
 	}
 }
 
-func joinTags(tags []string) string {
+// JoinTags renders a tag slice as the comma-separated string the modal
+// form binds to.
+func JoinTags(tags []string) string {
 	if len(tags) == 0 {
 		return ""
 	}

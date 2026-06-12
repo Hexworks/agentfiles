@@ -44,8 +44,8 @@ func TestParseTags(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := parseTags(tc.in); !reflect.DeepEqual(got, tc.want) {
-				t.Errorf("parseTags(%q) = %v, want %v", tc.in, got, tc.want)
+			if got := ParseTags(tc.in); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("ParseTags(%q) = %v, want %v", tc.in, got, tc.want)
 			}
 		})
 	}
@@ -63,8 +63,8 @@ func TestJoinTags(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := joinTags(tc.in); got != tc.want {
-				t.Errorf("joinTags(%v) = %q, want %q", tc.in, got, tc.want)
+			if got := JoinTags(tc.in); got != tc.want {
+				t.Errorf("JoinTags(%v) = %q, want %q", tc.in, got, tc.want)
 			}
 		})
 	}

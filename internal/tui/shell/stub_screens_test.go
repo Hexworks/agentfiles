@@ -24,15 +24,6 @@ func TestNavigationStubs_SharedBackBehavior(t *testing.T) {
 		targetTag string // word that must appear in Body alongside the ids
 	}{
 		{
-			name:  "edit asset",
-			title: "Edit Asset",
-			construct: func() (stubScreenAccessors, string) {
-				s := newEditAssetStub("alpha-123", "skill-xyz")
-				return s, s.AssetID()
-			},
-			targetTag: "skill-xyz",
-		},
-		{
 			name:  "select project assets",
 			title: "Select Project Assets",
 			construct: func() (stubScreenAccessors, string) {
@@ -105,8 +96,6 @@ func TestNavigationStubs_EmptyIDsPanic(t *testing.T) {
 		name string
 		fn   func()
 	}{
-		{"editAssetStub empty profile", func() { newEditAssetStub("", "x") }},
-		{"editAssetStub empty asset", func() { newEditAssetStub("x", "") }},
 		{"selectProjectAssetsStub empty profile", func() { newSelectProjectAssetsStub("", "x") }},
 		{"selectProjectAssetsStub empty project", func() { newSelectProjectAssetsStub("x", "") }},
 		{"planProjectStub empty profile", func() { newPlanProjectStub("", "x") }},
@@ -127,7 +116,6 @@ func TestNavigationStubs_EmptyIDsPanic(t *testing.T) {
 // Body renders at its natural height: sentence + spacer + back row = 3.
 func TestNavigationStubs_BodyHasNaturalHeight(t *testing.T) {
 	stubs := []Screen{
-		newEditAssetStub("a", "b"),
 		newSelectProjectAssetsStub("a", "b"),
 		newPlanProjectStub("a", "b"),
 	}
@@ -142,7 +130,6 @@ func TestNavigationStubs_BodyHasNaturalHeight(t *testing.T) {
 
 // Compile-time guards that the three stubs satisfy the Screen contract.
 var (
-	_ Screen = (*editAssetStub)(nil)
 	_ Screen = (*selectProjectAssetsStub)(nil)
 	_ Screen = (*planProjectStub)(nil)
 )

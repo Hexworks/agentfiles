@@ -1,7 +1,7 @@
 ---
 id: 0027
 type: feature
-status: pending
+status: in-review
 topics: go, tui, asset
 depends_on: 0021, 0022
 ---
@@ -107,3 +107,7 @@ Plus:
 make build && make test && make lint
 ./bin/af   # Edit Profile → Edit Asset → Open, Edit, Save, Back flows
 ```
+
+## Plan
+
+[plan.md](./plan.md)

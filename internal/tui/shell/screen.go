@@ -37,6 +37,29 @@ type Screen interface {
 	StatusKeys() []key.Binding
 }
 
+// inputFocused is the optional interface a [Screen] implements when it
+// hosts a focused text input. The shell consults it before applying the
+// single-rune global key set (`n` notifications, `s` settings, `?` help,
+// `q` quit) so the focused input receives those characters as text. The
+// non-printable safety path (ctrl+c) stays active regardless.
+type inputFocused interface {
+	InputFocused() bool
+}
+
+// screenWantsRawKey reports whether the active screen wants the shell to
+// skip its single-rune global key intercept for kp. Only printable
+// single-char globals are suppressed; ctrl+c is always honored so the
+// user can never be locked into a focused input.
+func screenWantsRawKey(s Screen, kp tea.KeyPressMsg) bool {
+	if kp.String() == "ctrl+c" {
+		return false
+	}
+	if f, ok := s.(inputFocused); ok {
+		return f.InputFocused()
+	}
+	return false
+}
+
 // PushScreenMsg pushes Screen onto the shell's stack. The shell runs
 // the new screen's Init after the push.
 type PushScreenMsg struct{ Screen Screen }

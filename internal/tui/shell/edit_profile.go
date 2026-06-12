@@ -27,7 +27,9 @@ import (
 // surface.
 type editProfileActions interface {
 	LoadProfile(in actions.LoadProfileInput) (*profile.Profile, errs.DomainError)
+	LoadAsset(in actions.LoadAssetInput) (*asset.Asset, errs.DomainError)
 	CreateAsset(in actions.CreateAssetInput) (string, errs.DomainError)
+	UpdateAsset(in actions.UpdateAssetInput) (struct{}, errs.DomainError)
 	DeleteAsset(in actions.DeleteAssetInput) (struct{}, errs.DomainError)
 	AddProject(in actions.AddProjectInput) (*project.Manifest, errs.DomainError)
 	UpdateProject(in actions.UpdateProjectInput) (struct{}, errs.DomainError)
@@ -522,7 +524,7 @@ func (s *editProfileScreen) onEditAsset() tea.Cmd {
 	if !ok {
 		return nil
 	}
-	return pushCmd(newEditAssetStub(s.profileID, a.ID))
+	return pushCmd(newEditAssetScreen(s.actions, s.profileID, a.ID))
 }
 
 func (s *editProfileScreen) onDeleteAsset() tea.Cmd {

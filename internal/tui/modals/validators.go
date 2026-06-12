@@ -24,10 +24,10 @@ func requiredAgents(values []string) error {
 	return nil
 }
 
-// parseTags turns a comma-separated string into a normalised tag list:
+// ParseTags turns a comma-separated string into a normalised tag list:
 // trims whitespace around each entry and drops empties. Returns nil for an
 // all-empty input so the resulting `asset.Manifest.Tags` stays omitempty.
-func parseTags(csv string) []string {
+func ParseTags(csv string) []string {
 	if strings.TrimSpace(csv) == "" {
 		return nil
 	}

@@ -95,8 +95,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case tea.KeyPressMsg:
-		if cmd, handled := m.handleGlobalKey(msg); handled {
-			return m, cmd
+		top := m.stack[len(m.stack)-1]
+		if !screenWantsRawKey(top, msg) {
+			if cmd, handled := m.handleGlobalKey(msg); handled {
+				return m, cmd
+			}
 		}
 
 	case notifications.NotificationMsg:
