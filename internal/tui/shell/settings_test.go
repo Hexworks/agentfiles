@@ -57,7 +57,7 @@ func TestSettingsScreen_TitleAndBody(t *testing.T) {
 	if got := s.Title(); got != "Settings" {
 		t.Errorf("Title() = %q, want Settings", got)
 	}
-	body := s.Body(80, 10)
+	body := s.Body(80)
 	if !strings.Contains(body, "Coming soon") {
 		t.Errorf("Body missing 'Coming soon'\n%s", body)
 	}

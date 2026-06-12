@@ -72,7 +72,7 @@ func (s *welcomeScreen) Title() string { return "Agentfiles" }
 
 func (s *welcomeScreen) StatusKeys() []key.Binding { return nil }
 
-func (s *welcomeScreen) Body(width, _ int) string {
+func (s *welcomeScreen) Body(width int) string {
 	bar := styles.MutedStyle.Render("┃")
 	rows := make([]string, 0, len(s.items)+1)
 	rows = append(rows, bar+" "+styles.HeaderStyle.Render(clampLabel("Choose a task", width-rowPrefixWidth)))

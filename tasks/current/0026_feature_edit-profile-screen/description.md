@@ -2,7 +2,7 @@
 id: 0026
 type: feature
 status: in-review
-topics: go, tui, profile
+topics: go, tui
 depends_on: 0021, 0022
 ---
 
@@ -11,7 +11,6 @@ depends_on: 0021, 0022
 ## Plan
 
 See [plan.md](./plan.md).
-
 
 Implements **Edit Profile Screen** from
 `0015_task_refactor_ui/description.md`. Two tables (Assets, Projects) with
@@ -31,12 +30,10 @@ On `Init`, run the `LoadProfile(id)` action (task 0019).
 Two `bubbles/table` widgets registered with a `focus.Handler`
 (`internal/tui/components/focus`):
 
-- `[1]` (`ctrl+1`) focuses the Assets table.
-- `[2]` (`ctrl+2`) focuses the Projects table.
-- `tab` / `shift+tab` cycle between them.
-
-The `WithModifier(focus.ModCtrl)` setting is already used; keep the
-visible `[1]` / `[2]` indicators.
+- `tab` / `shift+tab` cycle focus between the Assets and Projects
+  tables. There are no panel mnemonic buttons; the focused panel is
+  obvious from its accent-colored rounded border (unfocused panels use
+  the muted grey border).
 
 ## Assets table
 
@@ -73,8 +70,13 @@ Below the table:
 
 ## Sizing
 
-Heading + button rows + notification area + status bar are fixed; the two
-tables share the remaining vertical space.
+Each table renders at its natural width (per-column max of header
+width and widest cell content) and natural height (one header row plus
+N data rows). Both panels share a width: the wider panel's natural
+width wins and the narrower one grows its elastic column (Name for
+Assets, Path for Projects) to match. The heading, button row, and
+status bar sit above/below at their own natural heights; nothing is
+padded to fill the remaining viewport.
 
 ## Status bar
 
@@ -90,14 +92,17 @@ Per the safety rule:
 
 - Each focus + row-selection combination is walked: assert no two visible
   mnemonic buttons share a key. The candidate alphabet to test in
-  combination is `{1, 2, c, r, b, e, d, a, p}`.
+  combination is `{c, r, b, e, d, a, p}`.
 
 Plus:
 
 - Tab cycle order matches expected order.
-- `ctrl+1` / `ctrl+2` focus the right table.
 - Confirmed Delete Project does not delete project files (only metadata —
   uses `DeleteProject` from task 0018).
+- Pre-load `Body()` followed by a profile load and a second `Body()`
+  recovers the cursor and shows every row + the action cell on the
+  cursor row. Guards against the bubbles `SetRows(nil)` cursor=-1
+  sticky bug.
 
 ## Out of scope
 

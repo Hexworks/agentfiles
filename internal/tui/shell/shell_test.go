@@ -7,7 +7,6 @@ import (
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 
 	"github.com/hexworks/agentfiles/internal/actions"
 	"github.com/hexworks/agentfiles/internal/app"
@@ -71,7 +70,7 @@ func (s *initSentinelScreen) Init() tea.Cmd {
 	return func() tea.Msg { return s.sentinel }
 }
 func (s *initSentinelScreen) Update(_ tea.Msg) (Screen, tea.Cmd) { return s, nil }
-func (s *initSentinelScreen) Body(_ int, _ int) string           { return "" }
+func (s *initSentinelScreen) Body(_ int) string                  { return "" }
 func (s *initSentinelScreen) Title() string                      { return "init-sentinel" }
 func (s *initSentinelScreen) StatusKeys() []key.Binding          { return nil }
 
@@ -220,7 +219,7 @@ func (s *recordingScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 	s.received = append(s.received, msg)
 	return s, nil
 }
-func (s *recordingScreen) Body(_ int, _ int) string  { return "" }
+func (s *recordingScreen) Body(_ int) string         { return "" }
 func (s *recordingScreen) Title() string             { return "rec" }
 func (s *recordingScreen) StatusKeys() []key.Binding { return nil }
 
@@ -353,7 +352,7 @@ func (s *sizingSpy) Update(msg tea.Msg) (Screen, tea.Cmd) {
 	}
 	return s, nil
 }
-func (s *sizingSpy) Body(_ int, _ int) string  { return "" }
+func (s *sizingSpy) Body(_ int) string         { return "" }
 func (s *sizingSpy) Title() string             { return "spy" }
 func (s *sizingSpy) StatusKeys() []key.Binding { return nil }
 
@@ -460,24 +459,23 @@ func TestView_ContainsTitleAndStatusBarHints(t *testing.T) {
 	}
 }
 
-// bodySizeSpy records the (width, height) Body was last called with.
-type bodySizeSpy struct {
-	width, height int
+// bodyWidthSpy records the width Body was last called with.
+type bodyWidthSpy struct {
+	width int
 }
 
-func (s *bodySizeSpy) Init() tea.Cmd                      { return nil }
-func (s *bodySizeSpy) Update(_ tea.Msg) (Screen, tea.Cmd) { return s, nil }
-func (s *bodySizeSpy) Title() string                      { return "size" }
-func (s *bodySizeSpy) StatusKeys() []key.Binding          { return nil }
-func (s *bodySizeSpy) Body(w int, h int) string {
+func (s *bodyWidthSpy) Init() tea.Cmd                      { return nil }
+func (s *bodyWidthSpy) Update(_ tea.Msg) (Screen, tea.Cmd) { return s, nil }
+func (s *bodyWidthSpy) Title() string                      { return "size" }
+func (s *bodyWidthSpy) StatusKeys() []key.Binding          { return nil }
+func (s *bodyWidthSpy) Body(w int) string {
 	s.width = w
-	s.height = h
 	return ""
 }
 
-func TestView_BodyHeightDeductsTitleAndStatusBar(t *testing.T) {
+func TestView_BodyReceivesWindowWidth(t *testing.T) {
 	m := newTestShell(t)
-	spy := &bodySizeSpy{}
+	spy := &bodyWidthSpy{}
 	m.stack[0] = spy
 
 	tm, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
@@ -487,51 +485,5 @@ func TestView_BodyHeightDeductsTitleAndStatusBar(t *testing.T) {
 
 	if spy.width != 80 {
 		t.Errorf("Body width = %d, want 80", spy.width)
-	}
-	titleH := lipgloss.Height(renderTitle(spy.Title()))
-	wantBodyH := 24 - titleH - 1 /* status bar */
-	if spy.height != wantBodyH {
-		t.Errorf("Body height = %d, want %d (24 - title %d - status 1)", spy.height, wantBodyH, titleH)
-	}
-}
-
-func TestView_BodyHeightClampsToZeroOnTinyWindow(t *testing.T) {
-	m := newTestShell(t)
-	spy := &bodySizeSpy{}
-	m.stack[0] = spy
-
-	tm, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 1})
-	m = tm.(Model)
-
-	_ = m.View()
-
-	if spy.height != 0 {
-		t.Errorf("Body height = %d on tiny window, want 0 (clamped)", spy.height)
-	}
-}
-
-func TestView_BodyHeightShrinksWhenToastVisible(t *testing.T) {
-	m := newTestShell(t)
-	spy := &bodySizeSpy{}
-	m.stack[0] = spy
-
-	tm, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
-	m = tm.(Model)
-
-	_ = m.View()
-	heightWithoutToast := spy.height
-
-	n := notifications.Notification{
-		Severity:  errs.SeverityInfo,
-		Text:      "hello",
-		CreatedAt: time.Now(),
-	}
-	tm, _ = m.Update(notifications.NotificationMsg{Notification: n})
-	m = tm.(Model)
-
-	_ = m.View()
-	if spy.height >= heightWithoutToast {
-		t.Errorf("body height did not shrink when toast became visible (was %d, now %d)",
-			heightWithoutToast, spy.height)
 	}
 }

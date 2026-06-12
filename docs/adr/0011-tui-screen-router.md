@@ -53,7 +53,7 @@ pattern coexist; they answer different questions.
 type Screen interface {
     Init() tea.Cmd
     Update(msg tea.Msg) (Screen, tea.Cmd)
-    Body(width, height int) string
+    Body(width int) string
     Title() string
     StatusKeys() []key.Binding
 }
@@ -61,6 +61,12 @@ type Screen interface {
 type PushScreenMsg struct{ Screen Screen }
 type PopScreenMsg struct{}
 ```
+
+`Body` only takes width because the shell no longer reserves a body
+rectangle. Each screen renders at its natural height; the shell stacks
+title, body, toast, and status bar without padding. Tables size to
+their row count plus a header row instead of expanding to fill the
+terminal.
 
 `shell.Model` owns `stack []Screen`; the top of the stack is the
 active screen. Screens never mutate the stack directly — they emit

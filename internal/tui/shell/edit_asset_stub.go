@@ -48,7 +48,7 @@ func (s *editAssetStub) Update(msg tea.Msg) (Screen, tea.Cmd) {
 
 func (s *editAssetStub) Title() string             { return "Edit Asset" }
 func (s *editAssetStub) StatusKeys() []key.Binding { return s.statusKeys() }
-func (s *editAssetStub) Body(width, height int) string {
+func (s *editAssetStub) Body(width int) string {
 	sentence := fmt.Sprintf(" Editing asset %q in profile %q — task 0027", s.assetID, s.profileID)
-	return s.renderBody(width, height, sentence)
+	return s.renderBody(width, sentence)
 }

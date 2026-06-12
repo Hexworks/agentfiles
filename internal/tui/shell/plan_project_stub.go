@@ -44,7 +44,7 @@ func (s *planProjectStub) Update(msg tea.Msg) (Screen, tea.Cmd) {
 
 func (s *planProjectStub) Title() string             { return "Plan Project" }
 func (s *planProjectStub) StatusKeys() []key.Binding { return s.statusKeys() }
-func (s *planProjectStub) Body(width, height int) string {
+func (s *planProjectStub) Body(width int) string {
 	sentence := fmt.Sprintf(" Planning project %q in profile %q — task 0029", s.projectID, s.profileID)
-	return s.renderBody(width, height, sentence)
+	return s.renderBody(width, sentence)
 }

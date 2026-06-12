@@ -75,7 +75,7 @@ func TestInfoScreen_RendersOverviewBody(t *testing.T) {
 	m.height = 24
 	s := m.newInfoScreen()
 
-	rendered := s.Body(80, 20)
+	rendered := s.Body(80)
 	if !strings.Contains(rendered, "Global keys") {
 		t.Errorf("rendered body missing expected manual content; got:\n%s", rendered)
 	}

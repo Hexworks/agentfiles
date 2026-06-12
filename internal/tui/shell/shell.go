@@ -181,9 +181,8 @@ func sameScreenType(a, b Screen) bool {
 }
 
 // View composes title + body + toast + status bar into an alt-screen
-// tea.View. Body receives the dimensions the shell has not reserved
-// for the surrounding chrome; on a zero or negative remainder the
-// body height clamps to 0.
+// tea.View. Body renders at its natural height; the shell does not pad
+// it to fill the remaining viewport.
 func (m Model) View() tea.View {
 	top := m.stack[len(m.stack)-1]
 
@@ -191,17 +190,7 @@ func (m Model) View() tea.View {
 	toast := m.toast.View()
 	status := renderStatusBar(m.keys, top.StatusKeys())
 
-	headerH := lipgloss.Height(title)
-	toastH := 0
-	if toast != "" {
-		toastH = lipgloss.Height(toast)
-	}
-	bodyH := m.height - headerH - toastH - lipgloss.Height(status)
-	if bodyH < 0 {
-		bodyH = 0
-	}
-
-	body := top.Body(m.width, bodyH)
+	body := top.Body(m.width)
 
 	sections := []string{title, body}
 	if toast != "" {

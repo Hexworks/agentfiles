@@ -45,6 +45,6 @@ func (s *infoScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 	return s, cmd
 }
 
-func (s *infoScreen) Body(_ int, _ int) string  { return s.modal.View() }
+func (s *infoScreen) Body(_ int) string         { return s.modal.View() }
 func (s *infoScreen) Title() string             { return "Help" }
 func (s *infoScreen) StatusKeys() []key.Binding { return nil }

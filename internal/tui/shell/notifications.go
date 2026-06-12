@@ -42,6 +42,6 @@ func (s *notificationsScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 	return s, cmd
 }
 
-func (s *notificationsScreen) Body(_ int, _ int) string  { return s.modal.View() }
+func (s *notificationsScreen) Body(_ int) string         { return s.modal.View() }
 func (s *notificationsScreen) Title() string             { return "Notifications" }
 func (s *notificationsScreen) StatusKeys() []key.Binding { return nil }

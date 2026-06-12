@@ -17,6 +17,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
 	"github.com/hexworks/agentfiles/internal/tui/components/modal"
 	"github.com/hexworks/agentfiles/internal/tui/modals"
+	"github.com/hexworks/agentfiles/internal/tui/styles"
 )
 
 // editProfileActions is the narrow slice of *actions.Actions the Edit
@@ -61,11 +62,9 @@ type editProfileScreen struct {
 	assets   []*asset.Asset
 	projects []*project.Manifest
 
-	handler             *focus.Handler
-	assetsTable         *table.Model
-	projectsTable       *table.Model
-	assetsFocusButton   *mnemonic.Button // [1]
-	projectsFocusButton *mnemonic.Button // [2]
+	handler       *focus.Handler
+	assetsTable   *table.Model
+	projectsTable *table.Model
 
 	editAsset   *mnemonic.Button // e (assets)
 	deleteAsset *mnemonic.Button // d (assets)
@@ -109,37 +108,38 @@ func newEditProfileScreen(a editProfileActions, profileID string) *editProfileSc
 	}
 	s.buildTables()
 	s.buildButtons()
-	s.handler = focus.New(focus.WithModifier(focus.ModCtrl))
-	s.assetsFocusButton = s.handler.AddMnemonic(s.assetsTable, '1')
-	s.projectsFocusButton = s.handler.AddMnemonic(s.projectsTable, '2')
-	if s.assetsFocusButton == nil || s.projectsFocusButton == nil {
-		// AddMnemonic returns nil only when the digit is invalid or already
-		// bound — both are programmer errors here, and silently continuing
-		// would crash inside rebuildSet on a nil deref.
-		panic("shell.newEditProfileScreen: focus handler refused panel mnemonic")
-	}
+	s.handler = focus.New()
+	s.handler.Add(s.assetsTable)
+	s.handler.Add(s.projectsTable)
 	s.rebuildSet()
 	return s
 }
 
 func (s *editProfileScreen) buildTables() {
+	assetCols := naturalColumns(assetColumnTitles, nil)
 	at := table.New(
-		table.WithColumns(s.assetsColumns(defaultEditProfileWidth)),
+		table.WithColumns(assetCols),
 		table.WithRows(nil),
 		table.WithFocused(true),
-		table.WithWidth(defaultEditProfileWidth),
-		table.WithHeight(defaultEditProfileTableHeight),
+		table.WithWidth(tableNaturalWidth(assetCols)),
+		table.WithHeight(1),
 	)
 	s.assetsTable = &at
+	projectCols := naturalColumns(projectColumnTitles, nil)
 	pt := table.New(
-		table.WithColumns(s.projectsColumns(defaultEditProfileWidth)),
+		table.WithColumns(projectCols),
 		table.WithRows(nil),
 		table.WithFocused(true),
-		table.WithWidth(defaultEditProfileWidth),
-		table.WithHeight(defaultEditProfileTableHeight),
+		table.WithWidth(tableNaturalWidth(projectCols)),
+		table.WithHeight(1),
 	)
 	s.projectsTable = &pt
 }
+
+var (
+	assetColumnTitles   = []string{"ID", "Name", "Type", "Actions"}
+	projectColumnTitles = []string{"ID", "Name", "Path", "Actions"}
+)
 
 func (s *editProfileScreen) buildButtons() {
 	s.editAsset = mnemonic.New("Edit", 'e', func() tea.Cmd { return s.onEditAsset() })
@@ -162,12 +162,10 @@ func (s *editProfileScreen) buildButtons() {
 
 // rebuildSet refreshes the mnemonic set so its registration-time
 // uniqueness check covers the current focus + data state. Assets focus
-// exposes e/d; Projects focus exposes e/a/p/d. The two focus buttons
-// `[1]` / `[2]` and the screen-level c/r/b are always present.
+// exposes e/d; Projects focus exposes e/a/p/d. Screen-level c/r/b are
+// always present.
 func (s *editProfileScreen) rebuildSet() {
 	set := mnemonic.NewSet()
-	set.Add(s.assetsFocusButton)
-	set.Add(s.projectsFocusButton)
 
 	switch s.handler.Focused() {
 	case 0:
@@ -324,83 +322,107 @@ func (s *editProfileScreen) StatusKeys() []key.Binding {
 	return out
 }
 
-func (s *editProfileScreen) Body(width, height int) string {
-	background := s.renderBody(width, height)
+func (s *editProfileScreen) Body(width int) string {
+	background := s.renderBody(width)
 	if s.modal == nil {
 		return background
 	}
-	return s.modal.Render(background, width, height)
+	return s.modal.Render(background, width, lipgloss.Height(background))
 }
 
-// Two table-chrome rows (panel headers), two spacer rows, and one button
-// row sit above + below the two tables. Body splits the remaining height
-// between Assets and Projects.
-const (
-	editProfileHeadersRows = 2
-	editProfileSpacersRows = 2
-	editProfileButtonsRow  = 1
-	editProfileChromeRows  = editProfileHeadersRows + editProfileSpacersRows + editProfileButtonsRow
-	editProfileMinTableRow = 1
-)
+// renderBody composes the two-table layout at its natural width and
+// height. Both tables share a width: the wider panel's natural width
+// wins, and the other panel grows its first content column (Name for
+// Assets, Path for Projects) to match. Each table is wrapped in a
+// rounded border, sized to its current row count plus a header row.
+func (s *editProfileScreen) renderBody(_ int) string {
+	sanitizeCursor(s.assetsTable, len(s.assets))
+	sanitizeCursor(s.projectsTable, len(s.projects))
+	assetRows := s.buildAssetsRows(s.assetsTable.Cursor())
+	projectRows := s.buildProjectsRows(s.projectsTable.Cursor())
 
-// layoutTables returns the per-table heights for a given body height.
-// Pure — does not mutate the tables.
-func (s *editProfileScreen) layoutTables(height int) (assetsH, projectsH int) {
-	tableTotal := height - editProfileChromeRows
-	if tableTotal < 2*editProfileMinTableRow {
-		tableTotal = 2 * editProfileMinTableRow
-	}
-	assetsH = tableTotal / 2
-	projectsH = tableTotal - assetsH
-	return assetsH, projectsH
-}
+	assetCols := naturalColumns(assetColumnTitles, assetRows)
+	projectCols := naturalColumns(projectColumnTitles, projectRows)
 
-// resizeTables applies the layout to both bubbles tables. Side-effecting;
-// renderBody calls it once per render so the tables track the body
-// rectangle the shell reserves.
-func (s *editProfileScreen) resizeTables(width, assetsH, projectsH int) {
-	s.applyTableSize(s.assetsTable, s.assetsColumns(width), width, assetsH)
-	s.applyTableSize(s.projectsTable, s.projectsColumns(width), width, projectsH)
-}
+	// Assets row width is dominated by Name; Projects by Path. Pad the
+	// shorter table's elastic column so both render to the same outer
+	// width.
+	const assetElasticIdx, projectElasticIdx = 1, 2
+	equalizePanelWidth(assetCols, projectCols, assetElasticIdx, projectElasticIdx)
 
-// renderBody composes the two-table layout exactly height rows tall.
-// JoinVertical of [header, table, spacer, header, table, spacer, buttons]
-// sums to editProfileChromeRows + assetsH + projectsH = height.
-func (s *editProfileScreen) renderBody(width, height int) string {
-	assetsH, projectsH := s.layoutTables(height)
-	s.resizeTables(width, assetsH, projectsH)
+	applyTable(s.assetsTable, assetCols, assetRows)
+	applyTable(s.projectsTable, projectCols, projectRows)
 
-	assetsHeader := s.assetsFocusButton.View() + " " + lipgloss.NewStyle().Bold(true).Render("Assets")
-	projectsHeader := s.projectsFocusButton.View() + " " + lipgloss.NewStyle().Bold(true).Render("Projects")
+	focused := s.handler.Focused()
+	assetsHeader := lipgloss.NewStyle().Bold(true).Render("Assets")
+	projectsHeader := lipgloss.NewStyle().Bold(true).Render("Projects")
 
 	buttonRow := " " + s.createAsset.View() + "  " + s.register.View() + "  " + s.back.View()
-	buttons := lipgloss.PlaceHorizontal(width, lipgloss.Left, buttonRow)
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
 		assetsHeader,
-		s.assetsTable.View(),
+		panelBorderFor(focused == 0).Render(s.assetsTable.View()),
 		"",
 		projectsHeader,
-		s.projectsTable.View(),
+		panelBorderFor(focused == 1).Render(s.projectsTable.View()),
 		"",
-		buttons,
+		buttonRow,
 	)
 }
 
-func (s *editProfileScreen) applyTableSize(t *table.Model, cols []table.Column, width, height int) {
-	if height < 1 {
-		height = 1
+// panelBorderFor returns the focused or unfocused rounded-border style
+// depending on whether the panel currently holds focus. The focused
+// variant uses the accent cyan; the unfocused variant inherits the
+// muted grey from [styles.MutedStyle] so the difference is obvious at a
+// glance.
+func panelBorderFor(focused bool) lipgloss.Style {
+	if focused {
+		return focusedPanelBorder
 	}
-	t.SetWidth(width)
-	t.SetColumns(cols)
-	t.SetHeight(height)
+	return unfocusedPanelBorder
 }
 
-const (
-	defaultEditProfileWidth       = 80
-	defaultEditProfileTableHeight = 5
+var (
+	focusedPanelBorder = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(styles.ColorCyan)
+	unfocusedPanelBorder = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(styles.ColorMuted)
 )
+
+// equalizePanelWidth grows the elastic column on the narrower table so
+// both panels render at the same outer width. Mutates cols slices in
+// place.
+func equalizePanelWidth(a, b []table.Column, elasticA, elasticB int) {
+	wA := tableNaturalWidth(a)
+	wB := tableNaturalWidth(b)
+	if wA == wB {
+		return
+	}
+	if wA < wB {
+		a[elasticA].Width += wB - wA
+	} else {
+		b[elasticB].Width += wA - wB
+	}
+}
+
+// applyTable pushes columns/rows/height/width onto a bubbles table. The
+// order matches the contract that SetHeight runs after SetRows so the
+// viewport sizes to the row count handed in.
+//
+// SetRows is skipped on an empty rows slice because bubbles drops the
+// cursor to -1 in that case and never raises it back when rows reappear
+// (see [sanitizeCursor] for the recovery path on the next render).
+func applyTable(t *table.Model, cols []table.Column, rows []table.Row) {
+	t.SetColumns(cols)
+	t.SetWidth(tableNaturalWidth(cols))
+	if len(rows) > 0 {
+		t.SetRows(rows)
+	}
+	t.SetHeight(len(rows) + 1)
+}
 
 // rebuildLists materializes ordered slices of assets and projects from
 // the freshly-loaded profile so the tables (and tests) see a stable
@@ -416,64 +438,23 @@ func (s *editProfileScreen) rebuildLists(prof *profile.Profile) {
 	s.projects = prof.ProjectList()
 }
 
+// rebuildAssetsTable seeds rows + naturally-sized columns from the
+// freshly-loaded profile.
 func (s *editProfileScreen) rebuildAssetsTable() {
-	width := s.tableInnerWidth()
-	s.assetsTable.SetWidth(width)
-	s.assetsTable.SetColumns(s.assetsColumns(width))
-	s.assetsTable.SetRows(s.buildAssetsRows(0))
+	rows := s.buildAssetsRows(0)
+	cols := naturalColumns(assetColumnTitles, rows)
+	s.assetsTable.SetColumns(cols)
+	s.assetsTable.SetWidth(tableNaturalWidth(cols))
+	s.assetsTable.SetRows(rows)
 }
 
 func (s *editProfileScreen) rebuildProjectsTable() {
-	width := s.tableInnerWidth()
-	s.projectsTable.SetWidth(width)
-	s.projectsTable.SetColumns(s.projectsColumns(width))
-	s.projectsTable.SetRows(s.buildProjectsRows(0))
+	rows := s.buildProjectsRows(0)
+	cols := naturalColumns(projectColumnTitles, rows)
+	s.projectsTable.SetColumns(cols)
+	s.projectsTable.SetWidth(tableNaturalWidth(cols))
+	s.projectsTable.SetRows(rows)
 }
-
-func (s *editProfileScreen) tableInnerWidth() int {
-	if s.width < 1 {
-		return defaultEditProfileWidth
-	}
-	return s.width
-}
-
-func (s *editProfileScreen) assetsColumns(innerW int) []table.Column {
-	const (
-		idW      = 18
-		typeW    = 14
-		actionsW = 22
-	)
-	nameW := innerW - idW - typeW - actionsW - tableCellPadding
-	if nameW < minNameColW {
-		nameW = minNameColW
-	}
-	return []table.Column{
-		{Title: "ID", Width: idW},
-		{Title: "Name", Width: nameW},
-		{Title: "Type", Width: typeW},
-		{Title: "Actions", Width: actionsW},
-	}
-}
-
-func (s *editProfileScreen) projectsColumns(innerW int) []table.Column {
-	const (
-		idW      = 18
-		nameW    = 18
-		actionsW = 26
-	)
-	pathW := innerW - idW - nameW - actionsW - tableCellPadding
-	if pathW < minPathColW {
-		pathW = minPathColW
-	}
-	return []table.Column{
-		{Title: "ID", Width: idW},
-		{Title: "Name", Width: nameW},
-		{Title: "Path", Width: pathW},
-		{Title: "Actions", Width: actionsW},
-	}
-}
-
-const minNameColW = 12
 
 func (s *editProfileScreen) buildAssetsRows(cursor int) []table.Row {
 	rows := make([]table.Row, len(s.assets))
@@ -506,11 +487,12 @@ func assetActionsCell() string {
 	return "[" + underline("E") + "dit] [" + underline("D") + "elete]"
 }
 
-// projectActionsCell renders a compact "[E] [A] [P] [D]" cell — the
-// long-form labels live in the status bar.
+// projectActionsCell renders the full action labels with mnemonic
+// runes underlined via shell.underline so the surrounding cursor-row
+// highlight survives.
 func projectActionsCell() string {
-	return "[" + underline("E") + "] [" + underline("A") + "] [" +
-		underline("P") + "] [" + underline("D") + "]"
+	return "[" + underline("E") + "dit] [Select " + underline("A") + "ssets] [" +
+		underline("P") + "lan] [" + underline("D") + "elete]"
 }
 
 func (s *editProfileScreen) selectedAsset() (*asset.Asset, bool) {

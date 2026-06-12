@@ -256,6 +256,32 @@ Treat terminal width as variable. Full-screen Bubble Tea views should handle
 `WindowSizeMsg`; form and output rendering should avoid assuming an 80-column
 terminal when paths, ids, and error messages can be longer.
 
+### Natural Sizing For Bubble Tea Screens
+
+The shell's `Screen.Body(width int)` contract is "render at your natural
+height; the shell stacks chrome around you without padding". Screens
+must not expand content to fill the remaining viewport.
+
+```text
+Do:
+- size bubbles tables to one header row + len(rows); compute column widths from max(header, widest cell)
+- wrap tables in a rounded border whose color signals focus (accent for focused, muted for unfocused)
+- equalize the outer width of side-by-side tables by growing the narrower table's elastic column
+- sanitize the bubbles table cursor before reading it for row-content decisions: SetRows(nil) parks cursor at -1 and never raises it back when rows reappear
+- skip SetRows on an empty rows slice so the cursor-corruption bug never triggers in the first place
+```
+
+```text
+Don't:
+- subtract chrome height from the terminal and pass the remainder as a body rectangle
+- pad an empty state to the full reserved height so the status bar stays anchored
+- rely on bubbles to recover the cursor on its own — sanitize on every render that consumes Cursor()
+```
+
+Rationale: a body that always fills the viewport hides how much content
+actually exists, and the sticky cursor=-1 from a pre-load render
+silently drops one data row from the viewport.
+
 ## Make The Interface Obvious
 
 Borrow the practical parts of "Don't Make Me Think": users should not have to

@@ -20,10 +20,9 @@ import (
 
 // Screen is the unit of navigation on the shell's stack.
 //
-// Body receives the content-area dimensions the shell has reserved
-// (everything inside the window minus the title bar, toast line, and
-// status bar). The shell controls layout; the screen renders into the
-// area it is given.
+// Body receives only the available width. Screens render at their
+// natural height — the shell stacks title, body, toast, and status bar
+// without padding the body to fill the terminal.
 //
 // StatusKeys returns the dynamic bindings the status bar appends to
 // the global set — typically the focused row's mnemonic-button
@@ -33,7 +32,7 @@ import (
 type Screen interface {
 	Init() tea.Cmd
 	Update(msg tea.Msg) (Screen, tea.Cmd)
-	Body(width, height int) string
+	Body(width int) string
 	Title() string
 	StatusKeys() []key.Binding
 }

@@ -150,7 +150,7 @@ func TestWelcomeScreen_TitleIsAgentfiles(t *testing.T) {
 
 func TestWelcomeScreen_BodyContainsAllItems(t *testing.T) {
 	s := newTestWelcomeScreen(t)
-	body := s.Body(80, 10)
+	body := s.Body(80)
 	for _, want := range []string{"Choose a task", "Profiles", "Settings", "Quit"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("Body missing %q\n%s", want, body)
@@ -161,7 +161,7 @@ func TestWelcomeScreen_BodyContainsAllItems(t *testing.T) {
 func TestWelcomeScreen_BodyMarksSelectedRow(t *testing.T) {
 	s := newTestWelcomeScreen(t)
 	s.cursor = 1
-	body := s.Body(80, 10)
+	body := s.Body(80)
 	if !strings.Contains(body, "> Settings") {
 		t.Errorf("Body missing selected-row marker on Settings\n%s", body)
 	}
@@ -173,7 +173,7 @@ func TestWelcomeScreen_BodyMarksSelectedRow(t *testing.T) {
 func TestWelcomeScreen_BodyClampsLongLabelsToWidth(t *testing.T) {
 	s := newTestWelcomeScreen(t)
 	// width 6: prefix 4 + label 2 → "Profiles" must truncate to "P…".
-	body := s.Body(6, 10)
+	body := s.Body(6)
 	if strings.Contains(body, "Profiles") {
 		t.Errorf("Body did not truncate Profiles on narrow width\n%s", body)
 	}

@@ -495,7 +495,7 @@ func TestProfilesScreen_TitleAndBodyContainRequiredText(t *testing.T) {
 	if got := s.Title(); got != "Profiles" {
 		t.Errorf("Title() = %q, want Profiles", got)
 	}
-	body := s.Body(100, 20)
+	body := s.Body(100)
 	// mnemonic.Button styles the mnemonic rune, splitting it from the
 	// rest of the label with ANSI escapes — assert on substrings that
 	// survive the styling instead of the full label.
@@ -512,7 +512,7 @@ func TestProfilesScreen_BodyShowsProfileRowsAndActions(t *testing.T) {
 	withProfiles(s, []*profile.Profile{fakeProfile("alpha", "Alpha", "/tmp/alpha")})
 	_, _ = s.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
 
-	body := s.Body(100, 20)
+	body := s.Body(100)
 	// Selected-row actions cell holds "[Edit] [Delete]" with manual SGR
 	// underline markers around the mnemonic chars so the cursor-row
 	// highlight is not broken by an embedded lipgloss reset.
@@ -551,32 +551,39 @@ func TestProfilesScreen_CursorMoveRebuildsActionsColumn(t *testing.T) {
 	}
 }
 
-func TestProfilesScreen_BodyExactlyMatchesRequestedHeight(t *testing.T) {
-	// Body must return exactly `height` rows. Overshooting pushes the
-	// shell's status bar and toast off the bottom of the terminal — the
-	// bug behind the missing notifications + help line in the original
-	// implementation.
+func TestProfilesScreen_BodyTracksRowCount(t *testing.T) {
+	// Body renders at its natural height: the bordered table (border top +
+	// header + N rows + border bottom) + spacer + button row when
+	// populated, or hint + spacer + buttons when empty.
 	f := newProfilesFixture(t)
 	cases := []struct {
 		name     string
 		profiles []*profile.Profile
-		width    int
-		height   int
+		want     int
 	}{
-		{"empty state", nil, 100, 20},
-		{"populated state", []*profile.Profile{fakeProfile("alpha", "Alpha", "/tmp/alpha")}, 100, 20},
-		{"tall window", []*profile.Profile{fakeProfile("alpha", "Alpha", "/tmp/alpha")}, 100, 40},
-		{"short window", []*profile.Profile{fakeProfile("alpha", "Alpha", "/tmp/alpha")}, 100, 8},
+		// empty: hint line + spacer + buttons = 3 rows
+		{"empty state", nil, 3},
+		// populated: 2 border rows + table header + 1 row + spacer + buttons = 6 rows
+		{"one profile", []*profile.Profile{fakeProfile("alpha", "Alpha", "/tmp/alpha")}, 6},
+		// populated: 2 border + header + 2 rows + spacer + buttons = 7 rows
+		{
+			"two profiles",
+			[]*profile.Profile{
+				fakeProfile("alpha", "Alpha", "/tmp/alpha"),
+				fakeProfile("beta", "Beta", "/tmp/beta"),
+			},
+			7,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			s := newProfilesScreen(f.Actions)
 			withProfiles(s, tc.profiles)
-			_, _ = s.Update(tea.WindowSizeMsg{Width: tc.width, Height: tc.height + 4 /* + chrome */})
+			_, _ = s.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
 
-			body := s.Body(tc.width, tc.height)
-			if got := lipgloss.Height(body); got != tc.height {
-				t.Errorf("Body height = %d, want %d", got, tc.height)
+			body := s.Body(100)
+			if got := lipgloss.Height(body); got != tc.want {
+				t.Errorf("Body height = %d, want %d", got, tc.want)
 			}
 		})
 	}

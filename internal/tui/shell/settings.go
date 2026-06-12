@@ -50,7 +50,7 @@ func (s *settingsScreen) StatusKeys() []key.Binding {
 	return []key.Binding{s.back.Binding()}
 }
 
-func (s *settingsScreen) Body(width, _ int) string {
+func (s *settingsScreen) Body(width int) string {
 	msg := " Coming soon."
 	back := lipgloss.PlaceHorizontal(width, lipgloss.Right, s.back.View())
 	return lipgloss.JoinVertical(lipgloss.Left, msg, "", back)

@@ -1,7 +1,6 @@
 package shell
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -139,7 +138,7 @@ func TestEditProfileScreen_AssetsFocusedMnemonicSet_HasExpectedMnemonicsInOrder(
 		t.Fatalf("initial focus = %d, want 0 (assets)", got)
 	}
 	got := mnemonicLabels(s.set)
-	want := []string{"1", "2", "Edit", "Delete", "Create Asset", "Register Project", "Back"}
+	want := []string{"Edit", "Delete", "Create Asset", "Register Project", "Back"}
 	if !labelsEqual(got, want) {
 		t.Errorf("set labels = %v, want %v", got, want)
 	}
@@ -156,7 +155,7 @@ func TestEditProfileScreen_ProjectsFocusedMnemonicSet_HasExpectedMnemonicsInOrde
 	s.rebuildSet()
 
 	got := mnemonicLabels(s.set)
-	want := []string{"1", "2", "Edit", "Select Assets", "Plan", "Delete", "Create Asset", "Register Project", "Back"}
+	want := []string{"Edit", "Select Assets", "Plan", "Delete", "Create Asset", "Register Project", "Back"}
 	if !labelsEqual(got, want) {
 		t.Errorf("set labels = %v, want %v", got, want)
 	}
@@ -168,7 +167,7 @@ func TestEditProfileScreen_EmptyAssetsListDropsRowMnemonics(t *testing.T) {
 	withProfile(s, fakeLoadedProfile(t, "/tmp/x", nil, nil))
 
 	got := mnemonicLabels(s.set)
-	want := []string{"1", "2", "Create Asset", "Register Project", "Back"}
+	want := []string{"Create Asset", "Register Project", "Back"}
 	if !labelsEqual(got, want) {
 		t.Errorf("set labels (assets empty, focused) = %v, want %v", got, want)
 	}
@@ -182,7 +181,7 @@ func TestEditProfileScreen_EmptyProjectsListDropsRowMnemonics(t *testing.T) {
 	s.rebuildSet()
 
 	got := mnemonicLabels(s.set)
-	want := []string{"1", "2", "Create Asset", "Register Project", "Back"}
+	want := []string{"Create Asset", "Register Project", "Back"}
 	if !labelsEqual(got, want) {
 		t.Errorf("set labels (projects empty, focused) = %v, want %v", got, want)
 	}
@@ -214,31 +213,6 @@ func TestEditProfileScreen_ShiftTabCyclesBackwards(t *testing.T) {
 	_, _ = s.Update(tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
 	if s.handler.Focused() != 1 {
 		t.Errorf("after shift+Tab, focus = %d, want 1", s.handler.Focused())
-	}
-}
-
-func TestEditProfileScreen_Ctrl1FocusesAssets(t *testing.T) {
-	f := newEditProfileFixture(t)
-	s := newEditProfileScreen(f.Actions, f.Profile.ID)
-	withProfile(s, fakeLoadedProfile(t, "/tmp/x", nil, nil))
-	_ = s.handler.FocusIndex(1) // start with projects focused
-
-	_, _ = s.Update(tea.KeyPressMsg{Code: '1', Mod: tea.ModCtrl})
-
-	if got := s.handler.Focused(); got != 0 {
-		t.Errorf("after ctrl+1, focus = %d, want 0 (assets)", got)
-	}
-}
-
-func TestEditProfileScreen_Ctrl2FocusesProjects(t *testing.T) {
-	f := newEditProfileFixture(t)
-	s := newEditProfileScreen(f.Actions, f.Profile.ID)
-	withProfile(s, fakeLoadedProfile(t, "/tmp/x", nil, nil))
-
-	_, _ = s.Update(tea.KeyPressMsg{Code: '2', Mod: tea.ModCtrl})
-
-	if got := s.handler.Focused(); got != 1 {
-		t.Errorf("after ctrl+2, focus = %d, want 1 (projects)", got)
 	}
 }
 
@@ -620,7 +594,7 @@ func TestEditProfileScreen_TitleAndBodyContainRequiredText(t *testing.T) {
 	if got := s.Title(); got != "Edit Profile" {
 		t.Errorf("Title() = %q, want Edit Profile", got)
 	}
-	body := s.Body(120, 24)
+	body := s.Body(120)
 	for _, want := range []string{"Assets", "Projects", "reate Asset", "egister Project"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("Body missing %q\n%s", want, body)
@@ -628,57 +602,86 @@ func TestEditProfileScreen_TitleAndBodyContainRequiredText(t *testing.T) {
 	}
 }
 
-// BodyMatchesRequestedHeight asserts the body fills exactly the height the
-// shell reserved, so the status bar stays anchored at its allocated row.
-func TestEditProfileScreen_BodyMatchesRequestedHeight(t *testing.T) {
+// BodyDoesNotFillViewport asserts the body renders at a natural height
+// that ignores the terminal size: adding rows grows it, but it never
+// expands to match the window height.
+func TestEditProfileScreen_BodyDoesNotFillViewport(t *testing.T) {
 	f := newEditProfileFixture(t)
-	cases := []struct {
-		name     string
-		assets   []*asset.Asset
-		projects []*project.Manifest
-		width    int
-		height   int
-	}{
-		{"empty state", nil, nil, 120, 24},
-		{"populated", []*asset.Asset{{Manifest: asset.Manifest{ID: "skill-1", Name: "Skill", Type: asset.TypeSkill}}},
-			[]*project.Manifest{{ID: "proj-1", Name: "Proj", Path: "/tmp/proj", EnabledAgents: []string{"codex"}}},
-			120, 24},
-		{"tall window", nil, nil, 120, 40},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			s := newEditProfileScreen(f.Actions, f.Profile.ID)
-			withProfile(s, fakeLoadedProfile(t, "/tmp/x", tc.assets, tc.projects))
-			_, _ = s.Update(tea.WindowSizeMsg{Width: tc.width, Height: tc.height + 4})
 
-			body := s.Body(tc.width, tc.height)
-			if got := lipgloss.Height(body); got != tc.height {
-				t.Errorf("Body height = %d, want %d", got, tc.height)
-			}
-		})
+	tall := func(window int, assets []*asset.Asset, projects []*project.Manifest) int {
+		s := newEditProfileScreen(f.Actions, f.Profile.ID)
+		withProfile(s, fakeLoadedProfile(t, "/tmp/x", assets, projects))
+		_, _ = s.Update(tea.WindowSizeMsg{Width: 120, Height: window})
+		return lipgloss.Height(s.Body(120))
+	}
+
+	emptyShort := tall(20, nil, nil)
+	emptyTall := tall(80, nil, nil)
+	if emptyShort != emptyTall {
+		t.Errorf("Body height changed with window size: short=%d tall=%d", emptyShort, emptyTall)
+	}
+	if emptyTall >= 80 {
+		t.Errorf("Body filled the viewport: height=%d on 80-row window", emptyTall)
+	}
+
+	populated := tall(80,
+		[]*asset.Asset{{Manifest: asset.Manifest{ID: "skill-1", Name: "Skill", Type: asset.TypeSkill}}},
+		[]*project.Manifest{{ID: "proj-1", Name: "Proj", Path: "/tmp/proj", EnabledAgents: []string{"codex"}}},
+	)
+	if populated < emptyTall {
+		t.Errorf("Populated body shorter than empty: populated=%d empty=%d", populated, emptyTall)
 	}
 }
 
-// BodyClampsAtMinimumHeight covers the edge case the previous suite missed:
-// when the shell reserves fewer rows than the panel chrome needs
-// (header + table + spacer + header + table + spacer + buttons), the body
-// must still return a non-negative rectangle without panicking. The
-// returned height may differ from the request when there is not enough room
-// to host both tables at all; the regression guard is just "no panic + body
-// is renderable".
-func TestEditProfileScreen_BodyClampsAtMinimumHeight(t *testing.T) {
+// BodyRecoversFromPreLoadRender mirrors the runtime sequence in which
+// bubbletea calls View() on a freshly pushed screen before the screen's
+// load command has produced its profile data. The first render hands
+// empty rows to the bubbles table, which drops its internal cursor to
+// -1; without recovery the next render after the load builds rows
+// without an action cell on the cursor row and the viewport renders one
+// fewer data line than the table actually holds.
+func TestEditProfileScreen_BodyRecoversFromPreLoadRender(t *testing.T) {
 	f := newEditProfileFixture(t)
-	for _, height := range []int{1, 2, 6, 7} {
-		t.Run(fmt.Sprintf("height=%d", height), func(t *testing.T) {
-			s := newEditProfileScreen(f.Actions, f.Profile.ID)
-			withProfile(s, fakeLoadedProfile(t, "/tmp/x", nil, nil))
-			_, _ = s.Update(tea.WindowSizeMsg{Width: 120, Height: height + 4})
+	s := newEditProfileScreen(f.Actions, f.Profile.ID)
+	_, _ = s.Update(tea.WindowSizeMsg{Width: 160, Height: 50})
 
-			body := s.Body(120, height)
-			if lipgloss.Height(body) < 1 {
-				t.Errorf("Body height = %d, want >= 1 (clamp)", lipgloss.Height(body))
-			}
-		})
+	// Pre-load render: s.assets / s.projects empty, table cursor goes to -1.
+	_ = s.Body(160)
+	if c := s.assetsTable.Cursor(); c != -1 {
+		t.Logf("note: pre-load assets cursor = %d (expected -1 from bubbles SetRows(nil))", c)
+	}
+
+	// Now load and render again.
+	assets := []*asset.Asset{
+		{Manifest: asset.Manifest{ID: "a1", Name: "Alpha", Type: asset.TypeSkill}},
+		{Manifest: asset.Manifest{ID: "a2", Name: "Bravo", Type: asset.TypeSkill}},
+		{Manifest: asset.Manifest{ID: "a3", Name: "Charlie", Type: asset.TypeSkill}},
+	}
+	projects := []*project.Manifest{
+		{ID: "p1", Name: "One", Path: "/tmp/p1", EnabledAgents: []string{"codex"}},
+		{ID: "p2", Name: "Two", Path: "/tmp/p2", EnabledAgents: []string{"codex"}},
+		{ID: "p3", Name: "Three", Path: "/tmp/p3", EnabledAgents: []string{"codex"}},
+	}
+	withProfile(s, fakeLoadedProfile(t, "/tmp/x", assets, projects))
+	body := s.Body(160)
+
+	if got := s.assetsTable.Cursor(); got != 0 {
+		t.Errorf("assets cursor after recovery = %d, want 0", got)
+	}
+	if got := s.projectsTable.Cursor(); got != 0 {
+		t.Errorf("projects cursor after recovery = %d, want 0", got)
+	}
+	// All three asset/project rows must be present in the rendered body.
+	for _, want := range []string{"a1", "a2", "a3", "p1", "p2", "p3"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("Body missing %q after pre-load render recovery\n%s", want, body)
+		}
+	}
+	// The cursor row must carry the action cell labels.
+	for _, want := range []string{"dit]", "elete]"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("Body missing action cell label %q\n%s", want, body)
+		}
 	}
 }
 

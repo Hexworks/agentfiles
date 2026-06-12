@@ -115,7 +115,6 @@ func (s *profilesScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		s.width = m.Width
 		s.height = m.Height
-		s.applyTableSize()
 		if s.modal != nil {
 			mw, mh := modalSize(m.Width, m.Height)
 			s.modal.SetSize(mw, mh)
@@ -186,64 +185,46 @@ func (s *profilesScreen) StatusKeys() []key.Binding {
 	return []key.Binding{s.edit.Binding(), s.delete.Binding()}
 }
 
-func (s *profilesScreen) Body(width, height int) string {
-	background := s.bodyContent(width, height)
+func (s *profilesScreen) Body(width int) string {
+	background := s.bodyContent()
 	if s.modal == nil {
 		return background
 	}
-	return s.modal.Render(background, width, height)
+	return s.modal.Render(background, width, lipgloss.Height(background))
 }
 
 // bodyContent renders the table plus the screen-level button row at
-// exactly height rows. The shell hands Body the height it has reserved
-// for screen content (window minus title, toast, and status bar) — the
-// content must match that height exactly or the JoinVertical in
-// shell.View will push the status bar off the bottom of the terminal.
-func (s *profilesScreen) bodyContent(width, height int) string {
-	const reservedBelow = 2 // 1 spacer + 1 button row
-	tableH := height - reservedBelow
-	if tableH < 1 {
-		tableH = 1
-	}
-	s.table.SetWidth(width)
-	s.table.SetColumns(s.columns(width))
-	s.table.SetHeight(tableH)
-
+// natural width and height. The empty state collapses to a single hint
+// line followed by the button row.
+func (s *profilesScreen) bodyContent() string {
 	buttonRow := " " + s.create.View() + "  " + s.register.View() + "  " + s.back.View()
-	buttons := lipgloss.PlaceHorizontal(width, lipgloss.Left, buttonRow)
 	if len(s.profiles) == 0 {
 		empty := " No profiles registered. Press 'c' to create one or 'r' to register an existing folder."
-		// Pad the hint block to tableH so the button row stays anchored
-		// at the same y-coordinate it occupies when the table is non-empty.
-		emptyBlock := lipgloss.NewStyle().Width(width).Height(tableH).Render(empty)
-		return lipgloss.JoinVertical(lipgloss.Left, emptyBlock, "", buttons)
+		return lipgloss.JoinVertical(lipgloss.Left, empty, "", buttonRow)
 	}
-	return lipgloss.JoinVertical(lipgloss.Left, s.table.View(), "", buttons)
+	sanitizeCursor(&s.table, len(s.profiles))
+	rows := s.buildRows(s.table.Cursor())
+	cols := naturalColumns(profileColumnTitles, rows)
+	applyTable(&s.table, cols, rows)
+	return lipgloss.JoinVertical(lipgloss.Left, panelBorderFor(true).Render(s.table.View()), "", buttonRow)
 }
 
-// rebuildTable constructs a fresh bubbles/table model from the current
-// profile slice. Re-running on every load keeps row data and column
-// widths in sync without juggling partial state mutations. The table is
-// seeded with a conservative default size; Body re-sizes it on every
-// render using the height the shell has actually reserved.
+var profileColumnTitles = []string{"ID", "Name", "Path", "Actions"}
+
+// rebuildTable seeds a fresh bubbles/table model. Columns and width are
+// finalized on every render in [bodyContent] from the actual row data.
 func (s *profilesScreen) rebuildTable() {
-	width := s.tableInnerWidth()
-	cols := s.columns(width)
 	rows := s.buildRows(0)
+	cols := naturalColumns(profileColumnTitles, rows)
 	t := table.New(
 		table.WithColumns(cols),
 		table.WithRows(rows),
 		table.WithFocused(true),
-		table.WithWidth(width),
-		table.WithHeight(defaultTableHeight),
+		table.WithWidth(tableNaturalWidth(cols)),
+		table.WithHeight(len(rows)+1),
 	)
 	s.table = t
 }
-
-// defaultTableHeight is the seed value used when the screen has not
-// yet seen a window-size message. Body overrides it on every render
-// using the shell-reserved body height.
-const defaultTableHeight = 10
 
 // buildRows materializes one table.Row per profile. The Actions cell is
 // populated only on the cursor row, matching the task 0015 mockup where
@@ -269,47 +250,6 @@ func (s *profilesScreen) buildRows(cursor int) []table.Row {
 // surrounding cursor-row highlight survives.
 func actionsCellContent() string {
 	return "[" + underline("E") + "dit] [" + underline("D") + "elete]"
-}
-
-// columns picks fixed widths for ID / Name / Actions and gives the
-// remainder to Path so long filesystem paths stay readable on wide
-// terminals.
-func (s *profilesScreen) columns(innerW int) []table.Column {
-	const (
-		idW      = 14
-		nameW    = 18
-		actionsW = 22
-	)
-	pathW := innerW - idW - nameW - actionsW - tableCellPadding
-	if pathW < minPathColW {
-		pathW = minPathColW
-	}
-	return []table.Column{
-		{Title: "ID", Width: idW},
-		{Title: "Name", Width: nameW},
-		{Title: "Path", Width: pathW},
-		{Title: "Actions", Width: actionsW},
-	}
-}
-
-const minPathColW = 12
-
-// applyTableSize keeps the table's width and column layout in sync with
-// the current window. Height is left to Body, which receives the actual
-// shell-reserved body height on every render — sizing the table at
-// resize time using full window height was the source of a layout bug
-// where the table overflowed the body and pushed status + toast off
-// screen.
-func (s *profilesScreen) applyTableSize() {
-	s.table.SetWidth(s.tableInnerWidth())
-	s.table.SetColumns(s.columns(s.tableInnerWidth()))
-}
-
-func (s *profilesScreen) tableInnerWidth() int {
-	if s.width < 1 {
-		return 80
-	}
-	return s.width
 }
 
 // selectedProfile returns the profile under the table cursor. Returns

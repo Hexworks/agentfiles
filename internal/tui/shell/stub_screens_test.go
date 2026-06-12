@@ -90,7 +90,7 @@ func TestNavigationStubs_SharedBackBehavior(t *testing.T) {
 			}
 
 			// Body carries both ids.
-			body := s.Body(80, 10)
+			body := s.Body(80)
 			for _, want := range []string{s.ProfileID(), targetID, tc.targetTag} {
 				if !strings.Contains(body, want) {
 					t.Errorf("Body missing %q\n%s", want, body)
@@ -124,19 +124,18 @@ func TestNavigationStubs_EmptyIDsPanic(t *testing.T) {
 	}
 }
 
-// Body honors the requested height: PlaceHorizontal + JoinVertical fits
-// the rectangle so the shell's status bar stays anchored.
-func TestNavigationStubs_BodyMatchesRequestedHeight(t *testing.T) {
+// Body renders at its natural height: sentence + spacer + back row = 3.
+func TestNavigationStubs_BodyHasNaturalHeight(t *testing.T) {
 	stubs := []Screen{
 		newEditAssetStub("a", "b"),
 		newSelectProjectAssetsStub("a", "b"),
 		newPlanProjectStub("a", "b"),
 	}
 	for _, s := range stubs {
-		body := s.Body(60, 8)
+		body := s.Body(60)
 		got := strings.Count(body, "\n") + 1
-		if got != 8 {
-			t.Errorf("%T Body height = %d, want 8\n%s", s, got, body)
+		if got != 3 {
+			t.Errorf("%T Body height = %d, want 3\n%s", s, got, body)
 		}
 	}
 }
