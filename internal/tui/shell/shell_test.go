@@ -340,6 +340,33 @@ func TestUpdate_NotificationMsgFeedsToast(t *testing.T) {
 	}
 }
 
+// View reserves a single toast line even when no notification is active
+// so the status bar never jumps as toasts arrive and expire.
+func TestView_ReservesToastSlotWhenEmpty(t *testing.T) {
+	m := newTestShell(t)
+	tm, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = tm.(Model)
+
+	if !m.toast.Empty() {
+		t.Fatalf("precondition: toast should be empty")
+	}
+
+	got := strings.Count(m.View().Content, "\n") + 1
+
+	// Re-render with an active toast: same line count.
+	n := notifications.Notification{
+		Severity:  errs.SeverityInfo,
+		Text:      "x",
+		CreatedAt: time.Now(),
+	}
+	tm, _ = m.Update(notifications.NotificationMsg{Notification: n})
+	m = tm.(Model)
+	withToast := strings.Count(m.View().Content, "\n") + 1
+	if got != withToast {
+		t.Errorf("layout height changed: empty=%d, with-toast=%d", got, withToast)
+	}
+}
+
 // sizingSpy records every WindowSizeMsg it receives.
 type sizingSpy struct {
 	received []tea.WindowSizeMsg

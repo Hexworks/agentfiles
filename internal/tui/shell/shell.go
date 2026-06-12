@@ -195,11 +195,14 @@ func (m Model) View() tea.View {
 
 	body := top.Body(m.width)
 
-	sections := []string{title, body}
-	if toast != "" {
-		sections = append(sections, toast)
+	// Toast slot is always reserved so the status bar does not jump
+	// vertically when a notification arrives or expires. Empty toast
+	// becomes a single blank line, matching the single-line height of
+	// every rendered notification.
+	if toast == "" {
+		toast = " "
 	}
-	sections = append(sections, status)
+	sections := []string{title, body, toast, status}
 
 	v := tea.NewView(lipgloss.JoinVertical(lipgloss.Left, sections...))
 	v.AltScreen = true
