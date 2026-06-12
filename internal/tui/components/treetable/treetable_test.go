@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
 )
@@ -105,6 +106,35 @@ func TestUpdateTriggersCurrentRowButton(t *testing.T) {
 	_, _ = m.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
 	if triggered != 1 {
 		t.Fatalf("expected button trigger, got %d", triggered)
+	}
+}
+
+// Border color follows focus state: BorderFocused while the component
+// holds focus, Border otherwise. Hosting screens set the palette once
+// and trust the component to switch on its own. We use distinct
+// Bold/Italic markers so the assertion does not rely on a specific
+// terminal color profile being active under `go test`.
+func TestBorderTracksFocusState(t *testing.T) {
+	styles := DefaultStyles()
+	styles.Border = lipgloss.NewStyle().Bold(true)
+	styles.BorderFocused = lipgloss.NewStyle().Italic(true)
+
+	m := New(WithRoot(sampleTree()), WithTitle("Files"), WithStyles(styles))
+
+	blurred := m.View()
+	m.Focus()
+	focused := m.View()
+
+	if blurred == focused {
+		t.Fatalf("focused and blurred views identical, want distinct border styling")
+	}
+	// Bold-on is ESC[1m; Italic-on is ESC[3m. Each marker should appear
+	// only in its respective state.
+	if !strings.Contains(blurred, "\x1b[1m") {
+		t.Errorf("blurred view missing bold marker")
+	}
+	if !strings.Contains(focused, "\x1b[3m") {
+		t.Errorf("focused view missing italic marker")
 	}
 }
 

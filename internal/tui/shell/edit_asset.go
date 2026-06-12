@@ -166,27 +166,43 @@ func (s *editAssetScreen) InputFocused() bool {
 }
 
 func (s *editAssetScreen) buildFields() {
+	// huh fields default to a zero-value KeyMap + nil theme when
+	// constructed outside a huh.Form. That silently breaks the
+	// Toggle/Up/Down shortcuts on MultiSelect and leaves selectors blank.
+	// Apply the default keymap and Charm theme explicitly so every field
+	// honors upstream defaults (space/x toggle, j/k navigation, visible
+	// `[x]` / `[ ]` selectors).
+	keymap := huh.NewDefaultKeyMap()
+	theme := huh.ThemeFunc(huh.ThemeCharm)
 	s.description = huh.NewText().
 		Key("description").
 		Title("Description").
 		Description("Free-form description shown to selectors").
 		Value(&s.state.description)
+	s.description.WithKeyMap(keymap)
+	s.description.WithTheme(theme)
 	s.tags = huh.NewInput().
 		Key("tags").
 		Title("Tags").
 		Description(`Comma-separated, eg "git, build"`).
 		Value(&s.state.tagsCSV)
+	s.tags.WithKeyMap(keymap)
+	s.tags.WithTheme(theme)
 	s.compatible = huh.NewMultiSelect[string]().
 		Key("compatible_agents").
 		Title("Compatible Agents").
 		Description(`Empty means "all enabled agents"`).
 		Value(&s.state.compatible).
 		Options(modals.AgentOptions()...)
+	s.compatible.WithKeyMap(keymap)
+	s.compatible.WithTheme(theme)
 	s.exclusive = huh.NewInput().
 		Key("exclusive_group").
 		Title("Exclusive Group").
 		Description("Optional mutual-exclusion key, eg `main-agents-doc`").
 		Value(&s.state.exclusive)
+	s.exclusive.WithKeyMap(keymap)
+	s.exclusive.WithTheme(theme)
 }
 
 func (s *editAssetScreen) buildButtons() {
@@ -212,7 +228,18 @@ func (s *editAssetScreen) buildTree() {
 		),
 		treetable.WithTitle("Files"),
 		treetable.WithHeight(treetableMinHeight),
+		treetable.WithStyles(focusAwareTreetableStyles()),
 	)
+}
+
+// focusAwareTreetableStyles returns the default treetable styles with
+// cyan focused border + muted blurred border. Treetable picks between
+// them on its own based on its focus state.
+func focusAwareTreetableStyles() treetable.Styles {
+	st := treetable.DefaultStyles()
+	st.Border = lipgloss.NewStyle().Foreground(styles.ColorMuted)
+	st.BorderFocused = lipgloss.NewStyle().Foreground(styles.ColorCyan)
+	return st
 }
 
 // emptyTreeRoot is the placeholder used before the load command
@@ -533,17 +560,24 @@ func (s *editAssetScreen) renderCustomize(width int) string {
 	if clamp <= 0 {
 		clamp = 40
 	}
-	s.description.WithWidth(clamp)
-	s.tags.WithWidth(clamp)
-	s.compatible.WithWidth(clamp)
-	s.exclusive.WithWidth(clamp)
+	// Borders consume two columns; clamp the inner field width so the
+	// outer panel respects the right-column allotment.
+	innerWidth := clamp - 2
+	if innerWidth < 1 {
+		innerWidth = 1
+	}
+	s.description.WithWidth(innerWidth)
+	s.tags.WithWidth(innerWidth)
+	s.compatible.WithWidth(innerWidth)
+	s.exclusive.WithWidth(innerWidth)
+	focus := s.handler.Focused()
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
 		header,
-		s.description.View(),
-		s.tags.View(),
-		s.compatible.View(),
-		s.exclusive.View(),
+		panelBorderFor(focus == 1).Render(s.description.View()),
+		panelBorderFor(focus == 2).Render(s.tags.View()),
+		panelBorderFor(focus == 3).Render(s.compatible.View()),
+		panelBorderFor(focus == 4).Render(s.exclusive.View()),
 	)
 }
 

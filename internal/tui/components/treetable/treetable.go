@@ -74,10 +74,19 @@ type ValueColumn struct {
 type ActionsFunc func(n *Node) []*mnemonic.Button
 
 // Styles centralizes the component's visual configuration.
+//
+// Border applies to the rounded panel frame whenever the component is
+// blurred; BorderFocused applies when it is focused (see
+// [Model.Focused]). Both default to the same neutral style — callers
+// that want a focus-aware highlight (typical case) set BorderFocused to
+// the accent palette and Border to the muted palette.
 type Styles struct {
 	// Border styles the rounded panel frame drawn around the table when
-	// either a title or mnemonic button is set.
+	// the component is not focused.
 	Border lipgloss.Style
+	// BorderFocused styles the rounded panel frame when the component is
+	// focused. Defaults to Border on construction; override to highlight.
+	BorderFocused lipgloss.Style
 	// Title styles the caption text embedded in the top border.
 	Title lipgloss.Style
 	// Table forwards to the underlying bubbles/table.Model.
@@ -87,10 +96,12 @@ type Styles struct {
 // DefaultStyles returns palette-neutral defaults; callers pass [WithStyles]
 // to integrate with the surrounding theme.
 func DefaultStyles() Styles {
+	base := lipgloss.NewStyle()
 	return Styles{
-		Border: lipgloss.NewStyle(),
-		Title:  lipgloss.NewStyle().Bold(true),
-		Table:  table.DefaultStyles(),
+		Border:        base,
+		BorderFocused: base,
+		Title:         lipgloss.NewStyle().Bold(true),
+		Table:         table.DefaultStyles(),
 	}
 }
 
@@ -360,6 +371,15 @@ func (m *Model) SetHeight(h int) {
 	m.table.SetHeight(h)
 }
 
+// SetStyles swaps the component's styles. The underlying bubbles table
+// is updated to use the new Table styles too so a focus-state change
+// (e.g. cyan border when focused, muted when blurred) is reflected on
+// the next render.
+func (m *Model) SetStyles(s Styles) {
+	m.styles = s
+	m.table.SetStyles(s.Table)
+}
+
 // Update forwards messages to the underlying table when focused. Key presses
 // are first matched against the cursor row's mnemonic buttons; a match
 // triggers the button and short-circuits navigation, mirroring the pattern
@@ -395,7 +415,12 @@ func (m *Model) View() string {
 // mnemonic button (if any) and the title joined with `─`, matching the
 // `┌[N]─Caption─...─┐` look from the design example. The frame is built by
 // hand because lipgloss has no native title-in-border helper.
+//
+// Border color tracks focus state: Styles.BorderFocused when
+// [Model.Focused] reports true, Styles.Border otherwise. Callers that
+// don't want a focus-aware highlight leave both styles identical.
 func (m *Model) renderPanel(body string) string {
+	border := m.borderStyle()
 	bodyW := lipgloss.Width(body)
 	var parts []string
 	if m.mnemonicBtn != nil {
@@ -410,7 +435,7 @@ func (m *Model) renderPanel(body string) string {
 	if pad < 0 {
 		pad = 0
 	}
-	top := m.styles.Border.Render("┌" + title + strings.Repeat("─", pad) + "┐")
+	top := border.Render("┌" + title + strings.Repeat("─", pad) + "┐")
 
 	lines := strings.Split(body, "\n")
 	var sb strings.Builder
@@ -422,14 +447,23 @@ func (m *Model) renderPanel(body string) string {
 		if right < 0 {
 			right = 0
 		}
-		sb.WriteString(m.styles.Border.Render("│"))
+		sb.WriteString(border.Render("│"))
 		sb.WriteString(l)
 		sb.WriteString(strings.Repeat(" ", right))
-		sb.WriteString(m.styles.Border.Render("│"))
+		sb.WriteString(border.Render("│"))
 		sb.WriteString("\n")
 	}
-	sb.WriteString(m.styles.Border.Render("└" + strings.Repeat("─", bodyW) + "┘"))
+	sb.WriteString(border.Render("└" + strings.Repeat("─", bodyW) + "┘"))
 	return sb.String()
+}
+
+// borderStyle returns the focus-aware border style: BorderFocused when
+// the component holds focus, Border otherwise.
+func (m *Model) borderStyle() lipgloss.Style {
+	if m.table.Focused() {
+		return m.styles.BorderFocused
+	}
+	return m.styles.Border
 }
 
 // flatten produces a DFS list of visible nodes. The order matches the line
