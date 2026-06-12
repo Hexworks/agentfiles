@@ -34,13 +34,15 @@ type editProfileOwnActions interface {
 }
 
 // editProfileActions composes the screen's own dependencies with the
-// child Edit Asset screen's dependencies so `s.actions` can be forwarded
-// to newEditAssetScreen without a type assertion. The composition makes
-// the dependency union visible at the declaration instead of widening a
-// single flat interface for methods the parent screen never calls.
+// child Edit Asset and Select Project Assets screens' dependencies so
+// `s.actions` can be forwarded to either child constructor without a
+// type assertion. The composition makes the dependency union visible at
+// the declaration instead of widening a single flat interface for
+// methods the parent screen never calls.
 type editProfileActions interface {
 	editProfileOwnActions
 	editAssetActions
+	selectProjectAssetsActions
 }
 
 // modalKind identifies which modal flow the Edit Profile screen
@@ -568,7 +570,7 @@ func (s *editProfileScreen) onSelectAssets() tea.Cmd {
 	if !ok {
 		return nil
 	}
-	return pushCmd(newSelectProjectAssetsStub(s.profileID, p.ID))
+	return pushCmd(newSelectProjectAssetsScreen(s.actions, s.profileID, p.ID))
 }
 
 func (s *editProfileScreen) onPlanProject() tea.Cmd {

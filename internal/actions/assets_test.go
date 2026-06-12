@@ -107,6 +107,158 @@ func TestActions_UpdateAsset_PersistsManifest(t *testing.T) {
 	}
 }
 
+func TestActions_SelectAsset_AddsToProject(t *testing.T) {
+	f := newFixture(t, withProfile())
+	if _, err := f.Svc.InitAsset("personal", asset.Manifest{
+		ID: "agents", Name: "agents", Type: asset.TypeAgentsDoc,
+	}); err != nil {
+		t.Fatalf("seed asset: %v", err)
+	}
+	if _, addErrs := f.Svc.AddProject("personal", "Repo", filepath.Join(f.Root, "repo"),
+		[]string{"codex"}, nil); len(addErrs) > 0 {
+		t.Fatalf("seed project: %v", addErrs)
+	}
+
+	if _, err := f.A.SelectAsset(actions.SelectAssetInput{
+		ProfileRef: "personal", ProjectID: "repo", AssetID: "agents",
+	}); err != nil {
+		t.Fatalf("SelectAsset: %v", err)
+	}
+
+	p, err := f.Svc.LoadProject("personal", "repo")
+	if err != nil {
+		t.Fatalf("LoadProject: %v", err)
+	}
+	if len(p.SelectedAssetIDs) != 1 || p.SelectedAssetIDs[0] != "agents" {
+		t.Fatalf("expected SelectedAssetIDs=[agents], got %v", p.SelectedAssetIDs)
+	}
+}
+
+func TestActions_SelectAsset_IdempotentOnDuplicate(t *testing.T) {
+	f := newFixture(t, withProfile())
+	if _, err := f.Svc.InitAsset("personal", asset.Manifest{
+		ID: "agents", Name: "agents", Type: asset.TypeAgentsDoc,
+	}); err != nil {
+		t.Fatalf("seed asset: %v", err)
+	}
+	if _, addErrs := f.Svc.AddProject("personal", "Repo", filepath.Join(f.Root, "repo"),
+		[]string{"codex"}, []string{"agents"}); len(addErrs) > 0 {
+		t.Fatalf("seed project: %v", addErrs)
+	}
+
+	if _, err := f.A.SelectAsset(actions.SelectAssetInput{
+		ProfileRef: "personal", ProjectID: "repo", AssetID: "agents",
+	}); err != nil {
+		t.Fatalf("SelectAsset: %v", err)
+	}
+
+	p, _ := f.Svc.LoadProject("personal", "repo")
+	if len(p.SelectedAssetIDs) != 1 {
+		t.Fatalf("expected single entry, got %v", p.SelectedAssetIDs)
+	}
+}
+
+func TestActions_SelectAsset_MissingAssetReturnsAssetNotFoundError(t *testing.T) {
+	f := newFixture(t, withProfile())
+	if _, addErrs := f.Svc.AddProject("personal", "Repo", filepath.Join(f.Root, "repo"),
+		[]string{"codex"}, nil); len(addErrs) > 0 {
+		t.Fatalf("seed project: %v", addErrs)
+	}
+
+	_, err := f.A.SelectAsset(actions.SelectAssetInput{
+		ProfileRef: "personal", ProjectID: "repo", AssetID: "missing",
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	var typed app.AssetNotFoundError
+	if !errors.As(err, &typed) {
+		t.Fatalf("expected AssetNotFoundError, got %T: %v", err, err)
+	}
+}
+
+func TestActions_SelectAsset_MissingProjectReturnsProjectNotFoundError(t *testing.T) {
+	f := newFixture(t, withProfile())
+	if _, err := f.Svc.InitAsset("personal", asset.Manifest{
+		ID: "agents", Name: "agents", Type: asset.TypeAgentsDoc,
+	}); err != nil {
+		t.Fatalf("seed asset: %v", err)
+	}
+
+	_, err := f.A.SelectAsset(actions.SelectAssetInput{
+		ProfileRef: "personal", ProjectID: "missing", AssetID: "agents",
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	var typed app.ProjectNotFoundError
+	if !errors.As(err, &typed) {
+		t.Fatalf("expected ProjectNotFoundError, got %T: %v", err, err)
+	}
+}
+
+func TestActions_UnselectAsset_RemovesFromProject(t *testing.T) {
+	f := newFixture(t, withProfile())
+	if _, err := f.Svc.InitAsset("personal", asset.Manifest{
+		ID: "agents", Name: "agents", Type: asset.TypeAgentsDoc,
+	}); err != nil {
+		t.Fatalf("seed asset: %v", err)
+	}
+	if _, addErrs := f.Svc.AddProject("personal", "Repo", filepath.Join(f.Root, "repo"),
+		[]string{"codex"}, []string{"agents"}); len(addErrs) > 0 {
+		t.Fatalf("seed project: %v", addErrs)
+	}
+
+	if _, err := f.A.UnselectAsset(actions.UnselectAssetInput{
+		ProfileRef: "personal", ProjectID: "repo", AssetID: "agents",
+	}); err != nil {
+		t.Fatalf("UnselectAsset: %v", err)
+	}
+
+	p, _ := f.Svc.LoadProject("personal", "repo")
+	if len(p.SelectedAssetIDs) != 0 {
+		t.Fatalf("expected empty selection, got %v", p.SelectedAssetIDs)
+	}
+}
+
+func TestActions_UnselectAsset_IdempotentOnMissingSelection(t *testing.T) {
+	f := newFixture(t, withProfile())
+	if _, err := f.Svc.InitAsset("personal", asset.Manifest{
+		ID: "agents", Name: "agents", Type: asset.TypeAgentsDoc,
+	}); err != nil {
+		t.Fatalf("seed asset: %v", err)
+	}
+	if _, addErrs := f.Svc.AddProject("personal", "Repo", filepath.Join(f.Root, "repo"),
+		[]string{"codex"}, nil); len(addErrs) > 0 {
+		t.Fatalf("seed project: %v", addErrs)
+	}
+
+	if _, err := f.A.UnselectAsset(actions.UnselectAssetInput{
+		ProfileRef: "personal", ProjectID: "repo", AssetID: "agents",
+	}); err != nil {
+		t.Fatalf("UnselectAsset on never-selected asset: %v", err)
+	}
+}
+
+func TestActions_UnselectAsset_MissingAssetReturnsAssetNotFoundError(t *testing.T) {
+	f := newFixture(t, withProfile())
+	if _, addErrs := f.Svc.AddProject("personal", "Repo", filepath.Join(f.Root, "repo"),
+		[]string{"codex"}, nil); len(addErrs) > 0 {
+		t.Fatalf("seed project: %v", addErrs)
+	}
+
+	_, err := f.A.UnselectAsset(actions.UnselectAssetInput{
+		ProfileRef: "personal", ProjectID: "repo", AssetID: "missing",
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	var typed app.AssetNotFoundError
+	if !errors.As(err, &typed) {
+		t.Fatalf("expected AssetNotFoundError, got %T: %v", err, err)
+	}
+}
+
 func TestActions_DeleteAsset_RemovesAssetAndUnselectsFromProjects(t *testing.T) {
 	f := newFixture(t, withProfile())
 	if _, err := f.Svc.InitAsset("personal", asset.Manifest{

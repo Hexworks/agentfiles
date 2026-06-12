@@ -544,6 +544,33 @@ func (s *Service) SelectAsset(profileRef, projectID, assetID string) errs.Domain
 	return project.Save(loaded.Root, p)
 }
 
+// UnselectAsset removes assetID from the project's SelectedAssetIDs if
+// present and persists the change. The call is idempotent: an asset that
+// is not selected returns nil with no write. Returns AssetNotFoundError
+// when the asset is unknown in the profile and ProjectNotFoundError when
+// the project is missing.
+func (s *Service) UnselectAsset(profileRef, projectID, assetID string) errs.DomainError {
+	loaded, p, err := s.resolveProject(profileRef, projectID)
+	if err != nil {
+		return err
+	}
+	if loaded.Assets[assetID] == nil {
+		return AssetNotFoundError{AssetID: assetID}
+	}
+	idx := -1
+	for i, existing := range p.SelectedAssetIDs {
+		if existing == assetID {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		return nil
+	}
+	p.SelectedAssetIDs = append(p.SelectedAssetIDs[:idx], p.SelectedAssetIDs[idx+1:]...)
+	return project.Save(loaded.Root, p)
+}
+
 // DeleteProject removes the project manifest from the profile. Files in
 // the project's target repository remain on disk as orphaned files (see
 // docs/glossary.md); the project's previous repo is not touched.

@@ -1,7 +1,7 @@
 ---
 id: 0028
 type: feature
-status: pending
+status: in-review
 topics: go, tui, project, asset
 depends_on: 0021
 ---
@@ -118,3 +118,7 @@ Plus:
 make build && make test && make lint
 ./bin/af   # Edit Profile → Project row `a` → Select / Unselect / Plan / Back
 ```
+
+## Plan
+
+[plan.md](./plan.md)

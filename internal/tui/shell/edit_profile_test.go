@@ -367,7 +367,7 @@ func TestEditProfileScreen_ProjectsEKeyOpensEditProjectModal(t *testing.T) {
 	}
 }
 
-func TestEditProfileScreen_ProjectsAKeyPushesSelectProjectAssetsStub(t *testing.T) {
+func TestEditProfileScreen_ProjectsAKeyPushesSelectProjectAssetsScreen(t *testing.T) {
 	f := newEditProfileFixture(t)
 	s := newEditProfileScreen(f.Actions, f.Profile.ID)
 	withProfile(s, fakeLoadedProfile(t, "/tmp/x", nil,
@@ -382,12 +382,12 @@ func TestEditProfileScreen_ProjectsAKeyPushesSelectProjectAssetsStub(t *testing.
 	if !ok {
 		t.Fatalf("cmd produced %T, want PushScreenMsg", cmd())
 	}
-	stub, ok := push.Screen.(*selectProjectAssetsStub)
+	child, ok := push.Screen.(*selectProjectAssetsScreen)
 	if !ok {
-		t.Fatalf("pushed screen = %T, want *selectProjectAssetsStub", push.Screen)
+		t.Fatalf("pushed screen = %T, want *selectProjectAssetsScreen", push.Screen)
 	}
-	if stub.profileID != f.Profile.ID || stub.projectID != "proj-1" {
-		t.Errorf("stub ids = (%q, %q), want (%q, %q)", stub.profileID, stub.projectID, f.Profile.ID, "proj-1")
+	if child.profileID != f.Profile.ID || child.projectID != "proj-1" {
+		t.Errorf("screen ids = (%q, %q), want (%q, %q)", child.profileID, child.projectID, f.Profile.ID, "proj-1")
 	}
 }
 

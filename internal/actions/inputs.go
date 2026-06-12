@@ -115,3 +115,20 @@ type RemoveAssetFileInput struct {
 	AssetID    string
 	Rel        string
 }
+
+// SelectAssetInput carries the ids for the row-level select action on the
+// Select Project Assets screen. The service is idempotent on duplicate
+// ids; callers do not need to filter.
+type SelectAssetInput struct {
+	ProfileRef string
+	ProjectID  string
+	AssetID    string
+}
+
+// UnselectAssetInput is the symmetric input for removing an asset id from
+// a project's selection. Idempotent on missing ids.
+type UnselectAssetInput struct {
+	ProfileRef string
+	ProjectID  string
+	AssetID    string
+}

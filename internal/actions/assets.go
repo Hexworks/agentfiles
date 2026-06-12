@@ -34,3 +34,15 @@ func (a *Actions) AddAssetFile(in AddAssetFileInput) (struct{}, errs.DomainError
 func (a *Actions) RemoveAssetFile(in RemoveAssetFileInput) (struct{}, errs.DomainError) {
 	return struct{}{}, a.svc.RemoveAssetFile(in.ProfileRef, in.AssetID, in.Rel)
 }
+
+// SelectAsset adds the asset id to the project's SelectedAssetIDs.
+// Idempotent on duplicate ids.
+func (a *Actions) SelectAsset(in SelectAssetInput) (struct{}, errs.DomainError) {
+	return struct{}{}, a.svc.SelectAsset(in.ProfileRef, in.ProjectID, in.AssetID)
+}
+
+// UnselectAsset removes the asset id from the project's SelectedAssetIDs.
+// Idempotent on missing ids.
+func (a *Actions) UnselectAsset(in UnselectAssetInput) (struct{}, errs.DomainError) {
+	return struct{}{}, a.svc.UnselectAsset(in.ProfileRef, in.ProjectID, in.AssetID)
+}
