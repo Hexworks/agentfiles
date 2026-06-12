@@ -18,7 +18,7 @@ func (a *Actions) LoadProject(in LoadProjectInput) (*project.Manifest, errs.Doma
 }
 
 func (a *Actions) UpdateProject(in UpdateProjectInput) (struct{}, errs.DomainError) {
-	return struct{}{}, a.svc.UpdateProject(in.ProfileRef, in.Project)
+	return struct{}{}, a.svc.UpdateProject(in.ProfileRef, in.ProjectID, in.Name, in.Path, in.EnabledAgents)
 }
 
 func (a *Actions) DeleteProject(in DeleteProjectInput) (struct{}, errs.DomainError) {

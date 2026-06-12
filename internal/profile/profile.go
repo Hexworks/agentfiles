@@ -208,6 +208,20 @@ func (l *Profile) ProjectList() []*project.Manifest {
 	return list
 }
 
+// AssetList returns assets sorted by display name. Mirrors ProjectList so
+// TUI rendering stays stable across reloads without each screen re-implementing
+// the ordering rule.
+func (l *Profile) AssetList() []*asset.Asset {
+	var list []*asset.Asset
+	for _, a := range l.Assets {
+		list = append(list, a)
+	}
+	slices.SortFunc(list, func(a, b *asset.Asset) int {
+		return strings.Compare(a.Name, b.Name)
+	})
+	return list
+}
+
 // slug converts a profile name into a stable id suitable for manifest storage.
 func slug(v string) string {
 	v = strings.ToLower(strings.TrimSpace(v))

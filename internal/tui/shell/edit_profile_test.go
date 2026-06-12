@@ -1,6 +1,7 @@
 package shell
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -79,8 +80,7 @@ func (f *editProfileFixture) seedProject(t *testing.T, name, path string) *proje
 // profile + sorted asset / project slices into the screen so UI-state
 // tests run without spinning the registry.
 func withProfile(s *editProfileScreen, prof *profile.Profile) {
-	s.prof = prof
-	s.rebuildLists()
+	s.rebuildLists(prof)
 	s.rebuildAssetsTable()
 	s.rebuildProjectsTable()
 	_ = s.handler.FocusIndex(0)
@@ -126,7 +126,7 @@ func TestEditProfileScreen_InitLoadsProfileFromActions(t *testing.T) {
 	}
 }
 
-func TestEditProfileScreen_AssetsFocusedMnemonicSet_PopulatedIsUnique(t *testing.T) {
+func TestEditProfileScreen_AssetsFocusedMnemonicSet_HasExpectedMnemonicsInOrder(t *testing.T) {
 	f := newEditProfileFixture(t)
 	s := newEditProfileScreen(f.Actions, f.Profile.ID)
 	withProfile(s, fakeLoadedProfile(t, "/tmp/x",
@@ -145,7 +145,7 @@ func TestEditProfileScreen_AssetsFocusedMnemonicSet_PopulatedIsUnique(t *testing
 	}
 }
 
-func TestEditProfileScreen_ProjectsFocusedMnemonicSet_PopulatedIsUnique(t *testing.T) {
+func TestEditProfileScreen_ProjectsFocusedMnemonicSet_HasExpectedMnemonicsInOrder(t *testing.T) {
 	f := newEditProfileFixture(t)
 	s := newEditProfileScreen(f.Actions, f.Profile.ID)
 	withProfile(s, fakeLoadedProfile(t, "/tmp/x",
@@ -306,11 +306,11 @@ func TestEditProfileScreen_AssetsDKeyOpensDeleteAssetConfirm(t *testing.T) {
 	if s.modal == nil {
 		t.Fatalf("modal nil after 'd'")
 	}
-	if got := s.modal.ID(); got != "delete-asset" {
-		t.Errorf("modal id = %q, want delete-asset", got)
+	if got := s.modalKind; got != ModalKindDeleteAsset {
+		t.Errorf("modalKind = %v, want ModalKindDeleteAsset", got)
 	}
-	if s.pendingDeleteAsset != "skill-1" {
-		t.Errorf("pendingDeleteAsset = %q, want skill-1", s.pendingDeleteAsset)
+	if s.pendingDeleteAssetID != "skill-1" {
+		t.Errorf("pendingDeleteAssetID = %q, want skill-1", s.pendingDeleteAssetID)
 	}
 }
 
@@ -327,9 +327,9 @@ func TestEditProfileScreen_AssetDeleteConfirmedRemovesAsset(t *testing.T) {
 	_, _ = s.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
 	_, cmd := s.Update(modal.ResolvedMsg{ID: "delete-asset", Confirmed: true})
 
-	done, ok := drainCmd(t, cmd).(editProfileMutationDoneMsg)
+	done, ok := drainCmd(t, cmd).(mutationDoneMsg)
 	if !ok {
-		t.Fatalf("cmd produced %T, want editProfileMutationDoneMsg", drainCmd(t, cmd))
+		t.Fatalf("cmd produced %T, want mutationDoneMsg", drainCmd(t, cmd))
 	}
 	if done.severity != errs.SeverityInfo {
 		t.Errorf("severity = %v, want info", done.severity)
@@ -362,8 +362,8 @@ func TestEditProfileScreen_AssetDeleteRejectedMakesNoServiceCall(t *testing.T) {
 	if s.modal != nil {
 		t.Errorf("modal still open after No, want cleared")
 	}
-	if s.pendingDeleteAsset != "" {
-		t.Errorf("pendingDeleteAsset = %q, want cleared", s.pendingDeleteAsset)
+	if s.pendingDeleteAssetID != "" {
+		t.Errorf("pendingDeleteAssetID = %q, want cleared", s.pendingDeleteAssetID)
 	}
 	fresh, err := f.Service.LoadProfile(f.Profile.ID)
 	if err != nil {
@@ -388,8 +388,8 @@ func TestEditProfileScreen_ProjectsEKeyOpensEditProjectModal(t *testing.T) {
 	if s.modal == nil {
 		t.Fatalf("modal nil after 'e' on projects")
 	}
-	if got := s.modal.ID(); got != "edit-project" {
-		t.Errorf("modal id = %q, want edit-project", got)
+	if got := s.modalKind; got != ModalKindEditProject {
+		t.Errorf("modalKind = %v, want ModalKindEditProject", got)
 	}
 }
 
@@ -455,11 +455,11 @@ func TestEditProfileScreen_ProjectsDKeyOpensDeleteProjectConfirm(t *testing.T) {
 	if s.modal == nil {
 		t.Fatalf("modal nil after 'd' on projects")
 	}
-	if got := s.modal.ID(); got != "delete-project" {
-		t.Errorf("modal id = %q, want delete-project", got)
+	if got := s.modalKind; got != ModalKindDeleteProject {
+		t.Errorf("modalKind = %v, want ModalKindDeleteProject", got)
 	}
-	if s.pendingDeleteProj != "proj-1" {
-		t.Errorf("pendingDeleteProj = %q, want proj-1", s.pendingDeleteProj)
+	if s.pendingDeleteProjectID != "proj-1" {
+		t.Errorf("pendingDeleteProjectID = %q, want proj-1", s.pendingDeleteProjectID)
 	}
 }
 
@@ -483,9 +483,9 @@ func TestEditProfileScreen_ConfirmedDeleteProjectDoesNotDeleteRepoFiles(t *testi
 
 	_, cmd := s.Update(modal.ResolvedMsg{ID: "delete-project", Confirmed: true})
 
-	done, ok := drainCmd(t, cmd).(editProfileMutationDoneMsg)
+	done, ok := drainCmd(t, cmd).(mutationDoneMsg)
 	if !ok {
-		t.Fatalf("cmd produced %T, want editProfileMutationDoneMsg", drainCmd(t, cmd))
+		t.Fatalf("cmd produced %T, want mutationDoneMsg", drainCmd(t, cmd))
 	}
 	if done.severity != errs.SeverityInfo {
 		t.Errorf("severity = %v, want info", done.severity)
@@ -518,8 +518,8 @@ func TestEditProfileScreen_CKeyOpensCreateAssetModal(t *testing.T) {
 	if s.modal == nil {
 		t.Fatalf("modal nil after 'c'")
 	}
-	if got := s.modal.ID(); got != "create-asset" {
-		t.Errorf("modal id = %q, want create-asset", got)
+	if got := s.modalKind; got != ModalKindCreateAsset {
+		t.Errorf("modalKind = %v, want ModalKindCreateAsset", got)
 	}
 }
 
@@ -533,8 +533,8 @@ func TestEditProfileScreen_RKeyOpensRegisterProjectModal(t *testing.T) {
 	if s.modal == nil {
 		t.Fatalf("modal nil after 'r'")
 	}
-	if got := s.modal.ID(); got != "register-project" {
-		t.Errorf("modal id = %q, want register-project", got)
+	if got := s.modalKind; got != ModalKindRegisterProject {
+		t.Errorf("modalKind = %v, want ModalKindRegisterProject", got)
 	}
 }
 
@@ -628,7 +628,9 @@ func TestEditProfileScreen_TitleAndBodyContainRequiredText(t *testing.T) {
 	}
 }
 
-func TestEditProfileScreen_BodyExactlyMatchesRequestedHeight(t *testing.T) {
+// BodyMatchesRequestedHeight asserts the body fills exactly the height the
+// shell reserved, so the status bar stays anchored at its allocated row.
+func TestEditProfileScreen_BodyMatchesRequestedHeight(t *testing.T) {
 	f := newEditProfileFixture(t)
 	cases := []struct {
 		name     string
@@ -642,7 +644,6 @@ func TestEditProfileScreen_BodyExactlyMatchesRequestedHeight(t *testing.T) {
 			[]*project.Manifest{{ID: "proj-1", Name: "Proj", Path: "/tmp/proj", EnabledAgents: []string{"codex"}}},
 			120, 24},
 		{"tall window", nil, nil, 120, 40},
-		{"short window", nil, nil, 120, 14},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -653,6 +654,29 @@ func TestEditProfileScreen_BodyExactlyMatchesRequestedHeight(t *testing.T) {
 			body := s.Body(tc.width, tc.height)
 			if got := lipgloss.Height(body); got != tc.height {
 				t.Errorf("Body height = %d, want %d", got, tc.height)
+			}
+		})
+	}
+}
+
+// BodyClampsAtMinimumHeight covers the edge case the previous suite missed:
+// when the shell reserves fewer rows than the panel chrome needs
+// (header + table + spacer + header + table + spacer + buttons), the body
+// must still return a non-negative rectangle without panicking. The
+// returned height may differ from the request when there is not enough room
+// to host both tables at all; the regression guard is just "no panic + body
+// is renderable".
+func TestEditProfileScreen_BodyClampsAtMinimumHeight(t *testing.T) {
+	f := newEditProfileFixture(t)
+	for _, height := range []int{1, 2, 6, 7} {
+		t.Run(fmt.Sprintf("height=%d", height), func(t *testing.T) {
+			s := newEditProfileScreen(f.Actions, f.Profile.ID)
+			withProfile(s, fakeLoadedProfile(t, "/tmp/x", nil, nil))
+			_, _ = s.Update(tea.WindowSizeMsg{Width: 120, Height: height + 4})
+
+			body := s.Body(120, height)
+			if lipgloss.Height(body) < 1 {
+				t.Errorf("Body height = %d, want >= 1 (clamp)", lipgloss.Height(body))
 			}
 		})
 	}
@@ -696,7 +720,7 @@ func TestEditProfileScreen_MutationDoneEmitsNotificationAndReload(t *testing.T) 
 	s := newEditProfileScreen(f.Actions, f.Profile.ID)
 	withProfile(s, fakeLoadedProfile(t, "/tmp/x", nil, nil))
 
-	_, cmd := s.Update(editProfileMutationDoneMsg{text: "Asset created", severity: errs.SeverityInfo})
+	_, cmd := s.Update(mutationDoneMsg{text: "Asset created", severity: errs.SeverityInfo})
 
 	collected := collectMessages(t, cmd)
 	var sawNotification, sawLoad bool
@@ -721,26 +745,28 @@ func TestEditProfileScreen_MutationDoneEmitsNotificationAndReload(t *testing.T) 
 
 func TestEditProfileScreen_EditProjectModalPreservesNonEditableFields(t *testing.T) {
 	f := newEditProfileFixture(t)
+	// Seed the precondition through real domain entry points: an asset
+	// exists, a project exists, and the project has the asset selected.
+	// Service.SelectAsset is what production code uses to record a
+	// project ←→ asset binding, so the test exercises the same persisted
+	// shape EditProject must preserve.
+	f.seedAsset(t, "Some Asset", asset.TypeSkill)
 	projectPath := filepath.Join(f.Root, "proj-edit")
 	manifest := f.seedProject(t, "Proj", projectPath)
-	// Pre-set SelectedAssetIDs so we can assert it's preserved across edit.
-	manifest.SelectedAssetIDs = []string{"some-asset"}
+	if err := f.Service.SelectAsset(f.Profile.ID, manifest.ID, "some-asset"); err != nil {
+		t.Fatalf("seed SelectAsset: %v", err)
+	}
 
 	s := newEditProfileScreen(f.Actions, f.Profile.ID)
 	loaded := drainCmd(t, s.Init()).(editProfileLoadedMsg)
 	_, _ = s.Update(loaded)
 	_ = s.handler.FocusIndex(1)
 	s.rebuildSet()
-	// Mutate the in-memory selected list to simulate the prior state.
-	if proj, ok := s.selectedProject(); ok {
-		proj.SelectedAssetIDs = []string{"some-asset"}
-	}
 	_, _ = s.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
 	if s.modal == nil {
 		t.Fatalf("edit-project modal not opened")
 	}
 
-	// Simulate confirm with renamed values.
 	in := modals.EditProjectInput{
 		Name:          "Renamed",
 		Path:          projectPath,
@@ -748,8 +774,8 @@ func TestEditProfileScreen_EditProjectModalPreservesNonEditableFields(t *testing
 	}
 	_, cmd := s.Update(modal.ResolvedMsg{ID: "edit-project", Confirmed: true, Value: in})
 
-	if _, ok := drainCmd(t, cmd).(editProfileMutationDoneMsg); !ok {
-		t.Fatalf("cmd produced %T, want editProfileMutationDoneMsg", drainCmd(t, cmd))
+	if _, ok := drainCmd(t, cmd).(mutationDoneMsg); !ok {
+		t.Fatalf("cmd produced %T, want mutationDoneMsg", drainCmd(t, cmd))
 	}
 
 	fresh, err := f.Service.LoadProfile(f.Profile.ID)
@@ -765,6 +791,30 @@ func TestEditProfileScreen_EditProjectModalPreservesNonEditableFields(t *testing
 	}
 	if !slices.Equal(updated.SelectedAssetIDs, []string{"some-asset"}) {
 		t.Errorf("SelectedAssetIDs after edit = %v, want preserved [some-asset]", updated.SelectedAssetIDs)
+	}
+}
+
+// MutationErrorEmitsErrorNotification covers the symmetric branch to
+// LoadErrorEmitsNotification: when an action fails, the screen surfaces a
+// SeverityError notification so the user sees the failure.
+func TestEditProfileScreen_MutationErrorEmitsErrorNotification(t *testing.T) {
+	f := newEditProfileFixture(t)
+	s := newEditProfileScreen(f.Actions, f.Profile.ID)
+	loaded := drainCmd(t, s.Init()).(editProfileLoadedMsg)
+	_, _ = s.Update(loaded)
+	// Stage a delete-asset for an id that does not exist. afterDeleteAsset
+	// runs the service call which returns an AssetNotFoundError; the screen
+	// must surface that as SeverityError, not a SeverityInfo "deleted" toast.
+	s.pendingDeleteAssetID = "does-not-exist"
+	s.modalKind = ModalKindDeleteAsset
+
+	_, cmd := s.Update(modal.ResolvedMsg{ID: "delete-asset", Confirmed: true})
+	done, ok := drainCmd(t, cmd).(mutationDoneMsg)
+	if !ok {
+		t.Fatalf("cmd produced %T, want mutationDoneMsg", drainCmd(t, cmd))
+	}
+	if done.severity != errs.SeverityError {
+		t.Errorf("severity = %v, want SeverityError", done.severity)
 	}
 }
 

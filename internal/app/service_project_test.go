@@ -62,8 +62,7 @@ func TestUpdateProject_PersistsChanges(t *testing.T) {
 		t.Fatalf("load: %v", err)
 	}
 
-	p.EnabledAgents = []string{"codex", "claude-code"}
-	if err := svc.UpdateProject("personal", p); err != nil {
+	if err := svc.UpdateProject("personal", p.ID, p.Name, p.Path, []string{"codex", "claude-code"}); err != nil {
 		t.Fatalf("update: %v", err)
 	}
 

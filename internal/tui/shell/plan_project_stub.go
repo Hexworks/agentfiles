@@ -5,55 +5,46 @@ import (
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
-
-	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
 )
 
 // planProjectStub is the placeholder pushed by the Edit Profile screen's
 // Projects-table `[Plan]` action until task 0029 lands the real Plan
-// Project screen. It carries the selected profile + project ids so the
-// future implementation only needs to swap the body, not the call site.
+// Project screen.
 type planProjectStub struct {
+	backOnlyScreenBase
 	profileID string
 	projectID string
-	back      *mnemonic.Button
 }
 
 func newPlanProjectStub(profileID, projectID string) *planProjectStub {
+	if profileID == "" {
+		panic("shell.newPlanProjectStub: empty profileID")
+	}
+	if projectID == "" {
+		panic("shell.newPlanProjectStub: empty projectID")
+	}
 	return &planProjectStub{
-		profileID: profileID,
-		projectID: projectID,
-		back: mnemonic.New(
-			"Back",
-			'b',
-			func() tea.Cmd { return popCmd() },
-			mnemonic.WithExtraBindingKeys("esc"),
-		),
+		backOnlyScreenBase: newBackOnlyBase(),
+		profileID:          profileID,
+		projectID:          projectID,
 	}
 }
+
+func (s *planProjectStub) ProfileID() string { return s.profileID }
+func (s *planProjectStub) ProjectID() string { return s.projectID }
 
 func (s *planProjectStub) Init() tea.Cmd { return nil }
 
 func (s *planProjectStub) Update(msg tea.Msg) (Screen, tea.Cmd) {
-	kp, ok := msg.(tea.KeyPressMsg)
-	if !ok {
-		return s, nil
-	}
-	if s.back.Matches(kp) {
-		return s, s.back.Trigger()
+	if cmd, _ := s.handleMsg(msg); cmd != nil {
+		return s, cmd
 	}
 	return s, nil
 }
 
-func (s *planProjectStub) Title() string { return "Plan Project" }
-
-func (s *planProjectStub) StatusKeys() []key.Binding {
-	return []key.Binding{s.back.Binding()}
-}
-
-func (s *planProjectStub) Body(width, _ int) string {
-	msg := fmt.Sprintf(" Planning project %q in profile %q — task 0029", s.projectID, s.profileID)
-	back := lipgloss.PlaceHorizontal(width, lipgloss.Right, s.back.View())
-	return lipgloss.JoinVertical(lipgloss.Left, msg, "", back)
+func (s *planProjectStub) Title() string             { return "Plan Project" }
+func (s *planProjectStub) StatusKeys() []key.Binding { return s.statusKeys() }
+func (s *planProjectStub) Body(width, height int) string {
+	sentence := fmt.Sprintf(" Planning project %q in profile %q — task 0029", s.projectID, s.profileID)
+	return s.renderBody(width, height, sentence)
 }

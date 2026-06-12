@@ -484,20 +484,41 @@ func (s *Service) LoadProject(profileRef, projectID string) (*project.Manifest, 
 	return p, err
 }
 
-// UpdateProject overwrites the project manifest on disk with the caller's
-// edits. The project must already exist in the profile; this is not a
-// create path (use AddProject for that).
-//
-// Panics if p is nil: a nil pointer is a programmer bug per
-// docs/guidelines/errors.md, not a recoverable not-found.
-func (s *Service) UpdateProject(profileRef string, p *project.Manifest) errs.DomainError {
-	if p == nil {
-		panic("app.Service.UpdateProject: nil manifest")
-	}
-	loaded, _, err := s.resolveProject(profileRef, p.ID)
+// UpdateProject applies user-editable fields (name, repo path, enabled
+// agents) to the project identified by projectID and persists the result.
+// ID, SelectedAssetIDs, and CreatedAt are preserved by loading the
+// on-disk manifest first and only overwriting the editable fields — the
+// merge contract lives here so the TUI never holds a live aggregate
+// pointer it has half-mutated.
+func (s *Service) UpdateProject(profileRef, projectID, name, path string, enabledAgents []string) errs.DomainError {
+	loaded, p, err := s.resolveProject(profileRef, projectID)
 	if err != nil {
 		return err
 	}
+	p.Name = name
+	p.Path = path
+	p.EnabledAgents = append([]string(nil), enabledAgents...)
+	return project.Save(loaded.Root, p)
+}
+
+// SelectAsset appends assetID to the project's SelectedAssetIDs if not
+// already present and persists the change. Returns AssetNotFoundError
+// when the asset is unknown in the profile; ProjectNotFoundError when
+// the project is missing.
+func (s *Service) SelectAsset(profileRef, projectID, assetID string) errs.DomainError {
+	loaded, p, err := s.resolveProject(profileRef, projectID)
+	if err != nil {
+		return err
+	}
+	if loaded.Assets[assetID] == nil {
+		return AssetNotFoundError{AssetID: assetID}
+	}
+	for _, existing := range p.SelectedAssetIDs {
+		if existing == assetID {
+			return nil
+		}
+	}
+	p.SelectedAssetIDs = append(p.SelectedAssetIDs, assetID)
 	return project.Save(loaded.Root, p)
 }
 

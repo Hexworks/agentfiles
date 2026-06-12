@@ -2,7 +2,6 @@ package shell
 
 import (
 	"fmt"
-	"sort"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/table"
@@ -20,26 +19,53 @@ import (
 	"github.com/hexworks/agentfiles/internal/tui/modals"
 )
 
+// editProfileActions is the narrow slice of *actions.Actions the Edit
+// Profile screen actually uses. Naming the interface here keeps the
+// dependency direction tui→app explicit and lets tests (or future
+// alternative back-ends) substitute without depending on the full Actions
+// surface.
+type editProfileActions interface {
+	LoadProfile(in actions.LoadProfileInput) (*profile.Profile, errs.DomainError)
+	CreateAsset(in actions.CreateAssetInput) (string, errs.DomainError)
+	DeleteAsset(in actions.DeleteAssetInput) (struct{}, errs.DomainError)
+	AddProject(in actions.AddProjectInput) (*project.Manifest, errs.DomainError)
+	UpdateProject(in actions.UpdateProjectInput) (struct{}, errs.DomainError)
+	DeleteProject(in actions.DeleteProjectInput) (struct{}, errs.DomainError)
+}
+
+// ModalKind identifies which modal flow the Edit Profile screen currently
+// hosts. Exposed so tests can assert intent (`modalKindDeleteAsset`)
+// instead of the raw modal-id string the dialog happens to carry.
+type ModalKind int
+
+const (
+	ModalKindNone ModalKind = iota
+	ModalKindDeleteAsset
+	ModalKindDeleteProject
+	ModalKindCreateAsset
+	ModalKindRegisterProject
+	ModalKindEditProject
+)
+
 // editProfileScreen is the Edit Profile management screen reached from
-// the Profiles row-level `[Edit]` action. It owns two bubbles/table
-// views (Assets and Projects), a focus.Handler that exposes `[1]` /
-// `[2]` ctrl+digit mnemonics, row-level action buttons that swap with
-// the focused table, and screen-level Create Asset / Register Project /
-// Back mnemonic buttons. Confirmation and form modals composite over
-// the body; no sub-screen is pushed for them.
+// the Profiles row-level `[Edit]` action. It owns two bubbles/table views
+// (Assets and Projects), a focus.Handler exposing `[1]` / `[2]`
+// ctrl+digit mnemonics, row-level action buttons that swap with the
+// focused table, and screen-level Create Asset / Register Project / Back
+// buttons. Confirmation + form modals composite over the body; no
+// sub-screen is pushed for them.
 type editProfileScreen struct {
-	actions   *actions.Actions
+	actions   editProfileActions
 	profileID string
 
-	prof         *profile.Profile
-	assetsList   []*asset.Asset
-	projectsList []*project.Manifest
+	assets   []*asset.Asset
+	projects []*project.Manifest
 
-	handler       *focus.Handler
-	assetsTable   *table.Model
-	projectsTable *table.Model
-	assetsPanel   *mnemonic.Button // [1]
-	projectsPanel *mnemonic.Button // [2]
+	handler             *focus.Handler
+	assetsTable         *table.Model
+	projectsTable       *table.Model
+	assetsFocusButton   *mnemonic.Button // [1]
+	projectsFocusButton *mnemonic.Button // [2]
 
 	editAsset   *mnemonic.Button // e (assets)
 	deleteAsset *mnemonic.Button // d (assets)
@@ -55,32 +81,22 @@ type editProfileScreen struct {
 
 	set *mnemonic.Set
 
-	modal              *modal.Modal
-	pendingDeleteAsset string
-	pendingDeleteProj  string
+	modal                  *modal.Modal
+	modalKind              ModalKind
+	pendingDeleteAssetID   string
+	pendingDeleteProjectID string
 
 	width, height int
 }
 
 // editProfileLoadedMsg carries the loaded profile (or load error) that
-// Init's command produces. Update populates both tables and seeds focus
-// on receipt.
+// Init's command produces.
 type editProfileLoadedMsg struct {
 	prof *profile.Profile
 	err  errs.DomainError
 }
 
-// editProfileMutationDoneMsg envelopes a finished Create / Update /
-// Delete action. Update reacts by emitting a notification plus a
-// profile reload — the same pattern profilesScreen uses, for the same
-// reason: tea.Sequence's wrapper is unexported and not inspectable in
-// tests, so a custom envelope is the testable path.
-type editProfileMutationDoneMsg struct {
-	text     string
-	severity errs.Severity
-}
-
-func newEditProfileScreen(a *actions.Actions, profileID string) *editProfileScreen {
+func newEditProfileScreen(a editProfileActions, profileID string) *editProfileScreen {
 	if a == nil {
 		panic("shell.newEditProfileScreen: nil actions")
 	}
@@ -94,14 +110,18 @@ func newEditProfileScreen(a *actions.Actions, profileID string) *editProfileScre
 	s.buildTables()
 	s.buildButtons()
 	s.handler = focus.New(focus.WithModifier(focus.ModCtrl))
-	s.assetsPanel = s.handler.AddMnemonic(s.assetsTable, '1')
-	s.projectsPanel = s.handler.AddMnemonic(s.projectsTable, '2')
+	s.assetsFocusButton = s.handler.AddMnemonic(s.assetsTable, '1')
+	s.projectsFocusButton = s.handler.AddMnemonic(s.projectsTable, '2')
+	if s.assetsFocusButton == nil || s.projectsFocusButton == nil {
+		// AddMnemonic returns nil only when the digit is invalid or already
+		// bound — both are programmer errors here, and silently continuing
+		// would crash inside rebuildSet on a nil deref.
+		panic("shell.newEditProfileScreen: focus handler refused panel mnemonic")
+	}
 	s.rebuildSet()
 	return s
 }
 
-// buildTables seeds both tables with empty column / row sets so the
-// widgets are valid before the first WindowSizeMsg + load arrive.
 func (s *editProfileScreen) buildTables() {
 	at := table.New(
 		table.WithColumns(s.assetsColumns(defaultEditProfileWidth)),
@@ -142,21 +162,21 @@ func (s *editProfileScreen) buildButtons() {
 
 // rebuildSet refreshes the mnemonic set so its registration-time
 // uniqueness check covers the current focus + data state. Assets focus
-// exposes e/d; Projects focus exposes e/a/p/d. The two focus panels
+// exposes e/d; Projects focus exposes e/a/p/d. The two focus buttons
 // `[1]` / `[2]` and the screen-level c/r/b are always present.
 func (s *editProfileScreen) rebuildSet() {
 	set := mnemonic.NewSet()
-	set.Add(s.assetsPanel)
-	set.Add(s.projectsPanel)
+	set.Add(s.assetsFocusButton)
+	set.Add(s.projectsFocusButton)
 
 	switch s.handler.Focused() {
 	case 0:
-		if len(s.assetsList) > 0 {
+		if len(s.assets) > 0 {
 			set.Add(s.editAsset)
 			set.Add(s.deleteAsset)
 		}
 	case 1:
-		if len(s.projectsList) > 0 {
+		if len(s.projects) > 0 {
 			set.Add(s.editProject)
 			set.Add(s.selectAssets)
 			set.Add(s.planProject)
@@ -180,56 +200,71 @@ func (s *editProfileScreen) loadCmd() tea.Cmd {
 }
 
 func (s *editProfileScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
-	switch m := msg.(type) {
-	case tea.WindowSizeMsg:
-		s.width = m.Width
-		s.height = m.Height
-		if s.modal != nil {
-			mw, mh := modalSize(m.Width, m.Height)
-			s.modal.SetSize(mw, mh)
-			var cmd tea.Cmd
-			s.modal, cmd = s.modal.Update(m)
-			return s, cmd
-		}
-		return s, nil
-
-	case editProfileLoadedMsg:
-		s.prof = m.prof
-		s.rebuildLists()
-		s.rebuildAssetsTable()
-		s.rebuildProjectsTable()
-		focusCmd := s.handler.FocusIndex(0)
-		s.rebuildSet()
-		if m.err != nil {
-			return s, tea.Batch(focusCmd, notificationCmd(m.err.Severity(), m.err.Error()))
-		}
-		return s, focusCmd
-
-	case editProfileMutationDoneMsg:
-		return s, tea.Batch(notificationCmd(m.severity, m.text), s.loadCmd())
-
-	case modal.ResolvedMsg:
-		return s, s.handleResolved(m)
-
-	case tea.KeyPressMsg:
-		if s.modal != nil {
+	// Single modal-guard for messages the modal owns. WindowSizeMsg still
+	// needs to update the screen's own width/height before being forwarded,
+	// so it has its own branch below.
+	if s.modal != nil {
+		switch msg.(type) {
+		case modal.ResolvedMsg, tea.WindowSizeMsg, editProfileLoadedMsg, mutationDoneMsg:
+			// fall through to type-specific handling
+		default:
 			return s.forwardToModal(msg)
 		}
-		// Focus handler consumes tab / shift+tab / ctrl+1 / ctrl+2.
-		if handled, cmd := s.handler.Update(msg); handled {
-			s.rebuildSet()
-			return s, cmd
-		}
-		if btn := s.set.Match(m); btn != nil {
-			return s, btn.Trigger()
-		}
-		return s, s.routeToFocusedTable(m)
 	}
 
-	if s.modal != nil {
-		return s.forwardToModal(msg)
+	switch m := msg.(type) {
+	case tea.WindowSizeMsg:
+		return s.handleResize(m)
+	case editProfileLoadedMsg:
+		return s.handleLoaded(m)
+	case mutationDoneMsg:
+		return s, tea.Batch(notificationCmd(m.severity, m.text), s.loadCmd())
+	case modal.ResolvedMsg:
+		return s, s.handleResolved(m)
+	case tea.KeyPressMsg:
+		return s.handleKey(m)
 	}
 	return s, nil
+}
+
+func (s *editProfileScreen) handleResize(m tea.WindowSizeMsg) (Screen, tea.Cmd) {
+	s.width = m.Width
+	s.height = m.Height
+	if s.modal != nil {
+		mw, mh := modalSize(m.Width, m.Height)
+		s.modal.SetSize(mw, mh)
+		var cmd tea.Cmd
+		s.modal, cmd = s.modal.Update(m)
+		return s, cmd
+	}
+	return s, nil
+}
+
+func (s *editProfileScreen) handleLoaded(m editProfileLoadedMsg) (Screen, tea.Cmd) {
+	s.rebuildLists(m.prof)
+	s.rebuildAssetsTable()
+	s.rebuildProjectsTable()
+	focusCmd := s.handler.FocusIndex(0)
+	s.rebuildSet()
+	if m.err != nil {
+		return s, tea.Batch(focusCmd, notificationCmd(m.err.Severity(), m.err.Error()))
+	}
+	return s, focusCmd
+}
+
+func (s *editProfileScreen) handleKey(m tea.KeyPressMsg) (Screen, tea.Cmd) {
+	if s.modal != nil {
+		return s.forwardToModal(m)
+	}
+	// Focus handler consumes tab / shift+tab / ctrl+1 / ctrl+2.
+	if handled, cmd := s.handler.Update(m); handled {
+		s.rebuildSet()
+		return s, cmd
+	}
+	if btn := s.set.Match(m); btn != nil {
+		return s, btn.Trigger()
+	}
+	return s, s.routeToFocusedTable(m)
 }
 
 func (s *editProfileScreen) forwardToModal(msg tea.Msg) (Screen, tea.Cmd) {
@@ -239,44 +274,44 @@ func (s *editProfileScreen) forwardToModal(msg tea.Msg) (Screen, tea.Cmd) {
 }
 
 // routeToFocusedTable forwards keypresses the handler and mnemonic set
-// did not consume to the table the handler currently considers
-// focused. On a cursor change, the actions cell rebuilds for the
-// newly-selected row.
+// did not consume to the table the handler currently considers focused.
+// On a cursor change, the actions cell rebuilds for the newly-selected
+// row.
 func (s *editProfileScreen) routeToFocusedTable(m tea.KeyPressMsg) tea.Cmd {
-	switch c := s.handler.FocusedComponent().(type) {
-	case *table.Model:
-		before := c.Cursor()
-		updated, cmd := c.Update(m)
-		*c = updated
-		if c.Cursor() != before {
-			if c == s.assetsTable {
-				c.SetRows(s.buildAssetsRows(c.Cursor()))
-			} else if c == s.projectsTable {
-				c.SetRows(s.buildProjectsRows(c.Cursor()))
-			}
-		}
-		return cmd
+	c, ok := s.handler.FocusedComponent().(*table.Model)
+	if !ok {
+		return nil
 	}
-	return nil
+	before := c.Cursor()
+	updated, cmd := c.Update(m)
+	*c = updated
+	if c.Cursor() != before {
+		switch c {
+		case s.assetsTable:
+			c.SetRows(s.buildAssetsRows(c.Cursor()))
+		case s.projectsTable:
+			c.SetRows(s.buildProjectsRows(c.Cursor()))
+		}
+	}
+	return cmd
 }
 
 func (s *editProfileScreen) Title() string { return "Edit Profile" }
 
 // StatusKeys returns the row-level mnemonics of the focused table plus
-// the [Back] hint. Screen-level c/r and the focus mnemonics `[1]` /
-// `[2]` are excluded because they're visible on the body (parent task
-// 0015's status-bar rule). Back is the same explicit exception the
-// Settings + Profiles screens make so the user can still see the back
-// hint.
+// the [Back] hint. Screen-level c/r and the focus mnemonics `[1]` / `[2]`
+// are excluded because they're visible on the body. Back is the same
+// explicit exception the Settings + Profiles screens make so the user
+// can still see the back hint.
 func (s *editProfileScreen) StatusKeys() []key.Binding {
 	out := make([]key.Binding, 0, 5)
 	switch s.handler.Focused() {
 	case 0:
-		if len(s.assetsList) > 0 {
+		if len(s.assets) > 0 {
 			out = append(out, s.editAsset.Binding(), s.deleteAsset.Binding())
 		}
 	case 1:
-		if len(s.projectsList) > 0 {
+		if len(s.projects) > 0 {
 			out = append(out,
 				s.editProject.Binding(),
 				s.selectAssets.Binding(),
@@ -290,32 +325,53 @@ func (s *editProfileScreen) StatusKeys() []key.Binding {
 }
 
 func (s *editProfileScreen) Body(width, height int) string {
-	background := s.bodyContent(width, height)
+	background := s.renderBody(width, height)
 	if s.modal == nil {
 		return background
 	}
 	return s.modal.Render(background, width, height)
 }
 
-// bodyContent renders the two-table layout exactly height rows tall.
-// JoinVertical of [assetsHeader (1), assetsTable (N), spacer (1),
-// projectsHeader (1), projectsTable (M), spacer (1), buttons (1)]
-// sums to 5 + N + M, so the two tables get height - 5 rows split
-// evenly, with the remainder going to the projects table.
-func (s *editProfileScreen) bodyContent(width, height int) string {
-	const fixedLines = 5
-	tableTotal := height - fixedLines
-	if tableTotal < 2 {
-		tableTotal = 2
-	}
-	assetsH := tableTotal / 2
-	projectsH := tableTotal - assetsH
+// Two table-chrome rows (panel headers), two spacer rows, and one button
+// row sit above + below the two tables. Body splits the remaining height
+// between Assets and Projects.
+const (
+	editProfileHeadersRows = 2
+	editProfileSpacersRows = 2
+	editProfileButtonsRow  = 1
+	editProfileChromeRows  = editProfileHeadersRows + editProfileSpacersRows + editProfileButtonsRow
+	editProfileMinTableRow = 1
+)
 
+// layoutTables returns the per-table heights for a given body height.
+// Pure — does not mutate the tables.
+func (s *editProfileScreen) layoutTables(height int) (assetsH, projectsH int) {
+	tableTotal := height - editProfileChromeRows
+	if tableTotal < 2*editProfileMinTableRow {
+		tableTotal = 2 * editProfileMinTableRow
+	}
+	assetsH = tableTotal / 2
+	projectsH = tableTotal - assetsH
+	return assetsH, projectsH
+}
+
+// resizeTables applies the layout to both bubbles tables. Side-effecting;
+// renderBody calls it once per render so the tables track the body
+// rectangle the shell reserves.
+func (s *editProfileScreen) resizeTables(width, assetsH, projectsH int) {
 	s.applyTableSize(s.assetsTable, s.assetsColumns(width), width, assetsH)
 	s.applyTableSize(s.projectsTable, s.projectsColumns(width), width, projectsH)
+}
 
-	assetsHeader := s.assetsPanel.View() + " " + lipgloss.NewStyle().Bold(true).Render("Assets")
-	projectsHeader := s.projectsPanel.View() + " " + lipgloss.NewStyle().Bold(true).Render("Projects")
+// renderBody composes the two-table layout exactly height rows tall.
+// JoinVertical of [header, table, spacer, header, table, spacer, buttons]
+// sums to editProfileChromeRows + assetsH + projectsH = height.
+func (s *editProfileScreen) renderBody(width, height int) string {
+	assetsH, projectsH := s.layoutTables(height)
+	s.resizeTables(width, assetsH, projectsH)
+
+	assetsHeader := s.assetsFocusButton.View() + " " + lipgloss.NewStyle().Bold(true).Render("Assets")
+	projectsHeader := s.projectsFocusButton.View() + " " + lipgloss.NewStyle().Bold(true).Render("Projects")
 
 	buttonRow := " " + s.createAsset.View() + "  " + s.register.View() + "  " + s.back.View()
 	buttons := lipgloss.PlaceHorizontal(width, lipgloss.Left, buttonRow)
@@ -348,20 +404,16 @@ const (
 
 // rebuildLists materializes ordered slices of assets and projects from
 // the freshly-loaded profile so the tables (and tests) see a stable
-// iteration order.
-func (s *editProfileScreen) rebuildLists() {
-	if s.prof == nil {
-		s.assetsList = nil
-		s.projectsList = nil
+// iteration order. Domain ordering is owned by profile.AssetList /
+// ProjectList — the screen does not re-implement sort rules.
+func (s *editProfileScreen) rebuildLists(prof *profile.Profile) {
+	if prof == nil {
+		s.assets = nil
+		s.projects = nil
 		return
 	}
-	assets := make([]*asset.Asset, 0, len(s.prof.Assets))
-	for _, a := range s.prof.Assets {
-		assets = append(assets, a)
-	}
-	sort.Slice(assets, func(i, j int) bool { return assets[i].Name < assets[j].Name })
-	s.assetsList = assets
-	s.projectsList = s.prof.ProjectList()
+	s.assets = prof.AssetList()
+	s.projects = prof.ProjectList()
 }
 
 func (s *editProfileScreen) rebuildAssetsTable() {
@@ -387,12 +439,11 @@ func (s *editProfileScreen) tableInnerWidth() int {
 
 func (s *editProfileScreen) assetsColumns(innerW int) []table.Column {
 	const (
-		idW         = 18
-		typeW       = 14
-		actionsW    = 22
-		cellPadding = 8
+		idW      = 18
+		typeW    = 14
+		actionsW = 22
 	)
-	nameW := innerW - idW - typeW - actionsW - cellPadding
+	nameW := innerW - idW - typeW - actionsW - tableCellPadding
 	if nameW < minNameColW {
 		nameW = minNameColW
 	}
@@ -406,12 +457,11 @@ func (s *editProfileScreen) assetsColumns(innerW int) []table.Column {
 
 func (s *editProfileScreen) projectsColumns(innerW int) []table.Column {
 	const (
-		idW         = 18
-		nameW       = 18
-		actionsW    = 26
-		cellPadding = 8
+		idW      = 18
+		nameW    = 18
+		actionsW = 26
 	)
-	pathW := innerW - idW - nameW - actionsW - cellPadding
+	pathW := innerW - idW - nameW - actionsW - tableCellPadding
 	if pathW < minPathColW {
 		pathW = minPathColW
 	}
@@ -426,11 +476,11 @@ func (s *editProfileScreen) projectsColumns(innerW int) []table.Column {
 const minNameColW = 12
 
 func (s *editProfileScreen) buildAssetsRows(cursor int) []table.Row {
-	rows := make([]table.Row, len(s.assetsList))
-	for i, a := range s.assetsList {
+	rows := make([]table.Row, len(s.assets))
+	for i, a := range s.assets {
 		cell := ""
 		if i == cursor {
-			cell = assetActionsCellContent()
+			cell = assetActionsCell()
 		}
 		rows[i] = table.Row{a.ID, a.Name, string(a.Type), cell}
 	}
@@ -438,64 +488,51 @@ func (s *editProfileScreen) buildAssetsRows(cursor int) []table.Row {
 }
 
 func (s *editProfileScreen) buildProjectsRows(cursor int) []table.Row {
-	rows := make([]table.Row, len(s.projectsList))
-	for i, p := range s.projectsList {
+	rows := make([]table.Row, len(s.projects))
+	for i, p := range s.projects {
 		cell := ""
 		if i == cursor {
-			cell = projectActionsCellContent()
+			cell = projectActionsCell()
 		}
 		rows[i] = table.Row{p.ID, p.Name, p.Path, cell}
 	}
 	return rows
 }
 
-// assetActionsCellContent renders "[Edit] [Delete]" with the mnemonic
-// chars wrapped in SGR underline-on/off so the surrounding cursor-row
-// highlight is not terminated by an embedded full reset.
-func assetActionsCellContent() string {
-	const (
-		underlineOn  = "\x1b[4m"
-		underlineOff = "\x1b[24m"
-	)
-	return "[" + underlineOn + "E" + underlineOff + "dit] " +
-		"[" + underlineOn + "D" + underlineOff + "elete]"
+// assetActionsCell renders "[Edit] [Delete]" with the mnemonic letters
+// underlined via shell.underline so the surrounding cursor-row highlight
+// survives.
+func assetActionsCell() string {
+	return "[" + underline("E") + "dit] [" + underline("D") + "elete]"
 }
 
-// projectActionsCellContent renders "[Edit] [select Assets] [Plan]
-// [Delete]" with each mnemonic char wrapped in manual SGR codes. The
-// cell is intentionally compact — the long form is shown in the status
-// bar.
-func projectActionsCellContent() string {
-	const (
-		on  = "\x1b[4m"
-		off = "\x1b[24m"
-	)
-	return "[" + on + "E" + off + "] " +
-		"[" + on + "A" + off + "] " +
-		"[" + on + "P" + off + "] " +
-		"[" + on + "D" + off + "]"
+// projectActionsCell renders a compact "[E] [A] [P] [D]" cell — the
+// long-form labels live in the status bar.
+func projectActionsCell() string {
+	return "[" + underline("E") + "] [" + underline("A") + "] [" +
+		underline("P") + "] [" + underline("D") + "]"
 }
 
 func (s *editProfileScreen) selectedAsset() (*asset.Asset, bool) {
-	if len(s.assetsList) == 0 {
+	if len(s.assets) == 0 {
 		return nil, false
 	}
 	cur := s.assetsTable.Cursor()
-	if cur < 0 || cur >= len(s.assetsList) {
+	if cur < 0 || cur >= len(s.assets) {
 		return nil, false
 	}
-	return s.assetsList[cur], true
+	return s.assets[cur], true
 }
 
 func (s *editProfileScreen) selectedProject() (*project.Manifest, bool) {
-	if len(s.projectsList) == 0 {
+	if len(s.projects) == 0 {
 		return nil, false
 	}
 	cur := s.projectsTable.Cursor()
-	if cur < 0 || cur >= len(s.projectsList) {
+	if cur < 0 || cur >= len(s.projects) {
 		return nil, false
 	}
-	return s.projectsList[cur], true
+	return s.projects[cur], true
 }
 
 func (s *editProfileScreen) onEditAsset() tea.Cmd {
@@ -511,9 +548,12 @@ func (s *editProfileScreen) onDeleteAsset() tea.Cmd {
 	if !ok {
 		return nil
 	}
-	s.pendingDeleteAsset = a.ID
-	prompt := fmt.Sprintf("Are you sure you want to delete asset %q?", a.Name)
-	s.openModal(modal.NewConfirm("delete-asset", prompt, nil))
+	s.pendingDeleteAssetID = a.ID
+	prompt := fmt.Sprintf(
+		"Delete asset %q? It will also be removed from every project's selection.",
+		a.Name,
+	)
+	s.openModal(modal.NewConfirm("delete-asset", prompt, nil), ModalKindDeleteAsset)
 	return s.modal.Init()
 }
 
@@ -526,7 +566,7 @@ func (s *editProfileScreen) onEditProject() tea.Cmd {
 		Name:          p.Name,
 		Path:          p.Path,
 		EnabledAgents: append([]string(nil), p.EnabledAgents...),
-	}))
+	}), ModalKindEditProject)
 	return s.modal.Init()
 }
 
@@ -551,79 +591,88 @@ func (s *editProfileScreen) onDeleteProject() tea.Cmd {
 	if !ok {
 		return nil
 	}
-	s.pendingDeleteProj = p.ID
+	s.pendingDeleteProjectID = p.ID
 	prompt := fmt.Sprintf(
-		"Are you sure you want to delete project %q? (only metadata — repo files are kept)",
+		"Delete project manifest %q? Files in the target repo become orphaned files and are kept on disk.",
 		p.Name,
 	)
-	s.openModal(modal.NewConfirm("delete-project", prompt, nil))
+	s.openModal(modal.NewConfirm("delete-project", prompt, nil), ModalKindDeleteProject)
 	return s.modal.Init()
 }
 
 func (s *editProfileScreen) onCreateAsset() tea.Cmd {
-	s.openModal(modals.NewCreateAsset(asset.Manifest{}))
+	s.openModal(modals.NewCreateAsset(asset.Manifest{}), ModalKindCreateAsset)
 	return s.modal.Init()
 }
 
 func (s *editProfileScreen) onRegisterProject() tea.Cmd {
-	s.openModal(modals.NewRegisterProject(modals.RegisterProjectInput{}))
+	s.openModal(modals.NewRegisterProject(modals.RegisterProjectInput{}), ModalKindRegisterProject)
 	return s.modal.Init()
 }
 
-func (s *editProfileScreen) openModal(m *modal.Modal) {
+func (s *editProfileScreen) openModal(m *modal.Modal, kind ModalKind) {
 	s.modal = m
+	s.modalKind = kind
 	if s.width > 0 && s.height > 0 {
 		mw, mh := modalSize(s.width, s.height)
 		s.modal.SetSize(mw, mh)
 	}
 }
 
+// handleResolved dispatches a modal ResolvedMsg to the right post-action
+// handler. The modal field + pending ids are cleared up-front so unrelated
+// modal lifecycles cannot leave a stale id behind regardless of which
+// arm fires.
 func (s *editProfileScreen) handleResolved(msg modal.ResolvedMsg) tea.Cmd {
 	s.modal = nil
-	switch msg.ID {
-	case "delete-asset":
-		return s.afterDeleteAsset(msg)
-	case "delete-project":
-		return s.afterDeleteProject(msg)
-	case "create-asset":
+	kind := s.modalKind
+	s.modalKind = ModalKindNone
+	pendingAsset := s.pendingDeleteAssetID
+	pendingProject := s.pendingDeleteProjectID
+	s.pendingDeleteAssetID = ""
+	s.pendingDeleteProjectID = ""
+	switch kind {
+	case ModalKindDeleteAsset:
+		return s.afterDeleteAsset(msg, pendingAsset)
+	case ModalKindDeleteProject:
+		return s.afterDeleteProject(msg, pendingProject)
+	case ModalKindCreateAsset:
 		return s.afterCreateAsset(msg)
-	case "register-project":
+	case ModalKindRegisterProject:
 		return s.afterRegisterProject(msg)
-	case "edit-project":
+	case ModalKindEditProject:
 		return s.afterEditProject(msg)
 	}
 	return nil
 }
 
-func (s *editProfileScreen) afterDeleteAsset(msg modal.ResolvedMsg) tea.Cmd {
-	id := s.pendingDeleteAsset
-	s.pendingDeleteAsset = ""
+func (s *editProfileScreen) afterDeleteAsset(msg modal.ResolvedMsg, id string) tea.Cmd {
 	if !msg.Confirmed || id == "" {
 		return nil
 	}
-	return editProfileMutationCmd(
-		func() (struct{}, errs.DomainError) {
-			return s.actions.DeleteAsset(actions.DeleteAssetInput{
+	return mutationCmd(
+		func() errs.DomainError {
+			_, err := s.actions.DeleteAsset(actions.DeleteAssetInput{
 				ProfileRef: s.profileID,
 				AssetID:    id,
 			})
+			return err
 		},
 		fmt.Sprintf("Asset %q deleted", id),
 	)
 }
 
-func (s *editProfileScreen) afterDeleteProject(msg modal.ResolvedMsg) tea.Cmd {
-	id := s.pendingDeleteProj
-	s.pendingDeleteProj = ""
+func (s *editProfileScreen) afterDeleteProject(msg modal.ResolvedMsg, id string) tea.Cmd {
 	if !msg.Confirmed || id == "" {
 		return nil
 	}
-	return editProfileMutationCmd(
-		func() (struct{}, errs.DomainError) {
-			return s.actions.DeleteProject(actions.DeleteProjectInput{
+	return mutationCmd(
+		func() errs.DomainError {
+			_, err := s.actions.DeleteProject(actions.DeleteProjectInput{
 				ProfileRef: s.profileID,
 				ProjectID:  id,
 			})
+			return err
 		},
 		fmt.Sprintf("Project %q deleted", id),
 	)
@@ -637,12 +686,13 @@ func (s *editProfileScreen) afterCreateAsset(msg modal.ResolvedMsg) tea.Cmd {
 	if !ok {
 		return nil
 	}
-	return editProfileMutationCmd(
-		func() (string, errs.DomainError) {
-			return s.actions.CreateAsset(actions.CreateAssetInput{
+	return mutationCmd(
+		func() errs.DomainError {
+			_, err := s.actions.CreateAsset(actions.CreateAssetInput{
 				ProfileRef: s.profileID,
 				Manifest:   manifest,
 			})
+			return err
 		},
 		fmt.Sprintf("Asset %q created", manifest.Name),
 	)
@@ -657,14 +707,15 @@ func (s *editProfileScreen) afterRegisterProject(msg modal.ResolvedMsg) tea.Cmd 
 		return nil
 	}
 	name := draft.Name
-	return editProfileMutationCmd(
-		func() (*project.Manifest, errs.DomainError) {
-			return s.actions.AddProject(actions.AddProjectInput{
+	return mutationCmd(
+		func() errs.DomainError {
+			_, err := s.actions.AddProject(actions.AddProjectInput{
 				ProfileRef:    s.profileID,
 				Name:          draft.Name,
 				Path:          draft.Path,
 				EnabledAgents: draft.EnabledAgents,
 			})
+			return err
 		},
 		fmt.Sprintf("Project %q registered", name),
 	)
@@ -682,32 +733,20 @@ func (s *editProfileScreen) afterEditProject(msg modal.ResolvedMsg) tea.Cmd {
 	if !ok {
 		return nil
 	}
-	// Merge editable fields back into the loaded manifest so ID,
-	// SelectedAssetIDs, and CreatedAt are preserved.
-	target.Name = in.Name
-	target.Path = in.Path
-	target.EnabledAgents = append([]string(nil), in.EnabledAgents...)
-	return editProfileMutationCmd(
-		func() (struct{}, errs.DomainError) {
-			return s.actions.UpdateProject(actions.UpdateProjectInput{
-				ProfileRef: s.profileID,
-				Project:    target,
+	// The service owns the merge contract (ID / SelectedAssetIDs /
+	// CreatedAt are preserved on the loaded manifest before save) — the
+	// TUI only ships the form values.
+	return mutationCmd(
+		func() errs.DomainError {
+			_, err := s.actions.UpdateProject(actions.UpdateProjectInput{
+				ProfileRef:    s.profileID,
+				ProjectID:     target.ID,
+				Name:          in.Name,
+				Path:          in.Path,
+				EnabledAgents: in.EnabledAgents,
 			})
+			return err
 		},
-		fmt.Sprintf("Project %q updated", target.Name),
+		fmt.Sprintf("Project %q updated", in.Name),
 	)
-}
-
-// editProfileMutationCmd runs the action synchronously inside a Cmd
-// closure and returns the editProfileMutationDoneMsg envelope. Update
-// then emits a tea.Batch(notification, reload) — same testability
-// rationale as profilesScreen.mutationCmd.
-func editProfileMutationCmd[T any](action func() (T, errs.DomainError), successText string) tea.Cmd {
-	return func() tea.Msg {
-		_, err := action()
-		if err != nil {
-			return editProfileMutationDoneMsg{text: err.Error(), severity: err.Severity()}
-		}
-		return editProfileMutationDoneMsg{text: successText, severity: errs.SeverityInfo}
-	}
 }

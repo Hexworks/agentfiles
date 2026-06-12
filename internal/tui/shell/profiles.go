@@ -12,7 +12,6 @@ import (
 	"github.com/hexworks/agentfiles/internal/actions"
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/profile"
-	"github.com/hexworks/agentfiles/internal/registry"
 	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
 	"github.com/hexworks/agentfiles/internal/tui/components/modal"
 	"github.com/hexworks/agentfiles/internal/tui/modals"
@@ -52,18 +51,6 @@ type profilesScreen struct {
 type profilesLoadedMsg struct {
 	profiles []*profile.Profile
 	err      errs.DomainError
-}
-
-// profileMutationDoneMsg is dispatched once a Create / Register / Delete
-// action has run to completion. The screen reacts by emitting both a
-// NotificationMsg (so the user sees the outcome) and a fresh load so the
-// table reflects the new registry state. Using a single, internal
-// envelope lets us guarantee the action completed before the reload
-// starts — tea.Sequence's wrapper message is unexported and not
-// inspectable in tests, so a custom message is the testable path.
-type profileMutationDoneMsg struct {
-	text     string
-	severity errs.Severity
 }
 
 func newProfilesScreen(a *actions.Actions) *profilesScreen {
@@ -151,7 +138,7 @@ func (s *profilesScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 		}
 		return s, nil
 
-	case profileMutationDoneMsg:
+	case mutationDoneMsg:
 		return s, tea.Batch(notificationCmd(m.severity, m.text), s.loadCmd())
 
 	case modal.ResolvedMsg:
@@ -277,17 +264,11 @@ func (s *profilesScreen) buildRows(cursor int) []table.Row {
 	return rows
 }
 
-// actionsCellContent returns the "[Edit] [Delete]" label with the two
-// mnemonic runes underlined via SGR 4 / 24. Manual escape sequences
-// avoid lipgloss's full-reset behavior so the cell composes cleanly
-// inside the table's Selected style.
+// actionsCellContent returns the "[Edit] [Delete]" label with the
+// mnemonic runes underlined via the shared shell.underline helper so the
+// surrounding cursor-row highlight survives.
 func actionsCellContent() string {
-	const (
-		underlineOn  = "\x1b[4m"
-		underlineOff = "\x1b[24m"
-	)
-	return "[" + underlineOn + "E" + underlineOff + "dit] " +
-		"[" + underlineOn + "D" + underlineOff + "elete]"
+	return "[" + underline("E") + "dit] [" + underline("D") + "elete]"
 }
 
 // columns picks fixed widths for ID / Name / Actions and gives the
@@ -295,12 +276,11 @@ func actionsCellContent() string {
 // terminals.
 func (s *profilesScreen) columns(innerW int) []table.Column {
 	const (
-		idW         = 14
-		nameW       = 18
-		actionsW    = 22
-		cellPadding = 8 // 2 cols of padding per column from table's default Cell style
+		idW      = 14
+		nameW    = 18
+		actionsW = 22
 	)
-	pathW := innerW - idW - nameW - actionsW - cellPadding
+	pathW := innerW - idW - nameW - actionsW - tableCellPadding
 	if pathW < minPathColW {
 		pathW = minPathColW
 	}
@@ -413,8 +393,9 @@ func (s *profilesScreen) afterCreate(msg modal.ResolvedMsg) tea.Cmd {
 		return nil
 	}
 	return mutationCmd(
-		func() (*registry.ProfileRef, errs.DomainError) {
-			return s.actions.CreateProfile(actions.CreateProfileInput{Name: in.Name, Path: in.Path})
+		func() errs.DomainError {
+			_, err := s.actions.CreateProfile(actions.CreateProfileInput{Name: in.Name, Path: in.Path})
+			return err
 		},
 		fmt.Sprintf("Profile %q created", in.Name),
 	)
@@ -429,8 +410,9 @@ func (s *profilesScreen) afterRegister(msg modal.ResolvedMsg) tea.Cmd {
 		return nil
 	}
 	return mutationCmd(
-		func() (*registry.ProfileRef, errs.DomainError) {
-			return s.actions.RegisterProfile(actions.RegisterProfileInput{Path: in.Path})
+		func() errs.DomainError {
+			_, err := s.actions.RegisterProfile(actions.RegisterProfileInput{Path: in.Path})
+			return err
 		},
 		"Profile registered",
 	)
@@ -460,33 +442,20 @@ func (s *profilesScreen) afterDeleteStep2(msg modal.ResolvedMsg) tea.Cmd {
 	}
 	if msg.Confirmed {
 		return mutationCmd(
-			func() (struct{}, errs.DomainError) {
-				return s.actions.DeleteProfileWithFolder(actions.DeleteProfileInput{ProfileRef: id})
+			func() errs.DomainError {
+				_, err := s.actions.DeleteProfileWithFolder(actions.DeleteProfileInput{ProfileRef: id})
+				return err
 			},
 			fmt.Sprintf("Profile %q and folder deleted", name),
 		)
 	}
 	return mutationCmd(
-		func() (struct{}, errs.DomainError) {
-			return s.actions.DeleteProfile(actions.DeleteProfileInput{ProfileRef: id})
+		func() errs.DomainError {
+			_, err := s.actions.DeleteProfile(actions.DeleteProfileInput{ProfileRef: id})
+			return err
 		},
 		fmt.Sprintf("Profile %q deleted", name),
 	)
-}
-
-// mutationCmd runs action synchronously inside the Cmd closure and
-// returns a [profileMutationDoneMsg] regardless of outcome. The screen
-// reacts by emitting both a NotificationMsg and a reload — the
-// action is guaranteed complete before the reload starts because
-// the message itself is only dispatched after action returns.
-func mutationCmd[T any](action func() (T, errs.DomainError), successText string) tea.Cmd {
-	return func() tea.Msg {
-		_, err := action()
-		if err != nil {
-			return profileMutationDoneMsg{text: err.Error(), severity: err.Severity()}
-		}
-		return profileMutationDoneMsg{text: successText, severity: errs.SeverityInfo}
-	}
 }
 
 // notificationCmd wraps a one-shot notification dispatch so the screen

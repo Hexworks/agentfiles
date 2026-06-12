@@ -85,6 +85,11 @@ func (s *Set) Match(kp tea.KeyPressMsg) *Button {
 
 // Buttons returns the registered buttons in insertion order.
 //
+// The insertion order is a part of the contract: callers (and tests)
+// rely on it to predict the order [Set.View] renders and the order
+// status-bar helpers iterate. Add the buttons in the order you want
+// rendered.
+//
 // The returned slice header is a copy; reordering or replacing entries does
 // not affect the Set. The pointed-at Buttons are shared — do not mutate them
 // through the returned slice if you want the Set's view of them to stay

@@ -1,0 +1,63 @@
+package shell
+
+import (
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+
+	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
+)
+
+// backOnlyScreenBase carries the wiring every "Coming soon" navigation stub
+// shares: a [Back] button bound to `b` + `esc`, viewport tracking from
+// WindowSizeMsg, and a StatusKeys + body helper. Each stub embeds it and
+// supplies only its title plus the one-line body sentence.
+type backOnlyScreenBase struct {
+	back          *mnemonic.Button
+	width, height int
+}
+
+func newBackOnlyBase() backOnlyScreenBase {
+	return backOnlyScreenBase{
+		back: mnemonic.New(
+			"Back",
+			'b',
+			func() tea.Cmd { return popCmd() },
+			mnemonic.WithExtraBindingKeys("esc"),
+		),
+	}
+}
+
+// handleMsg returns (cmd, true) when the base consumed the message
+// (back-key trigger or window-size update). Callers fall through with
+// (nil, false) when the message is not theirs.
+func (b *backOnlyScreenBase) handleMsg(msg tea.Msg) (tea.Cmd, bool) {
+	switch m := msg.(type) {
+	case tea.WindowSizeMsg:
+		b.width = m.Width
+		b.height = m.Height
+		return nil, true
+	case tea.KeyPressMsg:
+		if b.back.Matches(m) {
+			return b.back.Trigger(), true
+		}
+	}
+	return nil, false
+}
+
+// statusKeys returns the single [Back] binding. Stubs expose [Back] in the
+// status bar because the body has no other cue, mirroring the Settings
+// screen's explicit exception.
+func (b *backOnlyScreenBase) statusKeys() []key.Binding {
+	return []key.Binding{b.back.Binding()}
+}
+
+// renderBody places sentence + spacer + right-aligned [Back] inside a
+// rectangle of the requested size so the stub fills the body height the
+// shell reserved for it. Avoids the status bar being pushed off-screen by
+// short / variable body content.
+func (b *backOnlyScreenBase) renderBody(width, height int, sentence string) string {
+	backRow := lipgloss.PlaceHorizontal(width, lipgloss.Right, b.back.View())
+	stack := lipgloss.JoinVertical(lipgloss.Left, sentence, "", backRow)
+	return lipgloss.Place(width, height, lipgloss.Left, lipgloss.Top, stack)
+}

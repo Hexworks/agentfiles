@@ -3,7 +3,6 @@ package actions
 import (
 	"github.com/hexworks/agentfiles/internal/app"
 	"github.com/hexworks/agentfiles/internal/asset"
-	"github.com/hexworks/agentfiles/internal/project"
 )
 
 type CreateProfileInput struct {
@@ -45,10 +44,16 @@ type LoadProjectInput struct {
 	ProjectID  string
 }
 
-// UpdateProjectInput's manifest ID identifies the project to overwrite.
+// UpdateProjectInput carries the user-editable fields that the Edit
+// Project flow collects. ID, SelectedAssetIDs, and CreatedAt are
+// preserved by the service — the TUI never sends a live
+// *project.Manifest pointer through this seam.
 type UpdateProjectInput struct {
-	ProfileRef string
-	Project    *project.Manifest
+	ProfileRef    string
+	ProjectID     string
+	Name          string
+	Path          string
+	EnabledAgents []string
 }
 
 type DeleteProjectInput struct {

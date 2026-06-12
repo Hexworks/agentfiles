@@ -339,9 +339,9 @@ func TestProfilesScreen_DeleteStep2NoCallsKeepFolders(t *testing.T) {
 
 	// Running cmd executes DeleteProfile synchronously inside its
 	// closure; the returned message is the mutation-done envelope.
-	done, ok := drainCmd(t, cmd).(profileMutationDoneMsg)
+	done, ok := drainCmd(t, cmd).(mutationDoneMsg)
 	if !ok {
-		t.Fatalf("cmd produced %T, want profileMutationDoneMsg", drainCmd(t, cmd))
+		t.Fatalf("cmd produced %T, want mutationDoneMsg", drainCmd(t, cmd))
 	}
 	if done.severity != errs.SeverityInfo {
 		t.Errorf("severity = %v, want info", done.severity)
@@ -370,8 +370,8 @@ func TestProfilesScreen_DeleteStep2YesCallsDeleteFolders(t *testing.T) {
 
 	_, cmd := s.Update(modal.ResolvedMsg{ID: "delete-profile-2", Confirmed: true})
 
-	if _, ok := drainCmd(t, cmd).(profileMutationDoneMsg); !ok {
-		t.Fatalf("cmd produced %T, want profileMutationDoneMsg", drainCmd(t, cmd))
+	if _, ok := drainCmd(t, cmd).(mutationDoneMsg); !ok {
+		t.Fatalf("cmd produced %T, want mutationDoneMsg", drainCmd(t, cmd))
 	}
 
 	if _, statErr := os.Stat(ref.Path); !os.IsNotExist(statErr) {
@@ -395,9 +395,9 @@ func TestProfilesScreen_MutationRefreshesProfiles(t *testing.T) {
 	_, cmd := s.Update(modal.ResolvedMsg{ID: "create-profile", Confirmed: true, Value: in})
 
 	// 1. Run mutationCmd → action executes, returns the done envelope.
-	done, ok := drainCmd(t, cmd).(profileMutationDoneMsg)
+	done, ok := drainCmd(t, cmd).(mutationDoneMsg)
 	if !ok {
-		t.Fatalf("cmd produced %T, want profileMutationDoneMsg", drainCmd(t, cmd))
+		t.Fatalf("cmd produced %T, want mutationDoneMsg", drainCmd(t, cmd))
 	}
 
 	// 2. Pump the done envelope through Update; this should emit a
@@ -434,7 +434,7 @@ func TestProfilesScreen_MutationDoneEmitsNotificationAndReload(t *testing.T) {
 	s := newProfilesScreen(f.Actions)
 	withProfiles(s, nil)
 
-	_, cmd := s.Update(profileMutationDoneMsg{text: "Profile created", severity: errs.SeverityInfo})
+	_, cmd := s.Update(mutationDoneMsg{text: "Profile created", severity: errs.SeverityInfo})
 
 	collected := collectMessages(t, cmd)
 	var sawNotification, sawLoad bool

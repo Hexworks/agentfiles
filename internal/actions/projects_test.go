@@ -103,9 +103,14 @@ func TestActions_UpdateProject_PersistsChanges(t *testing.T) {
 	if loadErr != nil {
 		t.Fatalf("load: %v", loadErr)
 	}
-	p.EnabledAgents = []string{"codex", "claude-code"}
 
-	if _, err := f.A.UpdateProject(actions.UpdateProjectInput{ProfileRef: "personal", Project: p}); err != nil {
+	if _, err := f.A.UpdateProject(actions.UpdateProjectInput{
+		ProfileRef:    "personal",
+		ProjectID:     p.ID,
+		Name:          p.Name,
+		Path:          p.Path,
+		EnabledAgents: []string{"codex", "claude-code"},
+	}); err != nil {
 		t.Fatalf("UpdateProject: %v", err)
 	}
 
