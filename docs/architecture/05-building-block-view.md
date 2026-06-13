@@ -39,8 +39,10 @@ flowchart TD
 The dotted `-.future.->` arrows from `tui/shell` to `tui/components/mnemonic`
 and `tui/components/modal` mark planned coupling: today the shell only consumes
 `bubbles/v2/key.Binding` values via `Screen.StatusKeys()` and never imports
-either component package directly. The real entity screens added in tasks
-0024–0029 will turn those arrows solid.
+either component package directly. Tasks 0024–0029 land the real entity
+screens and turn those arrows solid. Task 0029 replaces the Plan Project
+stub with a treetable-driven screen that toggles drift/unknown resolutions
+inline and dispatches `actions.SyncProject` on `[Apply]`.
 
 `config`, `errs`, and `utils` are leaf packages that the rest of the
 codebase reads from but that import nothing internal. They are highlighted

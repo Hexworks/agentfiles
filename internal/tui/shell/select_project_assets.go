@@ -13,6 +13,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/profile"
 	"github.com/hexworks/agentfiles/internal/project"
+	llmsync "github.com/hexworks/agentfiles/internal/sync"
 	"github.com/hexworks/agentfiles/internal/tui/components/focus"
 	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
 )
@@ -26,6 +27,8 @@ type selectProjectAssetsActions interface {
 	LoadProject(in actions.LoadProjectInput) (*project.Manifest, errs.DomainError)
 	SelectAsset(in actions.SelectAssetInput) ([]string, errs.DomainError)
 	UnselectAsset(in actions.UnselectAssetInput) ([]string, errs.DomainError)
+	PlanProject(in actions.PlanProjectInput) (*llmsync.Preview, errs.DomainError)
+	SyncProject(in actions.SyncProjectInput) (*llmsync.Preview, errs.DomainError)
 }
 
 // selectProjectAssetsLoadedMsg is the result of the Init load command:
@@ -460,7 +463,7 @@ func (s *selectProjectAssetsScreen) applySelectionChange(action func() ([]string
 }
 
 func (s *selectProjectAssetsScreen) onPlan() tea.Cmd {
-	return pushCmd(newPlanProjectStub(s.profileID, s.projectID))
+	return pushCmd(newPlanProjectScreen(s.actions, s.profileID, s.projectID))
 }
 
 func (s *selectProjectAssetsScreen) rebuildTables() {

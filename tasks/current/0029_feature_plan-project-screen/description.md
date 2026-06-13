@@ -1,7 +1,7 @@
 ---
 id: 0029
 type: feature
-status: pending
+status: in-review
 topics: go, tui, project, render
 depends_on: 0017, 0020, 0021
 ---
@@ -105,3 +105,7 @@ Plus:
 make build && make test && make lint
 ./bin/af   # Select Project Assets → Plan → toggle drift/unknown rows → Apply
 ```
+
+## Plan
+
+[plan.md](./plan.md)

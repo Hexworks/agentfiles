@@ -19,17 +19,27 @@ subcommand paths.
 
 ## Scenario: Plan A Project
 
-1. The user reaches the Project Detail screen for the relevant profile +
-   project.
-2. They trigger Plan.
-3. The render package resolves selected assets and builds desired outputs.
-4. The sync package compares desired outputs with project files and existing
-   managed state.
-5. A preview is produced with create, update, drift, and delete-candidate
-   entries.
-6. The Project Detail screen renders the preview body inside its own area;
-   the shell's notification pipeline reports any per-asset failures via
-   toast + log.
+1. The user reaches the Edit Profile screen, focuses the Projects table,
+   and triggers `[Plan]` (mnemonic `p`) on a row. The Select Project Assets
+   screen also exposes `[Plan]` for direct entry once the asset selection
+   is set.
+2. The Plan Project screen pushes onto the stack. Its `Init` calls
+   `actions.LoadProject`, `actions.LoadProfile`, and `actions.PlanProject`
+   in sequence and folds the triplet into a single load envelope.
+3. `actions.PlanProject` delegates to `app.Service.Plan`, which builds the
+   render plan and asks `sync.Plan` to classify every entry as create,
+   update, drift, delete, or unknown.
+4. The screen renders the `Preview.Changes` as a treetable. Two value
+   columns expose `Status` and `Current Action`; an Actions column shows
+   a single mnemonic toggle button on drift and unknown rows.
+5. The user toggles per-row resolutions (`o`/`k`/`d`). Defaults are
+   `Keep` for both drift and unknown, encoded as absence from the
+   screen's resolution map.
+6. Pressing `[Apply]` (mnemonic `a`) builds `[]app.DriftResolution` +
+   `[]app.UnknownResolution` slices and calls `actions.SyncProject` →
+   `app.Service.Apply` → `llmsync.Apply`. On success the screen
+   surfaces a `Project synced` notification and pops back to the
+   previous screen; on failure it stays put with the error toast.
 
 ## Scenario: Apply A Project
 

@@ -578,7 +578,7 @@ func (s *editProfileScreen) onPlanProject() tea.Cmd {
 	if !ok {
 		return nil
 	}
-	return pushCmd(newPlanProjectStub(s.profileID, p.ID))
+	return pushCmd(newPlanProjectScreen(s.actions, s.profileID, p.ID))
 }
 
 func (s *editProfileScreen) onDeleteProject() tea.Cmd {

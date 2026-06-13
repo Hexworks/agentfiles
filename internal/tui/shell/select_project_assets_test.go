@@ -12,6 +12,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/profile"
 	"github.com/hexworks/agentfiles/internal/project"
+	llmsync "github.com/hexworks/agentfiles/internal/sync"
 	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
 	"github.com/hexworks/agentfiles/internal/tui/notifications"
 )
@@ -33,6 +34,10 @@ type fakeSelectActions struct {
 	unselectErr    errs.DomainError
 	selectInputs   []actions.SelectAssetInput
 	unselectInputs []actions.UnselectAssetInput
+	preview        *llmsync.Preview
+	planErr        errs.DomainError
+	syncErr        errs.DomainError
+	syncInputs     []actions.SyncProjectInput
 }
 
 func (f *fakeSelectActions) LoadProfile(in actions.LoadProfileInput) (*profile.Profile, errs.DomainError) {
@@ -63,6 +68,21 @@ func (f *fakeSelectActions) UnselectAsset(in actions.UnselectAssetInput) ([]stri
 		return nil, f.unselectErr
 	}
 	return append([]string(nil), f.unselectResult...), nil
+}
+
+func (f *fakeSelectActions) PlanProject(in actions.PlanProjectInput) (*llmsync.Preview, errs.DomainError) {
+	if f.planErr != nil {
+		return nil, f.planErr
+	}
+	return f.preview, nil
+}
+
+func (f *fakeSelectActions) SyncProject(in actions.SyncProjectInput) (*llmsync.Preview, errs.DomainError) {
+	f.syncInputs = append(f.syncInputs, in)
+	if f.syncErr != nil {
+		return nil, f.syncErr
+	}
+	return f.preview, nil
 }
 
 func newSelectActionsFake(assets []*asset.Asset, proj *project.Manifest) *fakeSelectActions {
@@ -441,7 +461,7 @@ func TestSelectProjectAssets_SelectErrorSurfacesAsMutationDoneMsg(t *testing.T) 
 	}
 }
 
-func TestSelectProjectAssets_PlanPushesPlanProjectStub(t *testing.T) {
+func TestSelectProjectAssets_PlanPushesPlanProjectScreen(t *testing.T) {
 	f := newSelectActionsFake(nil, &project.Manifest{ID: "proj-1", Name: "Proj"})
 	s := newSelectProjectAssetsScreen(f, "alpha", "proj-1")
 	loadInto(t, s, f, "proj-1")
@@ -451,12 +471,12 @@ func TestSelectProjectAssets_PlanPushesPlanProjectStub(t *testing.T) {
 	if !ok {
 		t.Fatalf("got %T, want PushScreenMsg", cmd())
 	}
-	stub, ok := push.Screen.(*planProjectStub)
+	plan, ok := push.Screen.(*planProjectScreen)
 	if !ok {
-		t.Fatalf("pushed %T, want *planProjectStub", push.Screen)
+		t.Fatalf("pushed %T, want *planProjectScreen", push.Screen)
 	}
-	if stub.profileID != "alpha" || stub.projectID != "proj-1" {
-		t.Errorf("stub ids = (%q, %q), want (alpha, proj-1)", stub.profileID, stub.projectID)
+	if plan.profileID != "alpha" || plan.projectID != "proj-1" {
+		t.Errorf("screen ids = (%q, %q), want (alpha, proj-1)", plan.profileID, plan.projectID)
 	}
 }
 
