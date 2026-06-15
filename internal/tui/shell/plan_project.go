@@ -262,10 +262,7 @@ func (s *planProjectScreen) Body(width int) string {
 		return " Loading…"
 	}
 	header := fmt.Sprintf(" Planning project %q (%s)", s.projectName, s.profileName)
-	buttonRow := lipgloss.PlaceHorizontal(
-		width, lipgloss.Right,
-		s.applyBtn.View()+"  "+s.backBtn.View(),
-	)
+	buttonRow := " " + s.applyBtn.View() + "  " + s.backBtn.View()
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
 		header,

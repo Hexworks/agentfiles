@@ -332,10 +332,7 @@ func (s *selectProjectAssetsScreen) Body(width int) string {
 	focused := s.handler.Focused()
 	selectedHeader := lipgloss.NewStyle().Bold(true).Render("Selected Assets")
 	availableHeader := lipgloss.NewStyle().Bold(true).Render("Available Assets")
-	buttonRow := lipgloss.PlaceHorizontal(
-		width, lipgloss.Right,
-		s.planBtn.View()+"  "+s.backBtn.View(),
-	)
+	buttonRow := " " + s.planBtn.View() + "  " + s.backBtn.View()
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,

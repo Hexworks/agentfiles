@@ -52,10 +52,10 @@ func (b *backOnlyScreenBase) statusKeys() []key.Binding {
 	return []key.Binding{b.back.Binding()}
 }
 
-// renderBody renders sentence + spacer + right-aligned [Back] at its
+// renderBody renders sentence + spacer + left-aligned [Back] at its
 // natural height. The shell stacks the body, toast, and status bar
 // without padding so the body takes only the room it needs.
 func (b *backOnlyScreenBase) renderBody(width int, sentence string) string {
-	backRow := lipgloss.PlaceHorizontal(width, lipgloss.Right, b.back.View())
+	backRow := " " + b.back.View()
 	return lipgloss.JoinVertical(lipgloss.Left, sentence, "", backRow)
 }
