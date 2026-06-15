@@ -16,6 +16,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/tui/components/focus"
 	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
 	"github.com/hexworks/agentfiles/internal/tui/components/modal"
+	"github.com/hexworks/agentfiles/internal/tui/components/panel"
 	"github.com/hexworks/agentfiles/internal/tui/components/treetable"
 	"github.com/hexworks/agentfiles/internal/tui/editor"
 	"github.com/hexworks/agentfiles/internal/tui/modals"
@@ -623,13 +624,14 @@ func (s *editAssetScreen) renderCustomize(width int) string {
 	s.compatible.WithWidth(innerWidth)
 	s.exclusive.WithWidth(innerWidth)
 	focus := s.handler.Focused()
+	st := focusAwarePanelStyles()
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
 		header,
-		panelBorderFor(focus == s.descIdx).Render(s.description.View()),
-		panelBorderFor(focus == s.tagsIdx).Render(s.tags.View()),
-		panelBorderFor(focus == s.compatibleIdx).Render(s.compatible.View()),
-		panelBorderFor(focus == s.exclusiveIdx).Render(s.exclusive.View()),
+		panel.Render(focus == s.descIdx, "", s.description.View(), st),
+		panel.Render(focus == s.tagsIdx, "", s.tags.View(), st),
+		panel.Render(focus == s.compatibleIdx, "", s.compatible.View(), st),
+		panel.Render(focus == s.exclusiveIdx, "", s.exclusive.View(), st),
 	)
 }
 

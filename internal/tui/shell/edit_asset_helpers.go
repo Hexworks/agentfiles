@@ -9,9 +9,21 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/hexworks/agentfiles/internal/asset"
+	"github.com/hexworks/agentfiles/internal/tui/components/panel"
 	"github.com/hexworks/agentfiles/internal/tui/components/treetable"
 	"github.com/hexworks/agentfiles/internal/tui/styles"
 )
+
+// focusAwarePanelStyles returns the shared panel styles used by every
+// screen-level bordered container. Cyan when focused, muted grey when
+// blurred — the same palette treetable uses so plain panels and
+// treetables line up visually.
+func focusAwarePanelStyles() panel.Styles {
+	st := panel.DefaultStyles()
+	st.Border = lipgloss.NewStyle().Foreground(styles.ColorMuted)
+	st.BorderFocused = lipgloss.NewStyle().Foreground(styles.ColorCyan)
+	return st
+}
 
 // assetHeader renders the bold section header used by the right column.
 func assetHeader(title string) string {

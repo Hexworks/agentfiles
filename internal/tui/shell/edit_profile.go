@@ -2,7 +2,6 @@ package shell
 
 import (
 	"fmt"
-	"strings"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/table"
@@ -17,8 +16,8 @@ import (
 	"github.com/hexworks/agentfiles/internal/tui/components/focus"
 	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
 	"github.com/hexworks/agentfiles/internal/tui/components/modal"
+	"github.com/hexworks/agentfiles/internal/tui/components/panel"
 	"github.com/hexworks/agentfiles/internal/tui/modals"
-	"github.com/hexworks/agentfiles/internal/tui/styles"
 )
 
 // editProfileOwnActions is the slice the Edit Profile screen invokes
@@ -368,75 +367,16 @@ func (s *editProfileScreen) renderBody(_ int) string {
 
 	focused := s.handler.Focused()
 	buttonRow := " " + s.createAsset.View() + "  " + s.register.View() + "  " + s.back.View()
+	st := focusAwarePanelStyles()
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
-		panelWithCaption(focused == 0, "Assets", s.assetsTable.View()),
+		panel.Render(focused == 0, "Assets", s.assetsTable.View(), st),
 		"",
-		panelWithCaption(focused == 1, "Projects", s.projectsTable.View()),
+		panel.Render(focused == 1, "Projects", s.projectsTable.View(), st),
 		"",
 		buttonRow,
 	)
-}
-
-// panelBorderFor returns the focused or unfocused rounded-border style
-// depending on whether the panel currently holds focus. The focused
-// variant uses the accent cyan; the unfocused variant inherits the
-// muted grey from [styles.MutedStyle] so the difference is obvious at a
-// glance.
-func panelBorderFor(focused bool) lipgloss.Style {
-	if focused {
-		return focusedPanelBorder
-	}
-	return unfocusedPanelBorder
-}
-
-var (
-	focusedPanelBorder = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(styles.ColorCyan)
-	unfocusedPanelBorder = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(styles.ColorMuted)
-	focusedFrameStyle   = lipgloss.NewStyle().Foreground(styles.ColorCyan)
-	unfocusedFrameStyle = lipgloss.NewStyle().Foreground(styles.ColorMuted)
-	panelCaptionStyle   = lipgloss.NewStyle().Bold(true)
-)
-
-// panelWithCaption wraps body in a rounded panel whose top border embeds
-// the caption, matching the `┌Caption─...─┐` look used by the treetable
-// component. Border color tracks focus state.
-func panelWithCaption(focused bool, caption, body string) string {
-	frame := unfocusedFrameStyle
-	if focused {
-		frame = focusedFrameStyle
-	}
-	bodyW := lipgloss.Width(body)
-	title := panelCaptionStyle.Render(caption)
-	titleW := lipgloss.Width(title)
-	pad := bodyW - titleW
-	if pad < 0 {
-		pad = 0
-	}
-	var sb strings.Builder
-	sb.WriteString(frame.Render("╭") + title + frame.Render(strings.Repeat("─", pad)+"╮"))
-	sb.WriteString("\n")
-	left := frame.Render("│")
-	right := frame.Render("│")
-	for _, line := range strings.Split(body, "\n") {
-		w := lipgloss.Width(line)
-		gap := bodyW - w
-		if gap < 0 {
-			gap = 0
-		}
-		sb.WriteString(left)
-		sb.WriteString(line)
-		sb.WriteString(strings.Repeat(" ", gap))
-		sb.WriteString(right)
-		sb.WriteString("\n")
-	}
-	sb.WriteString(frame.Render("╰" + strings.Repeat("─", bodyW) + "╯"))
-	return sb.String()
 }
 
 // equalizePanelWidth grows the elastic column on the narrower table so

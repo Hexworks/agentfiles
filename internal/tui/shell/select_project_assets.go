@@ -15,6 +15,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/project"
 	"github.com/hexworks/agentfiles/internal/tui/components/focus"
 	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
+	"github.com/hexworks/agentfiles/internal/tui/components/panel"
 )
 
 // selectProjectAssetsOwnActions is the narrow slice of *actions.Actions
@@ -331,14 +332,15 @@ func (s *selectProjectAssetsScreen) Body(width int) string {
 	)
 	focused := s.handler.Focused()
 	buttonRow := " " + s.planBtn.View() + "  " + s.backBtn.View()
+	st := focusAwarePanelStyles()
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
 		header,
 		"",
-		panelWithCaption(focused == s.selectedIdx, "Selected Assets", s.selectedTable.View()),
+		panel.Render(focused == s.selectedIdx, "Selected Assets", s.selectedTable.View(), st),
 		"",
-		panelWithCaption(focused == s.availableIdx, "Available Assets", s.availableTable.View()),
+		panel.Render(focused == s.availableIdx, "Available Assets", s.availableTable.View(), st),
 		"",
 		buttonRow,
 	)

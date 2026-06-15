@@ -14,6 +14,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/profile"
 	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
 	"github.com/hexworks/agentfiles/internal/tui/components/modal"
+	"github.com/hexworks/agentfiles/internal/tui/components/panel"
 	"github.com/hexworks/agentfiles/internal/tui/modals"
 	"github.com/hexworks/agentfiles/internal/tui/notifications"
 )
@@ -208,7 +209,8 @@ func (s *profilesScreen) bodyContent() string {
 	rows := s.buildRows(s.table.Cursor())
 	cols := naturalColumns(profileColumnTitles, rows)
 	applyTable(&s.table, cols, rows)
-	return lipgloss.JoinVertical(lipgloss.Left, panelBorderFor(true).Render(s.table.View()), "", buttonRow)
+	body := panel.Render(true, "", s.table.View(), focusAwarePanelStyles())
+	return lipgloss.JoinVertical(lipgloss.Left, body, "", buttonRow)
 }
 
 var profileColumnTitles = []string{"ID", "Name", "Path", "Actions"}

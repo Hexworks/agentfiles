@@ -146,7 +146,7 @@ func TestViewIncludesTitle(t *testing.T) {
 	if !strings.Contains(out, "Files") {
 		t.Fatalf("view missing title: %q", out)
 	}
-	if !strings.Contains(out, "┌") || !strings.Contains(out, "└") {
+	if !strings.Contains(out, "╭") || !strings.Contains(out, "╰") {
 		t.Fatalf("view missing panel frame: %q", out)
 	}
 }

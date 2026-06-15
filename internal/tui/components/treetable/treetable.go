@@ -27,6 +27,7 @@ import (
 	"charm.land/lipgloss/v2/tree"
 
 	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
+	"github.com/hexworks/agentfiles/internal/tui/components/panel"
 )
 
 // Node is a single entry in the tree displayed by the component. Children
@@ -399,61 +400,17 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 }
 
 // View renders the table, optionally wrapped in a panel with the title
-// embedded in the top border.
+// embedded in the top border via the shared panel component.
 func (m *Model) View() string {
 	body := m.table.View()
 	if m.title == "" {
 		return body
 	}
-	return m.renderPanel(body)
-}
-
-// renderPanel draws a rounded frame around body. The top border embeds the
-// title, matching the `┌Caption─...─┐` look from the design example. The
-// frame is built by hand because lipgloss has no native title-in-border
-// helper.
-//
-// Border color tracks focus state: Styles.BorderFocused when
-// [Model.Focused] reports true, Styles.Border otherwise. Callers that
-// don't want a focus-aware highlight leave both styles identical.
-func (m *Model) renderPanel(body string) string {
-	border := m.borderStyle()
-	bodyW := lipgloss.Width(body)
-	title := m.styles.Title.Render(m.title)
-	titleW := lipgloss.Width(title)
-	pad := bodyW - titleW
-	if pad < 0 {
-		pad = 0
-	}
-	top := border.Render("┌" + title + strings.Repeat("─", pad) + "┐")
-
-	lines := strings.Split(body, "\n")
-	var sb strings.Builder
-	sb.WriteString(top)
-	sb.WriteString("\n")
-	for _, l := range lines {
-		w := lipgloss.Width(l)
-		right := bodyW - w
-		if right < 0 {
-			right = 0
-		}
-		sb.WriteString(border.Render("│"))
-		sb.WriteString(l)
-		sb.WriteString(strings.Repeat(" ", right))
-		sb.WriteString(border.Render("│"))
-		sb.WriteString("\n")
-	}
-	sb.WriteString(border.Render("└" + strings.Repeat("─", bodyW) + "┘"))
-	return sb.String()
-}
-
-// borderStyle returns the focus-aware border style: BorderFocused when
-// the component holds focus, Border otherwise.
-func (m *Model) borderStyle() lipgloss.Style {
-	if m.table.Focused() {
-		return m.styles.BorderFocused
-	}
-	return m.styles.Border
+	return panel.Render(m.table.Focused(), m.title, body, panel.Styles{
+		Border:        m.styles.Border,
+		BorderFocused: m.styles.BorderFocused,
+		Title:         m.styles.Title,
+	})
 }
 
 // flatten produces a DFS list of visible nodes. The order matches the line
