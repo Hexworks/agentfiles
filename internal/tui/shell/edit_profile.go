@@ -2,6 +2,7 @@ package shell
 
 import (
 	"fmt"
+	"strings"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/table"
@@ -366,18 +367,13 @@ func (s *editProfileScreen) renderBody(_ int) string {
 	applyTable(s.projectsTable, projectCols, projectRows)
 
 	focused := s.handler.Focused()
-	assetsHeader := lipgloss.NewStyle().Bold(true).Render("Assets")
-	projectsHeader := lipgloss.NewStyle().Bold(true).Render("Projects")
-
 	buttonRow := " " + s.createAsset.View() + "  " + s.register.View() + "  " + s.back.View()
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
-		assetsHeader,
-		panelBorderFor(focused == 0).Render(s.assetsTable.View()),
+		panelWithCaption(focused == 0, "Assets", s.assetsTable.View()),
 		"",
-		projectsHeader,
-		panelBorderFor(focused == 1).Render(s.projectsTable.View()),
+		panelWithCaption(focused == 1, "Projects", s.projectsTable.View()),
 		"",
 		buttonRow,
 	)
@@ -402,7 +398,46 @@ var (
 	unfocusedPanelBorder = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
 				BorderForeground(styles.ColorMuted)
+	focusedFrameStyle   = lipgloss.NewStyle().Foreground(styles.ColorCyan)
+	unfocusedFrameStyle = lipgloss.NewStyle().Foreground(styles.ColorMuted)
+	panelCaptionStyle   = lipgloss.NewStyle().Bold(true)
 )
+
+// panelWithCaption wraps body in a rounded panel whose top border embeds
+// the caption, matching the `┌Caption─...─┐` look used by the treetable
+// component. Border color tracks focus state.
+func panelWithCaption(focused bool, caption, body string) string {
+	frame := unfocusedFrameStyle
+	if focused {
+		frame = focusedFrameStyle
+	}
+	bodyW := lipgloss.Width(body)
+	title := panelCaptionStyle.Render(caption)
+	titleW := lipgloss.Width(title)
+	pad := bodyW - titleW
+	if pad < 0 {
+		pad = 0
+	}
+	var sb strings.Builder
+	sb.WriteString(frame.Render("╭") + title + frame.Render(strings.Repeat("─", pad)+"╮"))
+	sb.WriteString("\n")
+	left := frame.Render("│")
+	right := frame.Render("│")
+	for _, line := range strings.Split(body, "\n") {
+		w := lipgloss.Width(line)
+		gap := bodyW - w
+		if gap < 0 {
+			gap = 0
+		}
+		sb.WriteString(left)
+		sb.WriteString(line)
+		sb.WriteString(strings.Repeat(" ", gap))
+		sb.WriteString(right)
+		sb.WriteString("\n")
+	}
+	sb.WriteString(frame.Render("╰" + strings.Repeat("─", bodyW) + "╯"))
+	return sb.String()
+}
 
 // equalizePanelWidth grows the elastic column on the narrower table so
 // both panels render at the same outer width. Mutates cols slices in

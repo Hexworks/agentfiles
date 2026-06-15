@@ -330,19 +330,15 @@ func (s *selectProjectAssetsScreen) Body(width int) string {
 		s.projectName, s.profileName,
 	)
 	focused := s.handler.Focused()
-	selectedHeader := lipgloss.NewStyle().Bold(true).Render("Selected Assets")
-	availableHeader := lipgloss.NewStyle().Bold(true).Render("Available Assets")
 	buttonRow := " " + s.planBtn.View() + "  " + s.backBtn.View()
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
 		header,
 		"",
-		selectedHeader,
-		panelBorderFor(focused == s.selectedIdx).Render(s.selectedTable.View()),
+		panelWithCaption(focused == s.selectedIdx, "Selected Assets", s.selectedTable.View()),
 		"",
-		availableHeader,
-		panelBorderFor(focused == s.availableIdx).Render(s.availableTable.View()),
+		panelWithCaption(focused == s.availableIdx, "Available Assets", s.availableTable.View()),
 		"",
 		buttonRow,
 	)
