@@ -75,31 +75,33 @@ func TestRenderLoadError_IncludesUnderlyingMessage(t *testing.T) {
 	}
 }
 
-// The close binding (esc / q) must transition the content to Cancelled so the
-// hosting modal emits a ResolvedMsg with Confirmed=false on the next cycle.
+// Esc transitions the content to Cancelled so the hosting modal emits a
+// ResolvedMsg with Confirmed=false on the next cycle. `q` deliberately
+// does not close: the shell reserves it for the universal quit binding,
+// so this test pins the regression that previously bundled q with esc.
 func TestContent_CloseKeysCancelLifecycle(t *testing.T) {
-	cases := []struct {
-		name string
-		msg  tea.KeyPressMsg
-	}{
-		{"esc", tea.KeyPressMsg{Code: 27}},
-		{"q", tea.KeyPressMsg{Code: 'q', Text: "q"}},
+	c := &content{keys: defaultKeymap()}
+	if state, _ := c.Lifecycle(); state != modal.Active {
+		t.Fatalf("initial state = %v, want Active", state)
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			c := &content{keys: defaultKeymap()}
-			if state, _ := c.Lifecycle(); state != modal.Active {
-				t.Fatalf("initial state = %v, want Active", state)
-			}
-			_, _ = c.Update(tc.msg)
-			state, value := c.Lifecycle()
-			if state != modal.Cancelled {
-				t.Errorf("state = %v, want Cancelled", state)
-			}
-			if value != nil {
-				t.Errorf("value = %v, want nil on cancel", value)
-			}
-		})
+	_, _ = c.Update(tea.KeyPressMsg{Code: 27})
+	state, value := c.Lifecycle()
+	if state != modal.Cancelled {
+		t.Errorf("state = %v, want Cancelled", state)
+	}
+	if value != nil {
+		t.Errorf("value = %v, want nil on cancel", value)
+	}
+}
+
+// `q` must not be treated as a close key: the shell-level quit binding
+// owns it. The viewport still receives the key (it ignores `q`), but the
+// lifecycle stays Active.
+func TestContent_QKeyDoesNotClose(t *testing.T) {
+	c := &content{keys: defaultKeymap()}
+	_, _ = c.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
+	if state, _ := c.Lifecycle(); state != modal.Active {
+		t.Errorf("state = %v, want Active (q must not close the help dialog)", state)
 	}
 }
 

@@ -229,11 +229,11 @@ func TestUpdate_GlobalKeysInterceptedBeforeScreen(t *testing.T) {
 	cases := []struct {
 		name    string
 		msg     tea.KeyPressMsg
-		wantCmd string // "push:<title>" or "quit"
+		wantCmd string // "push:<title>" | "help" | "quit"
 	}{
 		{"n notifications", tea.KeyPressMsg{Code: 'n', Text: "n"}, "push:Notifications"},
 		{"s settings", tea.KeyPressMsg{Code: 's', Text: "s"}, "push:Settings"},
-		{"? help", tea.KeyPressMsg{Code: '?', Text: "?"}, "push:Help"},
+		{"? help", tea.KeyPressMsg{Code: '?', Text: "?"}, "help"},
 		{"q quit", tea.KeyPressMsg{Code: 'q', Text: "q"}, "quit"},
 		{"ctrl+c quit", tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}, "quit"},
 	}
@@ -256,6 +256,10 @@ func TestUpdate_GlobalKeysInterceptedBeforeScreen(t *testing.T) {
 			case "quit":
 				if _, ok := out.(tea.QuitMsg); !ok {
 					t.Fatalf("cmd produced %T, want tea.QuitMsg", out)
+				}
+			case "help":
+				if _, ok := out.(ShowHelpMsg); !ok {
+					t.Fatalf("cmd produced %T, want ShowHelpMsg", out)
 				}
 			default:
 				push, ok := out.(PushScreenMsg)

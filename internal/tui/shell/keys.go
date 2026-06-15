@@ -3,6 +3,8 @@ package shell
 import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/hexworks/agentfiles/internal/tui/components/help"
 )
 
 // globalKeyMap holds the bindings the shell intercepts before the
@@ -12,7 +14,7 @@ import (
 type globalKeyMap struct {
 	Notifications key.Binding // n  → push notificationsScreen
 	Settings      key.Binding // s  → push settingsScreen
-	Help          key.Binding // ?  → push infoScreen
+	Help          key.Binding // ?  → emit ShowHelpMsg (shell-owned overlay)
 	Quit          key.Binding // q  / ctrl+c → tea.Quit
 	Up            key.Binding // ↑/k — display-only
 	Down          key.Binding // ↓/j — display-only
@@ -50,6 +52,14 @@ func defaultGlobalKeyMap() globalKeyMap {
 	}
 }
 
+// helpTopic resolves the manual topic for the active screen at the
+// moment `?` was pressed. Screens that satisfy [help.Topical] supply
+// their own; everything else falls back to [help.OverviewTopic].
+func (m Model) helpTopic() help.Topic {
+	focus := m.stack[len(m.stack)-1]
+	return help.TopicFor(focus)
+}
+
 // handleGlobalKey matches kp against the global set. On hit it
 // returns the corresponding command and reports handled=true so the
 // shell's Update can short-circuit and the active screen never sees
@@ -61,7 +71,7 @@ func (m Model) handleGlobalKey(kp tea.KeyPressMsg) (tea.Cmd, bool) {
 	case key.Matches(kp, m.keys.Settings):
 		return pushCmd(newSettingsScreen()), true
 	case key.Matches(kp, m.keys.Help):
-		return pushCmd(m.newInfoScreen()), true
+		return showHelpCmd(m.helpTopic()), true
 	case key.Matches(kp, m.keys.Quit):
 		return tea.Quit, true
 	}

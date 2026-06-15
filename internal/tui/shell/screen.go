@@ -16,6 +16,8 @@ package shell
 import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/hexworks/agentfiles/internal/tui/components/help"
 )
 
 // Screen is the unit of navigation on the shell's stack.
@@ -66,6 +68,14 @@ type PushScreenMsg struct{ Screen Screen }
 // a no-op (the root screen cannot be popped).
 type PopScreenMsg struct{}
 
+// ShowHelpMsg asks the shell to open the manual overlay for Topic. It
+// is emitted by the global `?` binding (and could later be emitted by
+// any screen that wants to offer in-context help) so the shell can own
+// the help modal at the root level instead of treating it as a stack
+// entry. Topic is resolved at emission time so the dialog binds to the
+// screen the user was looking at when they pressed `?`.
+type ShowHelpMsg struct{ Topic help.Topic }
+
 // pushCmd returns a tea.Cmd that, when run, emits a PushScreenMsg for
 // s. Lives next to the message type so authors searching for "how do I
 // push a screen?" find the constructor and the message together.
@@ -76,6 +86,12 @@ func pushCmd(s Screen) tea.Cmd {
 // popCmd returns a tea.Cmd that, when run, emits a PopScreenMsg.
 func popCmd() tea.Cmd {
 	return func() tea.Msg { return PopScreenMsg{} }
+}
+
+// showHelpCmd returns a tea.Cmd that, when run, asks the shell to open
+// the manual overlay for topic.
+func showHelpCmd(topic help.Topic) tea.Cmd {
+	return func() tea.Msg { return ShowHelpMsg{Topic: topic} }
 }
 
 // modalMinWidth / modalMinHeight is the floor the shell guarantees a

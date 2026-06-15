@@ -47,7 +47,7 @@ type keymap struct {
 }
 
 func defaultKeymap() keymap {
-	return keymap{Close: key.NewBinding(key.WithKeys("esc", "q"))}
+	return keymap{Close: key.NewBinding(key.WithKeys("esc"))}
 }
 
 // content implements [modal.Content] for the help dialog. It owns the
@@ -64,10 +64,12 @@ type content struct {
 }
 
 // New constructs a help [modal.Modal] sized for (width x height) that
-// loads and renders req.Path from [ManualRoot]. The modal closes on `esc`
-// or `q`. Construction never fails — load errors are caught and rendered
-// inside the dialog's own viewport. Subsequent [Modal.SetSize] calls
-// reflow the viewport and re-render the manual at the new wrap width.
+// loads and renders req.Path from [ManualRoot]. The modal closes on
+// `esc`; `q` is reserved for the shell-level quit binding so the user
+// can exit the application without first closing this dialog.
+// Construction never fails — load errors are caught and rendered inside
+// the dialog's own viewport. Subsequent [Modal.SetSize] calls reflow the
+// viewport and re-render the manual at the new wrap width.
 func New(id string, req Request, width, height int) *modal.Modal {
 	c := &content{
 		topic: req.Topic,
@@ -161,7 +163,7 @@ func (c *content) View() string {
 	help := lipgloss.NewStyle().
 		Width(innerW).
 		Foreground(lipgloss.Color("8")).
-		Render("↑/k up • ↓/j down • esc/q close")
+		Render("↑/k up • ↓/j down • esc close")
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
