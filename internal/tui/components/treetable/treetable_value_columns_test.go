@@ -207,7 +207,6 @@ func TestValueCellSanitizationTruncatesToWidth(t *testing.T) {
 func TestPanelWidthStaysSquareWithValueColumnsAndTitle(t *testing.T) {
 	t.Parallel()
 
-	focus := mnemonic.New("Files", 'F', func() tea.Cmd { return nil })
 	m := New(
 		WithRoot(sampleTree()),
 		WithValueColumns(
@@ -216,7 +215,6 @@ func TestPanelWidthStaysSquareWithValueColumnsAndTitle(t *testing.T) {
 		),
 		WithActions(Column{Title: "Actions", Width: 18}, func(*Node) []*mnemonic.Button { return nil }),
 		WithTitle("Project Plan"),
-		WithMnemonicButton(focus),
 	)
 	m.Focus()
 	m.refreshRows()

@@ -180,7 +180,7 @@ func TestEditAssetScreen_TreetableFocusedLeafSet_HasExpectedMnemonics(t *testing
 	s.rebuildSet()
 
 	got := mnemonicLabels(s.set)
-	want := []string{"1", "2", "Open", "Delete", "Add", "Save", "Back"}
+	want := []string{"Open", "Delete", "Add", "Save", "Back"}
 	if !labelsEqual(got, want) {
 		t.Errorf("set labels (leaf) = %v, want %v", got, want)
 	}
@@ -199,7 +199,7 @@ func TestEditAssetScreen_TreetableFocusedDirectorySet_OmitsOpen(t *testing.T) {
 	}
 
 	got := mnemonicLabels(s.set)
-	want := []string{"1", "2", "Delete", "Add", "Save", "Back"}
+	want := []string{"Delete", "Add", "Save", "Back"}
 	if !labelsEqual(got, want) {
 		t.Errorf("set labels (dir) = %v, want %v", got, want)
 	}
@@ -211,7 +211,7 @@ func TestEditAssetScreen_TreetableFocusedEmptyFolder_OmitsRowMnemonics(t *testin
 	f.loadInto(t, s)
 
 	got := mnemonicLabels(s.set)
-	want := []string{"1", "2", "Add", "Save", "Back"}
+	want := []string{"Add", "Save", "Back"}
 	if !labelsEqual(got, want) {
 		t.Errorf("set labels (empty) = %v, want %v", got, want)
 	}

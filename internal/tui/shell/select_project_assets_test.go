@@ -499,7 +499,7 @@ func TestSelectProjectAssets_BackKeysPop(t *testing.T) {
 	}
 }
 
-func TestSelectProjectAssets_FocusJumpsAndCycles(t *testing.T) {
+func TestSelectProjectAssets_FocusCyclesWithTab(t *testing.T) {
 	a1 := newAsset("a1", "A1", asset.TypeSkill, "")
 	a2 := newAsset("a2", "A2", asset.TypeSkill, "")
 	proj := &project.Manifest{ID: "proj-1", Name: "Proj", SelectedAssetIDs: []string{"a1"}}
@@ -507,21 +507,15 @@ func TestSelectProjectAssets_FocusJumpsAndCycles(t *testing.T) {
 	s := newSelectProjectAssetsScreen(f, "alpha", "proj-1")
 	loadInto(t, s, f, "proj-1")
 
-	// ctrl+2 jumps to Available. Note: KeyPressMsg.String() omits the
-	// modifier prefix when Text is set, so leave Text empty for ctrl+digit.
-	_, _ = s.Update(tea.KeyPressMsg{Code: '2', Mod: tea.ModCtrl})
-	if s.handler.Focused() != s.availableIdx {
-		t.Errorf("after ctrl+2 focus = %d, want %d", s.handler.Focused(), s.availableIdx)
-	}
-	// ctrl+1 jumps back to Selected.
-	_, _ = s.Update(tea.KeyPressMsg{Code: '1', Mod: tea.ModCtrl})
-	if s.handler.Focused() != s.selectedIdx {
-		t.Errorf("after ctrl+1 focus = %d, want %d", s.handler.Focused(), s.selectedIdx)
-	}
-	// tab cycles forward.
+	// tab cycles forward to Available.
 	_, _ = s.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	if s.handler.Focused() != s.availableIdx {
 		t.Errorf("after tab focus = %d, want %d", s.handler.Focused(), s.availableIdx)
+	}
+	// shift+tab cycles back to Selected.
+	_, _ = s.Update(tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
+	if s.handler.Focused() != s.selectedIdx {
+		t.Errorf("after shift+tab focus = %d, want %d", s.handler.Focused(), s.selectedIdx)
 	}
 }
 
@@ -539,8 +533,8 @@ func TestSelectProjectAssets_StatusBarContract(t *testing.T) {
 		wantHas   []string
 		wantNoHas []string
 	}{
-		{"selected focused", s.selectedIdx, []string{"u", "b"}, []string{"l", "p", "1", "2"}},
-		{"available focused", s.availableIdx, []string{"l", "b"}, []string{"u", "p", "1", "2"}},
+		{"selected focused", s.selectedIdx, []string{"u", "b"}, []string{"l", "p"}},
+		{"available focused", s.availableIdx, []string{"l", "b"}, []string{"u", "p"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

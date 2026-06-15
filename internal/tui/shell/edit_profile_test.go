@@ -564,9 +564,6 @@ func TestEditProfileScreen_StatusKeysExcludeScreenLevel(t *testing.T) {
 			if k.Help().Key == "c" || k.Help().Key == "r" {
 				t.Errorf("StatusKeys (focus %d) leaked screen-level mnemonic %q", focusIdx, k.Help().Key)
 			}
-			if k.Help().Key == "ctrl+1" || k.Help().Key == "ctrl+2" {
-				t.Errorf("StatusKeys (focus %d) leaked panel mnemonic %q", focusIdx, k.Help().Key)
-			}
 		}
 	}
 }

@@ -117,9 +117,6 @@ type editAssetScreen struct {
 	saveBtn   *mnemonic.Button // e
 	backBtn   *mnemonic.Button // b + esc
 
-	treeMnemonic *mnemonic.Button // [1]
-	descMnemonic *mnemonic.Button // [2]
-
 	set *mnemonic.Set
 
 	modal         *modal.Modal
@@ -172,14 +169,13 @@ func newEditAssetScreen(a editAssetActions, profileID, assetID string) *editAsse
 	s.buildFields()
 	s.buildButtons()
 	s.buildTree()
-	s.handler = focus.New(focus.WithModifier(focus.ModCtrl))
+	s.handler = focus.New()
 	// Capture each focus index as the registration runs so renderer and
 	// tests stay aligned with the actual order the handler hands out.
 	s.treeIdx = 0
-	s.treeMnemonic = s.handler.AddMnemonic(s.tree, '1')
-	s.tree.SetMnemonicButton(s.treeMnemonic)
+	s.handler.Add(s.tree)
 	s.descIdx = 1
-	s.descMnemonic = s.handler.AddMnemonic(s.description, '2')
+	s.handler.Add(s.description)
 	s.tagsIdx = 2
 	s.handler.Add(s.tags)
 	s.compatibleIdx = 3
@@ -301,18 +297,12 @@ func (s *editAssetScreen) treeActionsFn() treetable.ActionsFunc {
 
 // rebuildSet refreshes the mnemonic set so its registration-time
 // uniqueness check covers the current focus + cursor state. Treetable
-// focus exposes [1] [2] + the row buttons + screen buttons; any right-
-// column focus drops every screen mnemonic so the printable letters flow
-// as text into the focused huh field.
+// focus exposes the row buttons + screen buttons; any right-column focus
+// drops every screen mnemonic so the printable letters flow as text into
+// the focused huh field.
 func (s *editAssetScreen) rebuildSet() {
 	set := mnemonic.NewSet()
 	if s.handler.Focused() == s.treeIdx {
-		if s.treeMnemonic != nil {
-			set.Add(s.treeMnemonic)
-		}
-		if s.descMnemonic != nil {
-			set.Add(s.descMnemonic)
-		}
 		switch s.selectedKind() {
 		case nodeFile:
 			set.Add(s.openBtn)
@@ -516,7 +506,7 @@ func (s *editAssetScreen) handleKey(m tea.KeyPressMsg) (Screen, tea.Cmd) {
 	if s.modal != nil {
 		return s.forwardToModal(m)
 	}
-	// Focus handler consumes tab / shift+tab / ctrl+1 / ctrl+2.
+	// Focus handler consumes tab / shift+tab.
 	if handled, cmd := s.handler.Update(m); handled {
 		s.rebuildSet()
 		return s, cmd

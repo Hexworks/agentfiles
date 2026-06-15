@@ -61,10 +61,10 @@ type selectionChangedMsg struct {
 // selectProjectAssetsScreen is the management screen reached from the
 // Edit Profile row-level `[Select Assets]` action on a Project row. It
 // hosts two bubbles/table views (Selected on top, Available below), a
-// focus.Handler exposing `[1]` / `[2]` ctrl+digit mnemonics, per-row
-// Select/Unselect buttons, and screen-level Plan / Back buttons. Every
-// row action persists immediately via SelectAsset / UnselectAsset so the
-// Plan Project screen can plan on the current state.
+// focus.Handler driven by Tab / Shift+Tab, per-row Select/Unselect
+// buttons, and screen-level Plan / Back buttons. Every row action
+// persists immediately via SelectAsset / UnselectAsset so the Plan
+// Project screen can plan on the current state.
 type selectProjectAssetsScreen struct {
 	actions   selectProjectAssetsActions
 	profileID string
@@ -80,8 +80,6 @@ type selectProjectAssetsScreen struct {
 	handler        *focus.Handler
 	selectedTable  *table.Model
 	availableTable *table.Model
-	selectedMnemo  *mnemonic.Button
-	availableMnemo *mnemonic.Button
 	unselectBtn    *mnemonic.Button
 	selectBtn      *mnemonic.Button
 	planBtn        *mnemonic.Button
@@ -112,11 +110,11 @@ func newSelectProjectAssetsScreen(a selectProjectAssetsActions, profileID, proje
 	}
 	s.buildTables()
 	s.buildButtons()
-	s.handler = focus.New(focus.WithModifier(focus.ModCtrl))
+	s.handler = focus.New()
 	s.selectedIdx = 0
-	s.selectedMnemo = s.handler.AddMnemonic(s.selectedTable, '1')
+	s.handler.Add(s.selectedTable)
 	s.availableIdx = 1
-	s.availableMnemo = s.handler.AddMnemonic(s.availableTable, '2')
+	s.handler.Add(s.availableTable)
 	s.rebuildSet()
 	return s
 }
@@ -154,17 +152,11 @@ func (s *selectProjectAssetsScreen) buildButtons() {
 }
 
 // rebuildSet refreshes the mnemonic set so its registration-time
-// uniqueness check covers the current focus + data state. Focus mnemonics
-// `[1]` / `[2]` are always present; per-row Unselect / Select only when
-// the focused table has rows; screen-level Plan / Back are always present.
+// uniqueness check covers the current focus + data state. Per-row
+// Unselect / Select are added only when the focused table has rows;
+// screen-level Plan / Back are always present.
 func (s *selectProjectAssetsScreen) rebuildSet() {
 	set := mnemonic.NewSet()
-	if s.selectedMnemo != nil {
-		set.Add(s.selectedMnemo)
-	}
-	if s.availableMnemo != nil {
-		set.Add(s.availableMnemo)
-	}
 	switch s.handler.Focused() {
 	case s.selectedIdx:
 		if len(s.selected) > 0 {
@@ -338,12 +330,8 @@ func (s *selectProjectAssetsScreen) Body(width int) string {
 		s.projectName, s.profileName,
 	)
 	focused := s.handler.Focused()
-	selectedHeader := lipgloss.NewStyle().Bold(true).Render(
-		s.selectedMnemo.View() + " Selected Assets",
-	)
-	availableHeader := lipgloss.NewStyle().Bold(true).Render(
-		s.availableMnemo.View() + " Available Assets",
-	)
+	selectedHeader := lipgloss.NewStyle().Bold(true).Render("Selected Assets")
+	availableHeader := lipgloss.NewStyle().Bold(true).Render("Available Assets")
 	buttonRow := lipgloss.PlaceHorizontal(
 		width, lipgloss.Right,
 		s.planBtn.View()+"  "+s.backBtn.View(),

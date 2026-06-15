@@ -5,22 +5,17 @@
 // Four widgets are registered, showing both built-in adaptation and the
 // pattern for handling unsupported component types:
 //
-//   - a table (files)               — mnemonic '1', built-in *table.Model adapter
-//   - a list (recent actions)       — mnemonic '4', wrapped in a custom
-//     Focusable adapter because list.Model
-//     lacks Focus/Blur entirely
-//   - a textarea (description)      — mnemonic '2', built-in adapter
-//   - a textinput (tags)            — mnemonic '3', built-in adapter
-//
-// The handler returns a *mnemonic.Button per registration; the host renders
-// those buttons inside the panel border titles as the visible [N] indicator.
+//   - a table (files)               — built-in *table.Model adapter
+//   - a list (recent actions)       — wrapped in a custom Focusable adapter
+//     because list.Model lacks Focus/Blur entirely
+//   - a textarea (description)      — built-in adapter
+//   - a textinput (tags)            — built-in adapter
 //
 // Key routing in this example:
 //
 //  1. The host first asks the handler to interpret the message. If the
-//     handler reports the message as handled (Tab, Shift+Tab, or a bound
-//     alt+digit), the host does not forward it further — focus has already
-//     shifted.
+//     handler reports the message as handled (Tab / Shift+Tab) the host
+//     does not forward it further — focus has already shifted.
 //  2. Otherwise the host forwards the message to the currently focused
 //     widget (resolved via FocusedComponent so it does not depend on
 //     insertion order).
@@ -40,19 +35,14 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/hexworks/agentfiles/internal/tui/components/focus"
-	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
 )
 
 type model struct {
-	handler    *focus.Handler
-	files      *table.Model
-	actions    *focusableList
-	desc       *textarea.Model
-	tags       *textinput.Model
-	filesBtn   *mnemonic.Button
-	actionsBtn *mnemonic.Button
-	descBtn    *mnemonic.Button
-	tagsBtn    *mnemonic.Button
+	handler *focus.Handler
+	files   *table.Model
+	actions *focusableList
+	desc    *textarea.Model
+	tags    *textinput.Model
 }
 
 // actionItem is a minimal list.DefaultItem so the list can render with the
@@ -148,16 +138,16 @@ func newModel() model {
 	// Focus/Blur calls would mutate a stale copy after the model received
 	// a new value from Update.
 	m := model{
-		handler: focus.New(focus.WithModifier(focus.ModAlt)),
+		handler: focus.New(),
 		files:   &files,
 		actions: newFocusableList(&actions),
 		desc:    &desc,
 		tags:    &tags,
 	}
-	m.filesBtn = m.handler.AddMnemonic(m.files, '1')
-	m.descBtn = m.handler.AddMnemonic(m.desc, '2')
-	m.tagsBtn = m.handler.AddMnemonic(m.tags, '3')
-	m.actionsBtn = m.handler.AddMnemonic(m.actions, '4')
+	m.handler.Add(m.files)
+	m.handler.Add(m.desc)
+	m.handler.Add(m.tags)
+	m.handler.Add(m.actions)
 	return m
 }
 
@@ -197,9 +187,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() tea.View {
-	panel := func(btn *mnemonic.Button, title, body string) string {
-		head := lipgloss.JoinHorizontal(lipgloss.Top, btn.View(), " ",
-			lipgloss.NewStyle().Bold(true).Render(title))
+	panel := func(title, body string) string {
+		head := lipgloss.NewStyle().Bold(true).Render(title)
 		box := lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			Padding(0, 1).
@@ -208,20 +197,20 @@ func (m model) View() tea.View {
 	}
 
 	left := lipgloss.JoinVertical(lipgloss.Left,
-		panel(m.filesBtn, "Files", m.files.View()),
+		panel("Files", m.files.View()),
 		"",
-		panel(m.actionsBtn, "Actions", m.actions.View()),
+		panel("Actions", m.actions.View()),
 	)
 	right := lipgloss.JoinVertical(lipgloss.Left,
-		panel(m.descBtn, "Description", m.desc.View()),
+		panel("Description", m.desc.View()),
 		"",
-		panel(m.tagsBtn, "Tags", m.tags.View()),
+		panel("Tags", m.tags.View()),
 	)
 
 	body := lipgloss.JoinHorizontal(lipgloss.Top, left, "  ", right)
 
 	help := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).
-		Render("tab / shift+tab cycle • alt+1..4 jump • ctrl+c quit")
+		Render("tab / shift+tab cycle • ctrl+c quit")
 	title := lipgloss.NewStyle().Bold(true).Render("Focus Handler Example")
 
 	v := tea.NewView(lipgloss.JoinVertical(lipgloss.Left, title, "", body, "", help))

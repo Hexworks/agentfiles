@@ -9,13 +9,11 @@
 // components, the hosting screen owns global keys (quit, focus rotation).
 //
 // Focus: Model satisfies focus.Focusable (Focus/Blur return tea.Cmd) so a
-// focus.Handler can adopt it directly. The handler returns a mnemonic.Button;
-// pass it to SetMnemonicButton (or WithMnemonicButton) so the panel title
-// shows the [N] indicator alongside the caption.
+// focus.Handler can adopt it directly.
 //
-// Panel: when a title or a mnemonic button is set, View wraps the inner table
-// in a rounded panel whose top border embeds `[N]─Caption`. Otherwise View
-// returns the bare table body.
+// Panel: when a title is set, View wraps the inner table in a rounded panel
+// whose top border embeds the caption. Otherwise View returns the bare table
+// body.
 package treetable
 
 import (
@@ -123,7 +121,6 @@ type Model struct {
 	actionsCol   Column
 	actionsFn    ActionsFunc
 	title        string
-	mnemonicBtn  *mnemonic.Button
 	styles       Styles
 	height       int
 
@@ -173,11 +170,6 @@ func WithActions(col Column, fn ActionsFunc) Option {
 
 // WithTitle sets the caption shown in the panel's top border.
 func WithTitle(s string) Option { return func(m *Model) { m.title = s } }
-
-// WithMnemonicButton sets the focus mnemonic button shown next to the title
-// in the panel's top border. Typically this is the button returned by
-// focus.Handler.AddMnemonic for this component.
-func WithMnemonicButton(b *mnemonic.Button) Option { return func(m *Model) { m.mnemonicBtn = b } }
 
 // WithStyles replaces the default styles.
 func WithStyles(s Styles) Option { return func(m *Model) { m.styles = s } }
@@ -370,10 +362,6 @@ func (m *Model) RefreshActions() {
 	m.refreshRows()
 }
 
-// SetMnemonicButton overrides the focus mnemonic button shown in the title.
-// Pass nil to clear it.
-func (m *Model) SetMnemonicButton(b *mnemonic.Button) { m.mnemonicBtn = b }
-
 // SetHeight resizes the underlying table viewport.
 func (m *Model) SetHeight(h int) {
 	m.height = h
@@ -410,20 +398,20 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 	return m, cmd
 }
 
-// View renders the table, optionally wrapped in a panel with title and
-// mnemonic button embedded in the top border.
+// View renders the table, optionally wrapped in a panel with the title
+// embedded in the top border.
 func (m *Model) View() string {
 	body := m.table.View()
-	if m.title == "" && m.mnemonicBtn == nil {
+	if m.title == "" {
 		return body
 	}
 	return m.renderPanel(body)
 }
 
 // renderPanel draws a rounded frame around body. The top border embeds the
-// mnemonic button (if any) and the title joined with `─`, matching the
-// `┌[N]─Caption─...─┐` look from the design example. The frame is built by
-// hand because lipgloss has no native title-in-border helper.
+// title, matching the `┌Caption─...─┐` look from the design example. The
+// frame is built by hand because lipgloss has no native title-in-border
+// helper.
 //
 // Border color tracks focus state: Styles.BorderFocused when
 // [Model.Focused] reports true, Styles.Border otherwise. Callers that
@@ -431,14 +419,7 @@ func (m *Model) View() string {
 func (m *Model) renderPanel(body string) string {
 	border := m.borderStyle()
 	bodyW := lipgloss.Width(body)
-	var parts []string
-	if m.mnemonicBtn != nil {
-		parts = append(parts, m.mnemonicBtn.View())
-	}
-	if m.title != "" {
-		parts = append(parts, m.styles.Title.Render(m.title))
-	}
-	title := strings.Join(parts, "─")
+	title := m.styles.Title.Render(m.title)
 	titleW := lipgloss.Width(title)
 	pad := bodyW - titleW
 	if pad < 0 {

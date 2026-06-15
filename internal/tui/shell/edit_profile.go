@@ -61,11 +61,11 @@ const (
 
 // editProfileScreen is the Edit Profile management screen reached from
 // the Profiles row-level `[Edit]` action. It owns two bubbles/table views
-// (Assets and Projects), a focus.Handler exposing `[1]` / `[2]`
-// ctrl+digit mnemonics, row-level action buttons that swap with the
-// focused table, and screen-level Create Asset / Register Project / Back
-// buttons. Confirmation + form modals composite over the body; no
-// sub-screen is pushed for them.
+// (Assets and Projects), a focus.Handler driven by Tab / Shift+Tab,
+// row-level action buttons that swap with the focused table, and
+// screen-level Create Asset / Register Project / Back buttons.
+// Confirmation + form modals composite over the body; no sub-screen is
+// pushed for them.
 type editProfileScreen struct {
 	actions   editProfileActions
 	profileID string
@@ -265,7 +265,7 @@ func (s *editProfileScreen) handleKey(m tea.KeyPressMsg) (Screen, tea.Cmd) {
 	if s.modal != nil {
 		return s.forwardToModal(m)
 	}
-	// Focus handler consumes tab / shift+tab / ctrl+1 / ctrl+2.
+	// Focus handler consumes tab / shift+tab.
 	if handled, cmd := s.handler.Update(m); handled {
 		s.rebuildSet()
 		return s, cmd
@@ -308,10 +308,9 @@ func (s *editProfileScreen) routeToFocusedTable(m tea.KeyPressMsg) tea.Cmd {
 func (s *editProfileScreen) Title() string { return "Edit Profile" }
 
 // StatusKeys returns the row-level mnemonics of the focused table plus
-// the [Back] hint. Screen-level c/r and the focus mnemonics `[1]` / `[2]`
-// are excluded because they're visible on the body. Back is the same
-// explicit exception the Settings + Profiles screens make so the user
-// can still see the back hint.
+// the [Back] hint. Screen-level c/r are excluded because they're visible
+// on the body. Back is the same explicit exception the Settings +
+// Profiles screens make so the user can still see the back hint.
 func (s *editProfileScreen) InputFocused() bool { return false }
 
 func (s *editProfileScreen) StatusKeys() []key.Binding {

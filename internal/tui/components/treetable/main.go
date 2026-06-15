@@ -8,9 +8,9 @@
 //   - directories expose [Delete] only
 //   - files expose [Edit] [Delete]
 //
-// A focus.Handler registers the tree-table so the focus mnemonic [1] is shown
-// in the panel's top border. Confirmation modals open below the activating
-// button, mirroring the pattern from the mnemonic playground.
+// A focus.Handler registers the tree-table so Tab / Shift+Tab can rotate
+// focus. Confirmation modals open below the activating button, mirroring
+// the pattern from the mnemonic playground.
 //
 // Run with: go run ./internal/tui/components/treetable/main.go
 package main
@@ -45,7 +45,6 @@ type fileData struct {
 type model struct {
 	handler *focus.Handler
 	tt      *treetable.Model
-	ttBtn   *mnemonic.Button
 	modal   *modal.Modal
 	width   int
 	height  int
@@ -117,11 +116,10 @@ func newModel() model {
 	)
 
 	m := model{
-		handler: focus.New(focus.WithModifier(focus.ModAlt)),
+		handler: focus.New(),
 		tt:      tt,
 	}
-	m.ttBtn = m.handler.AddMnemonic(m.tt, '1')
-	m.tt.SetMnemonicButton(m.ttBtn)
+	m.handler.Add(m.tt)
 	return m
 }
 
@@ -185,7 +183,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) View() tea.View {
 	title := lipgloss.NewStyle().Bold(true).Padding(0, 0, 1, 0).Render("Tree-Table Example")
 	help := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
-		"↑/k up • ↓/j down • e edit • d delete • alt+1 focus • q quit",
+		"↑/k up • ↓/j down • e edit • d delete • tab focus • q quit",
 	)
 	status := ""
 	if m.status != "" {
