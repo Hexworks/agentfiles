@@ -48,4 +48,4 @@ func (s *infoScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 func (s *infoScreen) Body(_ int) string         { return s.modal.View() }
 func (s *infoScreen) Title() string             { return "Help" }
 func (s *infoScreen) StatusKeys() []key.Binding { return nil }
-func (s *infoScreen) InputFocused() bool        { return false }
+func (s *infoScreen) InputFocused() bool        { return s.modal.Active() }

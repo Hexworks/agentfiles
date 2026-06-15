@@ -157,6 +157,16 @@ func New(id string, content Content, opts ...Option) *Modal {
 
 func (m *Modal) ID() string { return m.id }
 
+// Active reports whether the modal is currently open — non-nil and not
+// yet resolved. Hosting screens forward this from their InputFocused so
+// the shell treats an open modal as exclusive: single-rune global keys
+// reach the modal's content (form input, confirm y/n) instead of
+// pushing a global screen behind it. The nil receiver is supported so
+// callers can write `s.modal.Active()` without a separate nil-check.
+func (m *Modal) Active() bool {
+	return m != nil && !m.resolved
+}
+
 func (m *Modal) Init() tea.Cmd {
 	return m.content.Init()
 }

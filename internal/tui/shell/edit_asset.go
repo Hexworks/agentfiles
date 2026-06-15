@@ -198,6 +198,9 @@ func (s *editAssetScreen) AssetID() string   { return s.assetID }
 // intercept so `s`, `n`, `?`, `q` flow as text into the focused input
 // instead of pushing a global screen.
 func (s *editAssetScreen) InputFocused() bool {
+	if s.modal.Active() {
+		return true
+	}
 	return s.handler != nil && s.handler.Focused() > s.treeIdx
 }
 

@@ -310,7 +310,7 @@ func (s *editProfileScreen) Title() string { return "Edit Profile" }
 // the [Back] hint. Screen-level c/r are excluded because they're visible
 // on the body. Back is the same explicit exception the Settings +
 // Profiles screens make so the user can still see the back hint.
-func (s *editProfileScreen) InputFocused() bool { return false }
+func (s *editProfileScreen) InputFocused() bool { return s.modal.Active() }
 
 func (s *editProfileScreen) StatusKeys() []key.Binding {
 	out := make([]key.Binding, 0, 5)
