@@ -14,6 +14,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/profile"
 	"github.com/hexworks/agentfiles/internal/project"
 	"github.com/hexworks/agentfiles/internal/tui/components/focus"
+	"github.com/hexworks/agentfiles/internal/tui/components/help"
 	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
 	"github.com/hexworks/agentfiles/internal/tui/components/modal"
 	"github.com/hexworks/agentfiles/internal/tui/components/panel"
@@ -305,6 +306,10 @@ func (s *editProfileScreen) routeToFocusedTable(m tea.KeyPressMsg) tea.Cmd {
 }
 
 func (s *editProfileScreen) Title() string { return "Edit Profile" }
+
+func (s *editProfileScreen) Topic() help.Topic {
+	return help.Topic{Label: "Edit Profile", File: "edit_profile.md"}
+}
 
 // StatusKeys returns the row-level mnemonics of the focused table plus
 // the [Back] hint. Screen-level c/r are excluded because they're visible

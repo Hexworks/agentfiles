@@ -12,6 +12,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/actions"
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/profile"
+	"github.com/hexworks/agentfiles/internal/tui/components/help"
 	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
 	"github.com/hexworks/agentfiles/internal/tui/components/modal"
 	"github.com/hexworks/agentfiles/internal/tui/components/panel"
@@ -175,6 +176,10 @@ func (s *profilesScreen) forwardToModal(msg tea.Msg) (Screen, tea.Cmd) {
 }
 
 func (s *profilesScreen) Title() string { return "Profiles" }
+
+func (s *profilesScreen) Topic() help.Topic {
+	return help.Topic{Label: "Profiles", File: "profiles.md"}
+}
 
 // StatusKeys exposes only the row-level mnemonics (e/edit, d/delete).
 // Screen-level c/r/b are visible on the button row beneath the table

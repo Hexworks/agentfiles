@@ -4,6 +4,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/hexworks/agentfiles/internal/tui/components/help"
 	"github.com/hexworks/agentfiles/internal/tui/components/modal"
 	"github.com/hexworks/agentfiles/internal/tui/components/notificationsmodal"
 )
@@ -42,7 +43,10 @@ func (s *notificationsScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 	return s, cmd
 }
 
-func (s *notificationsScreen) Body(_ int) string         { return s.modal.View() }
-func (s *notificationsScreen) Title() string             { return "Notifications" }
+func (s *notificationsScreen) Body(_ int) string { return s.modal.View() }
+func (s *notificationsScreen) Title() string     { return "Notifications" }
+func (s *notificationsScreen) Topic() help.Topic {
+	return help.Topic{Label: "Notifications", File: "notifications.md"}
+}
 func (s *notificationsScreen) StatusKeys() []key.Binding { return nil }
 func (s *notificationsScreen) InputFocused() bool        { return s.modal.Active() }

@@ -5,6 +5,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/hexworks/agentfiles/internal/tui/components/help"
 	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
 )
 
@@ -41,6 +42,10 @@ func (s *settingsScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 }
 
 func (s *settingsScreen) Title() string { return "Settings" }
+
+func (s *settingsScreen) Topic() help.Topic {
+	return help.Topic{Label: "Settings", File: "settings.md"}
+}
 
 // StatusKeys exposes [Back] to the status bar. The "screen-level
 // buttons not duplicated" rule treats [Back] as a deliberate

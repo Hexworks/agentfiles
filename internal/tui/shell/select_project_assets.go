@@ -14,6 +14,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/profile"
 	"github.com/hexworks/agentfiles/internal/project"
 	"github.com/hexworks/agentfiles/internal/tui/components/focus"
+	"github.com/hexworks/agentfiles/internal/tui/components/help"
 	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
 	"github.com/hexworks/agentfiles/internal/tui/components/panel"
 )
@@ -282,6 +283,10 @@ func (s *selectProjectAssetsScreen) routeToFocusedTable(m tea.KeyPressMsg) tea.C
 }
 
 func (s *selectProjectAssetsScreen) Title() string { return "Select Project Assets" }
+
+func (s *selectProjectAssetsScreen) Topic() help.Topic {
+	return help.Topic{Label: "Select Project Assets", File: "select_project_assets.md"}
+}
 
 // InputFocused is always false — this screen hosts no text inputs.
 func (s *selectProjectAssetsScreen) InputFocused() bool { return false }

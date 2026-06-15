@@ -14,6 +14,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/asset"
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/tui/components/focus"
+	"github.com/hexworks/agentfiles/internal/tui/components/help"
 	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
 	"github.com/hexworks/agentfiles/internal/tui/components/modal"
 	"github.com/hexworks/agentfiles/internal/tui/components/panel"
@@ -556,6 +557,10 @@ func (s *editAssetScreen) routeToFocusedComponent(m tea.KeyPressMsg) tea.Cmd {
 }
 
 func (s *editAssetScreen) Title() string { return "Edit Asset" }
+
+func (s *editAssetScreen) Topic() help.Topic {
+	return help.Topic{Label: "Edit Asset", File: "edit_asset.md"}
+}
 
 // StatusKeys returns the focus-state mnemonics for the status bar. Per
 // the parent task example (`e save b back tied to focus state`), Save

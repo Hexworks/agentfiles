@@ -13,6 +13,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/profile"
 	"github.com/hexworks/agentfiles/internal/project"
+	"github.com/hexworks/agentfiles/internal/tui/components/help"
 	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
 	"github.com/hexworks/agentfiles/internal/tui/components/treetable"
 )
@@ -162,6 +163,10 @@ func (s *planProjectScreen) ProfileID() string  { return s.profileID }
 func (s *planProjectScreen) ProjectID() string  { return s.projectID }
 func (s *planProjectScreen) Title() string      { return "Plan Project" }
 func (s *planProjectScreen) InputFocused() bool { return false }
+
+func (s *planProjectScreen) Topic() help.Topic {
+	return help.Topic{Label: "Plan Project", File: "plan_project.md"}
+}
 
 func (s *planProjectScreen) Init() tea.Cmd { return s.loadCmd() }
 
