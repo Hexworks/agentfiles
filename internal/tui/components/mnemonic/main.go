@@ -28,6 +28,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
 )
@@ -44,17 +45,16 @@ type model struct {
 }
 
 func newModel() model {
-	// Styles control how the three parts of a button render. The Mnemonic
-	// style is applied to the first case-insensitive occurrence of the
-	// mnemonic rune inside the label; everything else falls under Label,
-	// and the surrounding `[` / `]` use Bracket.
-	label := lipgloss.Color("13")
-	hint := lipgloss.Color("99")
-	styles := mnemonic.Styles{
-		Bracket:  lipgloss.NewStyle().Bold(true).Foreground(label),
-		Label:    lipgloss.NewStyle().Bold(true).Foreground(label),
-		Mnemonic: lipgloss.NewStyle().Bold(true).Underline(true).Foreground(hint),
-	}
+	// Styles control how the three chunks of a button render: accent
+	// (brackets), mnemonic (the highlighted shortcut letter), text
+	// (the rest of the label). ThemedStyles wires the three foreground
+	// colors and pins bold + underline so a parent style (e.g. a
+	// selected-row highlight) cannot leak into the button.
+	styles := mnemonic.ThemedStyles(
+		ansi.Red,           // accent for the brackets
+		ansi.BrightMagenta, // mnemonic letter (bold + underlined)
+		ansi.BrightMagenta, // remainder of the label
+	)
 	// mnemonic.New panics if the rune is absent from the label or if the
 	// action is nil — these are programmer errors, caught at startup.
 	// The Action returns a tea.Cmd, so buttons compose naturally with the

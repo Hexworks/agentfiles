@@ -27,6 +27,17 @@ var (
 	ColorCyan    = lipgloss.Color("14") // cyan
 )
 
+// Mnemonic-button palette. Distinct from the severity palette so the
+// activating-key hint reads as a control glyph rather than a status.
+// ColorAccent paints the surrounding `[`/`]` brackets; ColorMnemonic
+// paints the highlighted shortcut letter (rendered bold + underlined);
+// ColorText paints the rest of the label.
+var (
+	ColorAccent   = ColorRed
+	ColorMnemonic = ColorGreen
+	ColorText     = ColorMuted
+)
+
 // Lipgloss styles consumed by the render helpers and by the
 // notifications subsystem. Centralizing them keeps future palette
 // changes local; callers only reference these vars.

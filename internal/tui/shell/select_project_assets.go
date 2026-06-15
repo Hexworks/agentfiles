@@ -355,7 +355,7 @@ func (s *selectProjectAssetsScreen) Body(width int) string {
 // visible width when false — that reserves the column width so the panel
 // does not resize on focus changes.
 func (s *selectProjectAssetsScreen) buildSelectedRows(cursor int, showActions bool) []table.Row {
-	actions := unselectActionsCell()
+	actions := s.unselectActionsCell()
 	rows := make([]table.Row, len(s.selected))
 	for i, a := range s.selected {
 		cell := ""
@@ -372,7 +372,7 @@ func (s *selectProjectAssetsScreen) buildSelectedRows(cursor int, showActions bo
 }
 
 func (s *selectProjectAssetsScreen) buildAvailableRows(cursor int, showActions bool) []table.Row {
-	actions := selectActionsCell()
+	actions := s.selectActionsCell()
 	rows := make([]table.Row, len(s.available))
 	for i, a := range s.available {
 		cell := ""
@@ -388,18 +388,17 @@ func (s *selectProjectAssetsScreen) buildAvailableRows(cursor int, showActions b
 	return rows
 }
 
-// unselectActionsCell renders "[Unselect]" with the mnemonic letter
-// underlined via shell.underline so the surrounding cursor-row highlight
-// survives.
-func unselectActionsCell() string {
-	return "[" + underline("U") + "nselect]"
+// unselectActionsCell renders "[Unselect]" through the screen's
+// existing mnemonic.Button instance so the cursor-row cell uses the
+// same SGR-aware themed render path as the bottom button row.
+func (s *selectProjectAssetsScreen) unselectActionsCell() string {
+	return s.unselectBtn.View()
 }
 
-// selectActionsCell renders "[Select]" with the mnemonic letter
-// underlined via shell.underline so the surrounding cursor-row highlight
-// survives.
-func selectActionsCell() string {
-	return "[Se" + underline("l") + "ect]"
+// selectActionsCell renders "[Select]" through the screen's existing
+// mnemonic.Button instance. Same rationale as unselectActionsCell.
+func (s *selectProjectAssetsScreen) selectActionsCell() string {
+	return s.selectBtn.View()
 }
 
 func (s *selectProjectAssetsScreen) availableAtCursor() (*asset.Asset, bool) {

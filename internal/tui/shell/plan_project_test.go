@@ -152,11 +152,12 @@ func TestPlanProjectScreen_BodyLoadedContainsProjectAndButtons(t *testing.T) {
 	planLoadInto(t, s, f)
 
 	body := s.Body(120)
-	// Button labels render with the mnemonic letter wrapped in ANSI
-	// escape codes (e.g. "[<esc>[…mA<esc>[mpply]"), so the literal
-	// label "Apply" does not appear contiguously. Match the
-	// post-mnemonic suffix instead — stable under styling churn.
-	for _, want := range []string{"Proj", "pply]", "ack]"} {
+	// Button labels render with ANSI escape codes around the mnemonic
+	// letter AND around the closing bracket (SGR-aware chunking, see
+	// mnemonic.Button.View), so the literal label "Apply" never appears
+	// contiguously and "pply]" is also split. Match the post-mnemonic
+	// text run instead — stable under styling churn.
+	for _, want := range []string{"Proj", "pply", "ack"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("Body() loaded missing %q", want)
 		}

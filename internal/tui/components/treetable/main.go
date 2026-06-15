@@ -21,6 +21,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/hexworks/agentfiles/internal/tui/components/focus"
 	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
@@ -82,13 +83,11 @@ func newModel() model {
 		},
 	}
 
-	selectedColor := lipgloss.Color("13")
-	mnemonicColor := lipgloss.Color("99")
-	btnStyles := mnemonic.Styles{
-		Bracket:  lipgloss.NewStyle().Bold(true).Foreground(selectedColor),
-		Label:    lipgloss.NewStyle().Bold(true).Foreground(selectedColor),
-		Mnemonic: lipgloss.NewStyle().Bold(true).Underline(true).Foreground(mnemonicColor),
-	}
+	btnStyles := mnemonic.ThemedStyles(
+		ansi.Red,           // accent for the brackets
+		ansi.BrightMagenta, // mnemonic letter (bold + underlined)
+		ansi.BrightMagenta, // remainder of the label
+	)
 
 	// Action func: directories expose Delete only; files expose Edit + Delete.
 	// New buttons every render — they are cheap and capture the current node.

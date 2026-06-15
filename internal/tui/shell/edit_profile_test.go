@@ -674,8 +674,11 @@ func TestEditProfileScreen_BodyRecoversFromPreLoadRender(t *testing.T) {
 			t.Errorf("Body missing %q after pre-load render recovery\n%s", want, body)
 		}
 	}
-	// The cursor row must carry the action cell labels.
-	for _, want := range []string{"dit]", "elete]"} {
+	// The cursor row must carry the action cell labels. The labels are
+	// rendered via mnemonic.Button.View, which emits an accent SGR before
+	// the closing `]`, so "dit]" and "elete]" no longer appear
+	// contiguously. Match the post-mnemonic text run instead.
+	for _, want := range []string{"dit", "elete"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("Body missing action cell label %q\n%s", want, body)
 		}

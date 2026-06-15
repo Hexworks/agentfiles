@@ -8,6 +8,14 @@
 // responsible for routing key presses through the button's [Button.Matches]
 // helper and dispatching the returned command. This keeps button uniqueness
 // (one mnemonic per screen) the screen's concern, not the component's.
+//
+// Rendering is SGR-aware: View emits a single ANSI sequence per chunk
+// (brackets / mnemonic / rest of label) where each transition fully
+// re-states bold + underline + foreground. The button does NOT emit
+// intermediate `\x1b[0m` resets that would terminate a parent style
+// (e.g. a table's selected-row highlight) mid-content. A single reset
+// is emitted at the very end so the button cannot leak its own colors
+// into adjacent text.
 package mnemonic
 
 import (
@@ -16,7 +24,9 @@ import (
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
+
+	"github.com/hexworks/agentfiles/internal/tui/styles"
 )
 
 // Action is the side-effect executed when a button fires. Returning a nil
@@ -26,24 +36,45 @@ type Action func() tea.Cmd
 // Styles centralizes the appearance of a button (and the separator a
 // [Set] uses to join buttons) so callers can theme everything in one
 // place without touching the component internals.
+//
+// Each chunk style is an [ansi.Style] rather than a lipgloss.Style.
+// Storing the raw SGR attribute list means [Button.View] can emit
+// state-restoring transitions (one SGR sequence per chunk) without
+// inserting bare `\x1b[0m` resets that would break a parent style
+// wrapping the button (e.g. a table's selected-row highlight). Each
+// style should set foreground + bold + underline explicitly so a
+// transition fully overrides whatever the parent left enabled.
 type Styles struct {
-	// Bracket renders the `[` and `]` framing the label.
-	Bracket lipgloss.Style
-	// Label renders the non-mnemonic characters of the label.
-	Label lipgloss.Style
+	// Accent renders the `[` and `]` framing the label.
+	Accent ansi.Style
 	// Mnemonic renders the single highlighted mnemonic character.
-	Mnemonic lipgloss.Style
+	Mnemonic ansi.Style
+	// Text renders the non-mnemonic characters of the label.
+	Text ansi.Style
 	// Separator joins buttons in [Set.View]. Ignored by [Button.View].
 	Separator string
 }
 
-// DefaultStyles returns palette-neutral styles. Callers that want themed
-// buttons should pass [WithStyles].
+// DefaultStyles returns the standard themed palette: accent on the
+// brackets, mnemonic color (bold + underlined) on the shortcut letter,
+// muted text color on the rest of the label. Pulls colors from
+// [styles.ColorAccent], [styles.ColorMnemonic], and [styles.ColorText]
+// so a theme change touches one file.
 func DefaultStyles() Styles {
+	return ThemedStyles(styles.ColorAccent, styles.ColorMnemonic, styles.ColorText)
+}
+
+// ThemedStyles builds [Styles] with the three foreground colors fully
+// pinned: bold + underline are explicitly disabled on the accent and
+// text chunks (so a parent's bold does not leak in) and explicitly
+// enabled on the mnemonic chunk. Pass any [ansi.Color] (basic, indexed,
+// or true-color) — lipgloss.Color values satisfy the interface and may
+// be passed directly.
+func ThemedStyles(accent, mnemonic, text ansi.Color) Styles {
 	return Styles{
-		Bracket:   lipgloss.NewStyle(),
-		Label:     lipgloss.NewStyle(),
-		Mnemonic:  lipgloss.NewStyle().Bold(true).Underline(true),
+		Accent:    ansi.Style{}.Normal().Underline(false).ForegroundColor(accent),
+		Mnemonic:  ansi.Style{}.Bold().Underline(true).ForegroundColor(mnemonic),
+		Text:      ansi.Style{}.Normal().Underline(false).ForegroundColor(text),
 		Separator: " ",
 	}
 }
@@ -140,24 +171,65 @@ func (b *Button) Trigger() tea.Cmd {
 	return b.action()
 }
 
+// chunk classifies a span of the rendered button so the render loop
+// only emits an SGR transition when the target style actually changes.
+type chunk int
+
+const (
+	chunkAccent chunk = iota
+	chunkMnemonic
+	chunkText
+)
+
 // View renders the button as `[Label]` with the mnemonic character styled
-// distinctly. The first case-insensitive occurrence of the mnemonic is the one
-// highlighted; subsequent occurrences are rendered with the normal label
-// style.
+// distinctly. The first case-insensitive occurrence of the mnemonic is the
+// one highlighted; subsequent occurrences fall under the text style.
+//
+// Internally, View emits exactly one SGR sequence per chunk transition
+// (accent → mnemonic → text → accent) plus a single trailing reset.
+// Bare `\x1b[0m` mid-string would terminate a wrapping parent style
+// (e.g. a treetable selected-row highlight), so each transition fully
+// re-states bold, underline, and foreground instead.
 func (b *Button) View() string {
 	var sb strings.Builder
-	sb.WriteString(b.styles.Bracket.Render("["))
+	current := chunkAccent
+	writeStyle(&sb, b.styles.Accent)
+	sb.WriteString("[")
 	highlighted := false
 	for _, r := range b.label {
+		next := chunkText
 		if !highlighted && unicode.ToLower(r) == unicode.ToLower(b.mnemonic) {
-			sb.WriteString(b.styles.Mnemonic.Render(string(r)))
+			next = chunkMnemonic
 			highlighted = true
-			continue
 		}
-		sb.WriteString(b.styles.Label.Render(string(r)))
+		if next != current {
+			switch next {
+			case chunkMnemonic:
+				writeStyle(&sb, b.styles.Mnemonic)
+			case chunkText:
+				writeStyle(&sb, b.styles.Text)
+			}
+			current = next
+		}
+		sb.WriteRune(r)
 	}
-	sb.WriteString(b.styles.Bracket.Render("]"))
+	if current != chunkAccent {
+		writeStyle(&sb, b.styles.Accent)
+	}
+	sb.WriteString("]")
+	sb.WriteString(ansi.ResetStyle)
 	return sb.String()
+}
+
+// writeStyle emits the SGR sequence for st only when st carries
+// attributes. An empty [ansi.Style] would otherwise stringify to a
+// bare reset (`\x1b[m`) per [ansi.Style.String], which is exactly the
+// SGR leak the SGR-aware render path is meant to avoid.
+func writeStyle(sb *strings.Builder, st ansi.Style) {
+	if len(st) == 0 {
+		return
+	}
+	sb.WriteString(st.String())
 }
 
 func containsRuneFold(s string, r rune) bool {

@@ -237,28 +237,30 @@ func (s *profilesScreen) rebuildTable() {
 
 // buildRows materializes one table.Row per profile. The Actions cell is
 // populated only on the cursor row, matching the task 0015 mockup where
-// `[Edit] [Delete]` appears next to the selected profile. The mnemonic
-// chars are wrapped in raw SGR underline-on / underline-off codes so the
-// surrounding cell style (the table's Selected row highlight) is not
-// terminated by an embedded full-reset — a problem mnemonic.Button.View
-// has because lipgloss emits `\x1b[0m` at the end of every styled span.
+// `[Edit] [Delete]` appears next to the selected profile. The label is
+// produced by the screen's own mnemonic.Button instances so the cursor
+// row picks up the themed accent/mnemonic/text palette and survives
+// composition with the surrounding table Selected style — Button.View
+// emits no intermediate `\x1b[0m` resets.
 func (s *profilesScreen) buildRows(cursor int) []table.Row {
 	rows := make([]table.Row, len(s.profiles))
 	for i, p := range s.profiles {
 		actions := ""
 		if i == cursor {
-			actions = actionsCellContent()
+			actions = s.actionsCellContent()
 		}
 		rows[i] = table.Row{p.Manifest.ID, p.Manifest.Name, p.Root, actions}
 	}
 	return rows
 }
 
-// actionsCellContent returns the "[Edit] [Delete]" label with the
-// mnemonic runes underlined via the shared shell.underline helper so the
-// surrounding cursor-row highlight survives.
-func actionsCellContent() string {
-	return "[" + underline("E") + "dit] [" + underline("D") + "elete]"
+// actionsCellContent returns the "[Edit] [Delete]" cell rendered through
+// the screen's existing mnemonic.Button instances. Routing the cell
+// through the buttons means the cursor-row cell, the bottom-of-screen
+// button row, and any future status-bar rendering all share one
+// SGR-aware code path.
+func (s *profilesScreen) actionsCellContent() string {
+	return s.edit.View() + " " + s.delete.View()
 }
 
 // selectedProfile returns the profile under the table cursor. Returns

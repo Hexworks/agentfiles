@@ -455,7 +455,7 @@ func (s *editProfileScreen) rebuildProjectsTable() {
 // when false — that reserves the column width so the panel does not
 // resize on focus changes.
 func (s *editProfileScreen) buildAssetsRows(cursor int, showActions bool) []table.Row {
-	actions := assetActionsCell()
+	actions := s.assetActionsCell()
 	rows := make([]table.Row, len(s.assets))
 	for i, a := range s.assets {
 		cell := ""
@@ -472,7 +472,7 @@ func (s *editProfileScreen) buildAssetsRows(cursor int, showActions bool) []tabl
 }
 
 func (s *editProfileScreen) buildProjectsRows(cursor int, showActions bool) []table.Row {
-	actions := projectActionsCell()
+	actions := s.projectActionsCell()
 	rows := make([]table.Row, len(s.projects))
 	for i, p := range s.projects {
 		cell := ""
@@ -488,19 +488,20 @@ func (s *editProfileScreen) buildProjectsRows(cursor int, showActions bool) []ta
 	return rows
 }
 
-// assetActionsCell renders "[Edit] [Delete]" with the mnemonic letters
-// underlined via shell.underline so the surrounding cursor-row highlight
-// survives.
-func assetActionsCell() string {
-	return "[" + underline("E") + "dit] [" + underline("D") + "elete]"
+// assetActionsCell renders "[Edit] [Delete]" through the screen's
+// existing mnemonic.Button instances so the cursor-row cell uses the
+// same SGR-aware themed render path as the bottom button row.
+func (s *editProfileScreen) assetActionsCell() string {
+	return s.editAsset.View() + " " + s.deleteAsset.View()
 }
 
-// projectActionsCell renders the full action labels with mnemonic
-// runes underlined via shell.underline so the surrounding cursor-row
-// highlight survives.
-func projectActionsCell() string {
-	return "[" + underline("E") + "dit] [Select " + underline("A") + "ssets] [" +
-		underline("P") + "lan] [" + underline("D") + "elete]"
+// projectActionsCell renders "[Edit] [Select Assets] [Plan] [Delete]"
+// through the screen's existing mnemonic.Button instances. Same
+// rationale as assetActionsCell: one themed render path for both cell
+// and button row.
+func (s *editProfileScreen) projectActionsCell() string {
+	return s.editProject.View() + " " + s.selectAssets.View() + " " +
+		s.planProject.View() + " " + s.deleteProject.View()
 }
 
 func (s *editProfileScreen) selectedAsset() (*asset.Asset, bool) {
