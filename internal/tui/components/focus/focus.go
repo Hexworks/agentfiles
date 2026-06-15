@@ -27,6 +27,7 @@ import (
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 // Focusable is the uniform contract registered components must satisfy. The
@@ -84,6 +85,12 @@ func New(opts ...Option) *Handler {
 // calls determines the cycle order. The component must be one of the
 // recognized types (Focusable, *textinput.Model, *textarea.Model,
 // *table.Model); anything else is rejected with a warning and not registered.
+//
+// Newly-added components are blurred so the handler's neutral starting
+// state (no entry focused) is consistent with each widget's internal
+// focus flag. Without this, a *table.Model constructed with
+// [table.WithFocused] would render its Selected-row highlight even
+// though the handler considers no entry focused.
 func (h *Handler) Add(c any) {
 	f, ok := adapt(c)
 	if !ok {
@@ -92,6 +99,7 @@ func (h *Handler) Add(c any) {
 		return
 	}
 	h.entries = append(h.entries, &entry{raw: c, focusable: f})
+	f.Blur()
 }
 
 // Remove unregisters a component. The match is by reference equality against
@@ -207,7 +215,7 @@ func adapt(c any) (Focusable, bool) {
 	case *textarea.Model:
 		return textAreaAdapter{m: v}, true
 	case *table.Model:
-		return tableAdapter{m: v}, true
+		return newTableAdapter(v), true
 	}
 	return nil, false
 }
@@ -222,7 +230,48 @@ type textAreaAdapter struct{ m *textarea.Model }
 func (a textAreaAdapter) Focus() tea.Cmd { return a.m.Focus() }
 func (a textAreaAdapter) Blur() tea.Cmd  { a.m.Blur(); return nil }
 
-type tableAdapter struct{ m *table.Model }
+// tableAdapter wraps a *table.Model so focus changes flip both the
+// table's internal focus flag and its rendered Selected style. The
+// bubbles/table widget always paints the cursor row with its Selected
+// style, regardless of focus state, which leaves a blurred table looking
+// like it still owns the selection. The adapter compensates by holding
+// two Styles snapshots: focused uses [table.DefaultStyles], blurred is
+// the same with Selected reset to a neutral style. Focus / Blur swap
+// them on every transition.
+//
+// Screens that need custom palette colors for either state can construct
+// the adapter via [NewTableAdapter] and pass it to [Handler.Add] as a
+// pre-wrapped [Focusable]; the typed-pointer path in [adapt] is reserved
+// for the default case so existing call sites do not need to change.
+type tableAdapter struct {
+	m       *table.Model
+	focused table.Styles
+	blurred table.Styles
+}
 
-func (a tableAdapter) Focus() tea.Cmd { a.m.Focus(); return nil }
-func (a tableAdapter) Blur() tea.Cmd  { a.m.Blur(); return nil }
+func newTableAdapter(m *table.Model) *tableAdapter {
+	focused := table.DefaultStyles()
+	blurred := focused
+	blurred.Selected = lipgloss.NewStyle()
+	return &tableAdapter{m: m, focused: focused, blurred: blurred}
+}
+
+// NewTableAdapter constructs a focus-aware adapter around m using the
+// supplied focused / blurred styles. Pass the returned value directly to
+// [Handler.Add] when the default focus/blur palette does not match the
+// host theme.
+func NewTableAdapter(m *table.Model, focused, blurred table.Styles) Focusable {
+	return &tableAdapter{m: m, focused: focused, blurred: blurred}
+}
+
+func (a *tableAdapter) Focus() tea.Cmd {
+	a.m.SetStyles(a.focused)
+	a.m.Focus()
+	return nil
+}
+
+func (a *tableAdapter) Blur() tea.Cmd {
+	a.m.SetStyles(a.blurred)
+	a.m.Blur()
+	return nil
+}

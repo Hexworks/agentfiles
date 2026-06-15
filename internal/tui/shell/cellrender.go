@@ -1,6 +1,8 @@
 package shell
 
 import (
+	"strings"
+
 	"charm.land/bubbles/v2/table"
 	"charm.land/lipgloss/v2"
 )
@@ -53,6 +55,15 @@ func tableNaturalWidth(cols []table.Column) int {
 		sum += c.Width
 	}
 	return sum + tableCellPadding
+}
+
+// hiddenActionsCell returns a whitespace-only placeholder of the same
+// visible width as visible. Screens use it on the cursor row when the
+// table is unfocused so [naturalColumns] still measures the column at
+// its focused-state width — the panel layout therefore stays put
+// across Tab even though the action buttons are hidden.
+func hiddenActionsCell(visible string) string {
+	return strings.Repeat(" ", lipgloss.Width(visible))
 }
 
 // sanitizeCursor pulls a stale cursor back into the [0, rowCount) range

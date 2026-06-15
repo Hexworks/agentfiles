@@ -258,7 +258,7 @@ func (m *Model) buildRow(i int, n *Node, cursor int) table.Row {
 	}
 	if m.actionsFn != nil {
 		cell := ""
-		if i == cursor {
+		if i == cursor && m.table.Focused() {
 			btns := m.actionsFn(n)
 			m.currentBtns = btns
 			cell = renderButtons(btns)
@@ -316,11 +316,26 @@ func renderButtons(bs []*mnemonic.Button) string {
 }
 
 // Focus and Blur satisfy focus.Focusable so a focus.Handler can adopt the
-// component directly.
-func (m *Model) Focus() tea.Cmd { m.table.Focus(); return nil }
+// component directly. Focus restores the configured Selected style so the
+// cursor row highlight reappears; Blur replaces it with a neutral style so
+// an unfocused table shows no selection highlight and no actions buttons.
+func (m *Model) Focus() tea.Cmd {
+	m.table.Focus()
+	m.table.SetStyles(m.styles.Table)
+	m.refreshRows()
+	return nil
+}
 
-// Blur removes keyboard focus from the underlying table.
-func (m *Model) Blur() tea.Cmd { m.table.Blur(); return nil }
+// Blur removes keyboard focus from the underlying table and hides the
+// selection highlight and actions cell until Focus is called again.
+func (m *Model) Blur() tea.Cmd {
+	m.table.Blur()
+	blurred := m.styles.Table
+	blurred.Selected = lipgloss.NewStyle()
+	m.table.SetStyles(blurred)
+	m.refreshRows()
+	return nil
+}
 
 // Focused reports whether the underlying table currently holds focus.
 func (m *Model) Focused() bool { return m.table.Focused() }

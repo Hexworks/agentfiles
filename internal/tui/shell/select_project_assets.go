@@ -125,7 +125,6 @@ func (s *selectProjectAssetsScreen) buildTables() {
 	st := table.New(
 		table.WithColumns(cols),
 		table.WithRows(nil),
-		table.WithFocused(true),
 		table.WithWidth(tableNaturalWidth(cols)),
 		table.WithHeight(1),
 	)
@@ -133,7 +132,6 @@ func (s *selectProjectAssetsScreen) buildTables() {
 	at := table.New(
 		table.WithColumns(cols),
 		table.WithRows(nil),
-		table.WithFocused(true),
 		table.WithWidth(tableNaturalWidth(cols)),
 		table.WithHeight(1),
 	)
@@ -275,9 +273,9 @@ func (s *selectProjectAssetsScreen) routeToFocusedTable(m tea.KeyPressMsg) tea.C
 	if c.Cursor() != before {
 		switch c {
 		case s.selectedTable:
-			c.SetRows(s.buildSelectedRows(c.Cursor()))
+			c.SetRows(s.buildSelectedRows(c.Cursor(), true))
 		case s.availableTable:
-			c.SetRows(s.buildAvailableRows(c.Cursor()))
+			c.SetRows(s.buildAvailableRows(c.Cursor(), true))
 		}
 	}
 	return cmd
@@ -314,8 +312,9 @@ func (s *selectProjectAssetsScreen) Body(width int) string {
 	}
 	sanitizeCursor(s.selectedTable, len(s.selected))
 	sanitizeCursor(s.availableTable, len(s.available))
-	selectedRows := s.buildSelectedRows(s.selectedTable.Cursor())
-	availableRows := s.buildAvailableRows(s.availableTable.Cursor())
+	focused := s.handler.Focused()
+	selectedRows := s.buildSelectedRows(s.selectedTable.Cursor(), focused == s.selectedIdx)
+	availableRows := s.buildAvailableRows(s.availableTable.Cursor(), focused == s.availableIdx)
 
 	selectedCols := naturalColumns(selectProjectAssetsColumnTitles, selectedRows)
 	availableCols := naturalColumns(selectProjectAssetsColumnTitles, availableRows)
@@ -330,7 +329,6 @@ func (s *selectProjectAssetsScreen) Body(width int) string {
 		" Selecting assets for project %q (%s)",
 		s.projectName, s.profileName,
 	)
-	focused := s.handler.Focused()
 	buttonRow := " " + s.planBtn.View() + "  " + s.backBtn.View()
 	st := focusAwarePanelStyles()
 
@@ -346,24 +344,39 @@ func (s *selectProjectAssetsScreen) Body(width int) string {
 	)
 }
 
-func (s *selectProjectAssetsScreen) buildSelectedRows(cursor int) []table.Row {
+// buildSelectedRows materializes the table rows for the Selected pane.
+// The actions cell on the cursor row is rendered visible when
+// showActions is true, and as a whitespace placeholder of the same
+// visible width when false — that reserves the column width so the panel
+// does not resize on focus changes.
+func (s *selectProjectAssetsScreen) buildSelectedRows(cursor int, showActions bool) []table.Row {
+	actions := unselectActionsCell()
 	rows := make([]table.Row, len(s.selected))
 	for i, a := range s.selected {
 		cell := ""
 		if i == cursor {
-			cell = unselectActionsCell()
+			if showActions {
+				cell = actions
+			} else {
+				cell = hiddenActionsCell(actions)
+			}
 		}
 		rows[i] = table.Row{a.ID, a.Name, string(a.Type), a.ExclusiveGroup, cell}
 	}
 	return rows
 }
 
-func (s *selectProjectAssetsScreen) buildAvailableRows(cursor int) []table.Row {
+func (s *selectProjectAssetsScreen) buildAvailableRows(cursor int, showActions bool) []table.Row {
+	actions := selectActionsCell()
 	rows := make([]table.Row, len(s.available))
 	for i, a := range s.available {
 		cell := ""
 		if i == cursor {
-			cell = selectActionsCell()
+			if showActions {
+				cell = actions
+			} else {
+				cell = hiddenActionsCell(actions)
+			}
 		}
 		rows[i] = table.Row{a.ID, a.Name, string(a.Type), a.ExclusiveGroup, cell}
 	}
@@ -458,15 +471,19 @@ func (s *selectProjectAssetsScreen) onPlan() tea.Cmd {
 	return pushCmd(newPlanProjectScreen(s.actions, s.profileID, s.projectID))
 }
 
+// rebuildTables seeds rows + naturally-sized columns for both tables.
+// Rows are seeded without an actions cell — the first render pass
+// through [Body] re-emits them with the actions cell gated on the live
+// focus state.
 func (s *selectProjectAssetsScreen) rebuildTables() {
-	rows := s.buildSelectedRows(0)
+	rows := s.buildSelectedRows(0, false)
 	cols := naturalColumns(selectProjectAssetsColumnTitles, rows)
 	s.selectedTable.SetColumns(cols)
 	s.selectedTable.SetWidth(tableNaturalWidth(cols))
 	s.selectedTable.SetRows(rows)
 	s.selectedTable.SetHeight(len(rows) + 1)
 
-	arows := s.buildAvailableRows(0)
+	arows := s.buildAvailableRows(0, false)
 	acols := naturalColumns(selectProjectAssetsColumnTitles, arows)
 	s.availableTable.SetColumns(acols)
 	s.availableTable.SetWidth(tableNaturalWidth(acols))

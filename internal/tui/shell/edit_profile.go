@@ -131,7 +131,6 @@ func (s *editProfileScreen) buildTables() {
 	at := table.New(
 		table.WithColumns(assetCols),
 		table.WithRows(nil),
-		table.WithFocused(true),
 		table.WithWidth(tableNaturalWidth(assetCols)),
 		table.WithHeight(1),
 	)
@@ -140,7 +139,6 @@ func (s *editProfileScreen) buildTables() {
 	pt := table.New(
 		table.WithColumns(projectCols),
 		table.WithRows(nil),
-		table.WithFocused(true),
 		table.WithWidth(tableNaturalWidth(projectCols)),
 		table.WithHeight(1),
 	)
@@ -285,7 +283,8 @@ func (s *editProfileScreen) forwardToModal(msg tea.Msg) (Screen, tea.Cmd) {
 // routeToFocusedTable forwards keypresses the handler and mnemonic set
 // did not consume to the table the handler currently considers focused.
 // On a cursor change, the actions cell rebuilds for the newly-selected
-// row.
+// row. The focused table is, by definition, the one whose actions cell
+// should render — so showActions is true on the rebuild path.
 func (s *editProfileScreen) routeToFocusedTable(m tea.KeyPressMsg) tea.Cmd {
 	c, ok := s.handler.FocusedComponent().(*table.Model)
 	if !ok {
@@ -297,9 +296,9 @@ func (s *editProfileScreen) routeToFocusedTable(m tea.KeyPressMsg) tea.Cmd {
 	if c.Cursor() != before {
 		switch c {
 		case s.assetsTable:
-			c.SetRows(s.buildAssetsRows(c.Cursor()))
+			c.SetRows(s.buildAssetsRows(c.Cursor(), true))
 		case s.projectsTable:
-			c.SetRows(s.buildProjectsRows(c.Cursor()))
+			c.SetRows(s.buildProjectsRows(c.Cursor(), true))
 		}
 	}
 	return cmd
@@ -350,8 +349,9 @@ func (s *editProfileScreen) Body(width int) string {
 func (s *editProfileScreen) renderBody(_ int) string {
 	sanitizeCursor(s.assetsTable, len(s.assets))
 	sanitizeCursor(s.projectsTable, len(s.projects))
-	assetRows := s.buildAssetsRows(s.assetsTable.Cursor())
-	projectRows := s.buildProjectsRows(s.projectsTable.Cursor())
+	focused := s.handler.Focused()
+	assetRows := s.buildAssetsRows(s.assetsTable.Cursor(), focused == 0)
+	projectRows := s.buildProjectsRows(s.projectsTable.Cursor(), focused == 1)
 
 	assetCols := naturalColumns(assetColumnTitles, assetRows)
 	projectCols := naturalColumns(projectColumnTitles, projectRows)
@@ -365,7 +365,6 @@ func (s *editProfileScreen) renderBody(_ int) string {
 	applyTable(s.assetsTable, assetCols, assetRows)
 	applyTable(s.projectsTable, projectCols, projectRows)
 
-	focused := s.handler.Focused()
 	buttonRow := " " + s.createAsset.View() + "  " + s.register.View() + "  " + s.back.View()
 	st := focusAwarePanelStyles()
 
@@ -426,9 +425,11 @@ func (s *editProfileScreen) rebuildLists(prof *profile.Profile) {
 }
 
 // rebuildAssetsTable seeds rows + naturally-sized columns from the
-// freshly-loaded profile.
+// freshly-loaded profile. Rows are seeded without an actions cell — the
+// first render pass through [renderBody] re-emits them with the actions
+// cell gated on the live focus state.
 func (s *editProfileScreen) rebuildAssetsTable() {
-	rows := s.buildAssetsRows(0)
+	rows := s.buildAssetsRows(0, false)
 	cols := naturalColumns(assetColumnTitles, rows)
 	s.assetsTable.SetColumns(cols)
 	s.assetsTable.SetWidth(tableNaturalWidth(cols))
@@ -436,31 +437,46 @@ func (s *editProfileScreen) rebuildAssetsTable() {
 }
 
 func (s *editProfileScreen) rebuildProjectsTable() {
-	rows := s.buildProjectsRows(0)
+	rows := s.buildProjectsRows(0, false)
 	cols := naturalColumns(projectColumnTitles, rows)
 	s.projectsTable.SetColumns(cols)
 	s.projectsTable.SetWidth(tableNaturalWidth(cols))
 	s.projectsTable.SetRows(rows)
 }
 
-func (s *editProfileScreen) buildAssetsRows(cursor int) []table.Row {
+// buildAssetsRows materializes the table rows for the assets list. The
+// actions cell on the cursor row is rendered visible when showActions
+// is true, and as a whitespace placeholder of the same visible width
+// when false — that reserves the column width so the panel does not
+// resize on focus changes.
+func (s *editProfileScreen) buildAssetsRows(cursor int, showActions bool) []table.Row {
+	actions := assetActionsCell()
 	rows := make([]table.Row, len(s.assets))
 	for i, a := range s.assets {
 		cell := ""
 		if i == cursor {
-			cell = assetActionsCell()
+			if showActions {
+				cell = actions
+			} else {
+				cell = hiddenActionsCell(actions)
+			}
 		}
 		rows[i] = table.Row{a.ID, a.Name, string(a.Type), cell}
 	}
 	return rows
 }
 
-func (s *editProfileScreen) buildProjectsRows(cursor int) []table.Row {
+func (s *editProfileScreen) buildProjectsRows(cursor int, showActions bool) []table.Row {
+	actions := projectActionsCell()
 	rows := make([]table.Row, len(s.projects))
 	for i, p := range s.projects {
 		cell := ""
 		if i == cursor {
-			cell = projectActionsCell()
+			if showActions {
+				cell = actions
+			} else {
+				cell = hiddenActionsCell(actions)
+			}
 		}
 		rows[i] = table.Row{p.ID, p.Name, p.Path, cell}
 	}
