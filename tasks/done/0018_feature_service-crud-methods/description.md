@@ -1,7 +1,7 @@
 ---
 id: 0018
 type: feature
-status: in-review
+status: done
 topics: go
 depends_on: 0015
 ---

@@ -1,7 +1,7 @@
 ---
 id: 0021
 type: feature
-status: in-review
+status: done
 topics: go, tui, charm
 depends_on: 0019, 0020
 ---
@@ -36,7 +36,7 @@ router; the legacy entry points no longer fit.
 ### 2. Screen router (stack)
 
 - Screens implement a small interface (e.g. `Screen { Init, Update, View,
-  Title }`) and may push/pop other screens.
+Title }`) and may push/pop other screens.
 - Push/pop is message-driven: a screen returns a `PushScreenMsg{Screen}` or
   `PopScreenMsg` from its `Update`, the root handles the transition.
 - Initial route: a placeholder `WelcomeStub` screen (will be replaced by
@@ -103,7 +103,7 @@ Delete:
 
 - The actual Welcome/Settings/Profiles/Edit Profile/etc. screens
   (tasks 0024–0029). Initial placeholder is fine.
-- The Notifications and Info modal *bodies* (task 0023). The global key
+- The Notifications and Info modal _bodies_ (task 0023). The global key
   handlers may dispatch to no-ops until then.
 
 ## Verification

@@ -1,7 +1,7 @@
 ---
 id: 0019
 type: feature
-status: in-review
+status: done
 topics: go, tui
 depends_on: 0017, 0018
 ---
@@ -113,6 +113,7 @@ Reusable from every screen, mounted by the shell (task 0021).
 
 A small helper (e.g. `notifications.From(action func() (T, errs.DomainError), successFmt string) tea.Cmd`)
 runs the action, then enqueues:
+
 - `LevelInfo` with `successFmt` on success.
 - `LevelError` with the `errs.DomainError`'s rendered message on failure.
 

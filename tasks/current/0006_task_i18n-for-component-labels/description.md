@@ -1,7 +1,7 @@
 ---
 id: 0006
 type: feature
-status: Pending
+status: pending
 tags: research
 ---
 

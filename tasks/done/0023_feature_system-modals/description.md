@@ -1,7 +1,7 @@
 ---
 id: 0023
 type: feature
-status: in-review
+status: done
 topics: go, tui, charm
 depends_on: 0019, 0021
 ---

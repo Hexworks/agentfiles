@@ -1,7 +1,7 @@
 ---
 id: 0020
 type: task
-status: in-review
+status: done
 topics: go, tui, charm
 depends_on: 0015
 ---

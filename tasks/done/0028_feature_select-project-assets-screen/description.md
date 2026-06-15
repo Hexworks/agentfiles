@@ -1,7 +1,7 @@
 ---
 id: 0028
 type: feature
-status: in-review
+status: done
 topics: go, tui, project, asset
 depends_on: 0021
 ---

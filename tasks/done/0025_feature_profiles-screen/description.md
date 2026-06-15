@@ -1,7 +1,7 @@
 ---
 id: 0025
 type: feature
-status: in-review
+status: done
 topics: go, tui, profile
 depends_on: 0021, 0022, 0023, 0024
 ---
@@ -53,12 +53,12 @@ Welcome menu's "Profiles" entry.
   with the selected profile's `id` as parameter.
 - `d` → **two-step** delete:
     1. Open Confirmation Modal: `"Are you sure you want to delete profile {{name}}?"`
-       - "No" → abort, no further prompts.
-       - "Yes" → step 2.
+        - "No" → abort, no further prompts.
+        - "Yes" → step 2.
     2. Open Confirmation Modal: `"Also delete profile folder on disk?"`
-       - "No" → call `DeleteProfile` action with `KeepFolders`.
-       - "Yes" → call `DeleteProfile` action with `DeleteFolders`.
-    Outcome routed through the notification helper from task 0019.
+        - "No" → call `DeleteProfile` action with `KeepFolders`.
+        - "Yes" → call `DeleteProfile` action with `DeleteFolders`.
+          Outcome routed through the notification helper from task 0019.
 
 Use `mnemonic.Set` (task 0020) on the selected row so duplicate mnemonics
 panic at render time.

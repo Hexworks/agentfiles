@@ -1,8 +1,9 @@
 ---
 id: 0013
 type: feature
-status: pending
+status: wont-do
 tags: go
+note: already implemented by #0027
 ---
 
 # Allow managing skill files

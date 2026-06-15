@@ -1,7 +1,7 @@
 ---
 id: 0029
 type: feature
-status: in-review
+status: done
 topics: go, tui, project, render
 depends_on: 0017, 0020, 0021
 ---
@@ -27,12 +27,12 @@ On `Init`, run the `PlanProject(id)` action (task 0019), which wraps
 Uses `treetable.WithValueColumns` (task 0020) to inject two value columns
 between `Name` and `Actions`:
 
-| Column         | Origin                                                        |
-|----------------|---------------------------------------------------------------|
-| Name           | path of file / directory                                      |
-| Status         | `FileChange.Kind` (only on files, not directories)            |
-| Current Action | currently chosen `Resolution` (only on files, not directories)|
-| Actions        | one mnemonic button — the **other** option                    |
+| Column         | Origin                                                         |
+| -------------- | -------------------------------------------------------------- |
+| Name           | path of file / directory                                       |
+| Status         | `FileChange.Kind` (only on files, not directories)             |
+| Current Action | currently chosen `Resolution` (only on files, not directories) |
+| Actions        | one mnemonic button — the **other** option                     |
 
 ### Status display
 
@@ -43,13 +43,13 @@ between `Name` and `Actions`:
 
 ### Actions column — toggle button (cursor + focused row only)
 
-| Status | Current Action | Button rendered | Mnemonic |
-|--------|----------------|-----------------|----------|
-| drift  | Keep           | `[Overwrite]`   | `o`      |
-| drift  | Overwrite      | `[Keep]`        | `k`      |
-| unknown| Keep           | `[Delete]`      | `d`      |
-| unknown| Delete         | `[Keep]`        | `k`      |
-| create / update / delete | — (auto)            | (no button)     | —        |
+| Status                   | Current Action | Button rendered | Mnemonic |
+| ------------------------ | -------------- | --------------- | -------- |
+| drift                    | Keep           | `[Overwrite]`   | `o`      |
+| drift                    | Overwrite      | `[Keep]`        | `k`      |
+| unknown                  | Keep           | `[Delete]`      | `d`      |
+| unknown                  | Delete         | `[Keep]`        | `k`      |
+| create / update / delete | — (auto)       | (no button)     | —        |
 
 Defaults: `Keep` for both `drift` and `unknown`.
 
