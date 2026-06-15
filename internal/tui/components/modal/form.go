@@ -26,6 +26,14 @@ func (f *formContent) Update(msg tea.Msg) (Content, tea.Cmd) {
 		f.form.State = huh.StateAborted
 		return f, nil
 	}
+	// Swallow WindowSizeMsg so the hosted huh form keeps the compact
+	// natural size it had on open. Without this, the first resize event
+	// after open (often triggered by huh.Form.Init itself) expands the
+	// form to the full viewport width, producing a visible "snap"
+	// moments after the modal appears.
+	if _, ok := msg.(tea.WindowSizeMsg); ok {
+		return f, nil
+	}
 	model, cmd := f.form.Update(msg)
 	if updated, ok := model.(*huh.Form); ok {
 		f.form = updated
