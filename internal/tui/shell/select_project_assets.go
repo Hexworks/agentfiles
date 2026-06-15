@@ -13,22 +13,31 @@ import (
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/profile"
 	"github.com/hexworks/agentfiles/internal/project"
-	llmsync "github.com/hexworks/agentfiles/internal/sync"
 	"github.com/hexworks/agentfiles/internal/tui/components/focus"
 	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
 )
 
-// selectProjectAssetsActions is the narrow slice of *actions.Actions the
-// Select Project Assets screen invokes. Naming the interface here keeps
-// the dependency direction tui→app explicit and lets tests substitute a
-// fake.
-type selectProjectAssetsActions interface {
+// selectProjectAssetsOwnActions is the narrow slice of *actions.Actions
+// the Select Project Assets screen invokes itself. PlanProject /
+// SyncProject are not here because this screen never calls them — they
+// live on planProjectActions and are forwarded via the composed
+// selectProjectAssetsActions interface below.
+type selectProjectAssetsOwnActions interface {
 	LoadProfile(in actions.LoadProfileInput) (*profile.Profile, errs.DomainError)
 	LoadProject(in actions.LoadProjectInput) (*project.Manifest, errs.DomainError)
 	SelectAsset(in actions.SelectAssetInput) ([]string, errs.DomainError)
 	UnselectAsset(in actions.UnselectAssetInput) ([]string, errs.DomainError)
-	PlanProject(in actions.PlanProjectInput) (*llmsync.Preview, errs.DomainError)
-	SyncProject(in actions.SyncProjectInput) (*llmsync.Preview, errs.DomainError)
+}
+
+// selectProjectAssetsActions composes the screen's own dependencies
+// with the Plan Project child-screen's dependencies so `s.actions` can
+// be forwarded to newPlanProjectScreen without a type assertion. The
+// composition makes the dependency union visible at the declaration
+// instead of widening a single flat interface for methods the parent
+// screen never calls itself (mirrors editProfileActions).
+type selectProjectAssetsActions interface {
+	selectProjectAssetsOwnActions
+	planProjectActions
 }
 
 // selectProjectAssetsLoadedMsg is the result of the Init load command:

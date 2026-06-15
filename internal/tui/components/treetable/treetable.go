@@ -361,6 +361,15 @@ func (m *Model) SetRoot(n *Node) {
 	m.rebuild()
 }
 
+// RefreshActions re-runs the cursor row's ActionsFunc and re-renders the
+// table rows. Use this when the row's button factory result has changed
+// (e.g. a state flip toggling the rendered button label) but the tree
+// shape itself has not. Cheaper than SetRoot and limits the surface
+// hosts touch when they only need the actions cell to refresh.
+func (m *Model) RefreshActions() {
+	m.refreshRows()
+}
+
 // SetMnemonicButton overrides the focus mnemonic button shown in the title.
 // Pass nil to clear it.
 func (m *Model) SetMnemonicButton(b *mnemonic.Button) { m.mnemonicBtn = b }

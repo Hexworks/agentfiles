@@ -8,11 +8,11 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/hexworks/agentfiles/internal/actions"
+	"github.com/hexworks/agentfiles/internal/app"
 	"github.com/hexworks/agentfiles/internal/asset"
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/profile"
 	"github.com/hexworks/agentfiles/internal/project"
-	llmsync "github.com/hexworks/agentfiles/internal/sync"
 	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
 	"github.com/hexworks/agentfiles/internal/tui/notifications"
 )
@@ -34,7 +34,7 @@ type fakeSelectActions struct {
 	unselectErr    errs.DomainError
 	selectInputs   []actions.SelectAssetInput
 	unselectInputs []actions.UnselectAssetInput
-	preview        *llmsync.Preview
+	preview        *app.Preview
 	planErr        errs.DomainError
 	syncErr        errs.DomainError
 	syncInputs     []actions.SyncProjectInput
@@ -70,14 +70,14 @@ func (f *fakeSelectActions) UnselectAsset(in actions.UnselectAssetInput) ([]stri
 	return append([]string(nil), f.unselectResult...), nil
 }
 
-func (f *fakeSelectActions) PlanProject(in actions.PlanProjectInput) (*llmsync.Preview, errs.DomainError) {
+func (f *fakeSelectActions) PlanProject(in actions.PlanProjectInput) (*app.Preview, errs.DomainError) {
 	if f.planErr != nil {
 		return nil, f.planErr
 	}
 	return f.preview, nil
 }
 
-func (f *fakeSelectActions) SyncProject(in actions.SyncProjectInput) (*llmsync.Preview, errs.DomainError) {
+func (f *fakeSelectActions) SyncProject(in actions.SyncProjectInput) (*app.Preview, errs.DomainError) {
 	f.syncInputs = append(f.syncInputs, in)
 	if f.syncErr != nil {
 		return nil, f.syncErr

@@ -158,7 +158,18 @@ func (s *Service) InitAsset(profileRef string, manifest asset.Manifest) (string,
 
 // Plan builds a sync preview for one project. This is the read-only half of the
 // pipeline: load profile -> render desired files -> compare with the repo.
-func (s *Service) Plan(profileRef, projectID string) (*llmsync.Preview, errs.DomainError) {
+func (s *Service) Plan(profileRef, projectID string) (*Preview, errs.DomainError) {
+	syncPreview, err := s.planSync(profileRef, projectID)
+	if err != nil {
+		return nil, err
+	}
+	return previewFromSync(syncPreview), nil
+}
+
+// planSync is the internal helper that returns the full domain Preview
+// needed by Apply. Public callers receive the app-layer mirror via Plan
+// so the TUI never has to import internal/sync.
+func (s *Service) planSync(profileRef, projectID string) (*llmsync.Preview, errs.DomainError) {
 	loaded, err := s.LoadProfile(profileRef)
 	if err != nil {
 		return nil, err
@@ -168,6 +179,52 @@ func (s *Service) Plan(profileRef, projectID string) (*llmsync.Preview, errs.Dom
 		return nil, ProjectNotFoundError{ProjectID: projectID}
 	}
 	return llmsync.Plan(loaded, proj)
+}
+
+// ChangeKind mirrors llmsync.ChangeKind. The TUI consumes the app
+// vocabulary so it never imports internal/sync directly, keeping the
+// documented tui → app dependency edge true.
+type ChangeKind string
+
+// Possible ChangeKind values mirror llmsync.ChangeKind.
+const (
+	ChangeCreate  ChangeKind = "create"
+	ChangeUpdate  ChangeKind = "update"
+	ChangeDrift   ChangeKind = "drift"
+	ChangeDelete  ChangeKind = "delete"
+	ChangeUnknown ChangeKind = "unknown"
+)
+
+// FileChange is the app-layer mirror of llmsync.FileChange. Only the
+// fields the TUI consumes are exposed; render leaves and managed-state
+// metadata stay inside the domain.
+type FileChange struct {
+	Path string
+	Kind ChangeKind
+}
+
+// Preview is the app-layer mirror of llmsync.Preview. It carries the
+// change list the TUI renders plus the identifying ids; render leaves
+// and managed-state stay inside the domain.
+type Preview struct {
+	ProfileID string
+	ProjectID string
+	Changes   []FileChange
+}
+
+func previewFromSync(p *llmsync.Preview) *Preview {
+	if p == nil {
+		return nil
+	}
+	changes := make([]FileChange, len(p.Changes))
+	for i, ch := range p.Changes {
+		changes[i] = FileChange{Path: ch.Path, Kind: ChangeKind(ch.Kind)}
+	}
+	return &Preview{
+		ProfileID: p.ProfileID,
+		ProjectID: p.ProjectID,
+		Changes:   changes,
+	}
 }
 
 // DriftDecision is the app-layer mirror of llmsync.DriftDecision. The
@@ -210,15 +267,15 @@ type UnknownResolution struct {
 // caller supplies per-file resolutions for drift and unknown entries.
 // Defaults (no resolution for a path): drift kept, unknown kept; create/
 // update/delete always apply.
-func (s *Service) Apply(profileRef, projectID string, driftResolutions []DriftResolution, unknownResolutions []UnknownResolution) (*llmsync.Preview, errs.DomainError) {
-	preview, err := s.Plan(profileRef, projectID)
+func (s *Service) Apply(profileRef, projectID string, driftResolutions []DriftResolution, unknownResolutions []UnknownResolution) (*Preview, errs.DomainError) {
+	syncPreview, err := s.planSync(profileRef, projectID)
 	if err != nil {
 		return nil, err
 	}
-	if err := llmsync.Apply(preview, toSyncDriftResolutions(driftResolutions), toSyncUnknownResolutions(unknownResolutions)); err != nil {
+	if err := llmsync.Apply(syncPreview, toSyncDriftResolutions(driftResolutions), toSyncUnknownResolutions(unknownResolutions)); err != nil {
 		return nil, err
 	}
-	return preview, nil
+	return previewFromSync(syncPreview), nil
 }
 
 func toSyncDriftResolutions(in []DriftResolution) []llmsync.DriftResolution {

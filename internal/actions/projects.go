@@ -1,9 +1,9 @@
 package actions
 
 import (
+	"github.com/hexworks/agentfiles/internal/app"
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/project"
-	llmsync "github.com/hexworks/agentfiles/internal/sync"
 )
 
 // AddProject creates a new per-profile project manifest. Validation
@@ -25,12 +25,12 @@ func (a *Actions) DeleteProject(in DeleteProjectInput) (struct{}, errs.DomainErr
 	return struct{}{}, a.svc.DeleteProject(in.ProfileRef, in.ProjectID)
 }
 
-func (a *Actions) PlanProject(in PlanProjectInput) (*llmsync.Preview, errs.DomainError) {
+func (a *Actions) PlanProject(in PlanProjectInput) (*app.Preview, errs.DomainError) {
 	return a.svc.Plan(in.ProfileRef, in.ProjectID)
 }
 
 // SyncProject applies the desired files to the project repository,
 // honoring the per-file Drift and Unknown resolutions in the input.
-func (a *Actions) SyncProject(in SyncProjectInput) (*llmsync.Preview, errs.DomainError) {
+func (a *Actions) SyncProject(in SyncProjectInput) (*app.Preview, errs.DomainError) {
 	return a.svc.Apply(in.ProfileRef, in.ProjectID, in.Drift, in.Unknown)
 }

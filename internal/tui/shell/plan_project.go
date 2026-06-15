@@ -13,7 +13,6 @@ import (
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/profile"
 	"github.com/hexworks/agentfiles/internal/project"
-	llmsync "github.com/hexworks/agentfiles/internal/sync"
 	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
 	"github.com/hexworks/agentfiles/internal/tui/components/treetable"
 )
@@ -25,8 +24,8 @@ import (
 type planProjectActions interface {
 	LoadProfile(in actions.LoadProfileInput) (*profile.Profile, errs.DomainError)
 	LoadProject(in actions.LoadProjectInput) (*project.Manifest, errs.DomainError)
-	PlanProject(in actions.PlanProjectInput) (*llmsync.Preview, errs.DomainError)
-	SyncProject(in actions.SyncProjectInput) (*llmsync.Preview, errs.DomainError)
+	PlanProject(in actions.PlanProjectInput) (*app.Preview, errs.DomainError)
+	SyncProject(in actions.SyncProjectInput) (*app.Preview, errs.DomainError)
 }
 
 // planNodeKind classifies a treetable row payload. The root row is its
@@ -40,26 +39,26 @@ const (
 )
 
 // planNode is the payload attached to every treetable node. path is the
-// forward-slash relative key from llmsync.FileChange.Path; change is the
-// originating FileChange on file rows and the zero value on dir/root.
+// forward-slash relative key from app.FileChange.Path on file rows and
+// the accumulated directory key on dir rows (preserved so a future
+// per-directory bulk action can target the subtree without rebuilding
+// the path from labels); change is the originating FileChange on file
+// rows and the zero value on dir/root.
 type planNode struct {
 	kind   planNodeKind
 	path   string
-	change llmsync.FileChange
+	change app.FileChange
 }
 
-// planActionState is the user's chosen per-row resolution for a drift
-// or unknown row. planKeep is the default for both — drift+Keep adopts
-// the on-disk hash; unknown+Keep leaves the stray file alone. The
-// non-default states (planOverwrite, planDelete) trigger an actual write
-// or delete on Apply.
-type planActionState int
-
-const (
-	planKeep planActionState = iota
-	planOverwrite
-	planDelete
-)
+// planFileNode unpacks n's payload and reports ok only for file rows so
+// the three cell-rendering callsites share one boundary check.
+func planFileNode(n *treetable.Node) (planNode, bool) {
+	d, ok := n.Data.(planNode)
+	if !ok || d.kind != planNodeFile {
+		return planNode{}, false
+	}
+	return d, true
+}
 
 // planProjectLoadedMsg is the envelope the Init command emits after
 // resolving the project, profile, and preview triplet. Either every
@@ -67,7 +66,7 @@ const (
 type planProjectLoadedMsg struct {
 	prof    *profile.Profile
 	proj    *project.Manifest
-	preview *llmsync.Preview
+	preview *app.Preview
 	err     errs.DomainError
 }
 
@@ -81,21 +80,23 @@ type planProjectScreen struct {
 	profileID string
 	projectID string
 
-	prof        *profile.Profile
 	projectName string
 	profileName string
-	preview     *llmsync.Preview
-	// resolutions stores only off-default selections. Default (planKeep)
-	// is encoded as map absence so an empty map produces empty resolution
-	// slices in onApply.
-	resolutions map[string]planActionState
+	preview     *app.Preview
+	// driftResolutions stores only off-default drift selections
+	// (app.DriftOverwrite). Default DriftKeep is encoded as map
+	// absence so an empty map means the user wants Keep everywhere.
+	driftResolutions map[string]app.DriftDecision
+	// unknownResolutions stores only off-default unknown selections
+	// (app.UnknownDelete). Same absence-as-default convention as
+	// driftResolutions, and the two distinct maps mirror the domain's
+	// two-enum decision space (see docs/architecture/12-glossary.md).
+	unknownResolutions map[string]app.UnknownDecision
 
 	tree     *treetable.Model
 	applyBtn *mnemonic.Button
 	backBtn  *mnemonic.Button
 	set      *mnemonic.Set
-
-	loaded bool
 }
 
 func newPlanProjectScreen(a planProjectActions, profileID, projectID string) *planProjectScreen {
@@ -109,10 +110,11 @@ func newPlanProjectScreen(a planProjectActions, profileID, projectID string) *pl
 		panic("shell.newPlanProjectScreen: empty projectID")
 	}
 	s := &planProjectScreen{
-		actions:     a,
-		profileID:   profileID,
-		projectID:   projectID,
-		resolutions: map[string]planActionState{},
+		actions:            a,
+		profileID:          profileID,
+		projectID:          projectID,
+		driftResolutions:   map[string]app.DriftDecision{},
+		unknownResolutions: map[string]app.UnknownDecision{},
 	}
 	s.buildButtons()
 	s.buildTree()
@@ -207,8 +209,6 @@ func (s *planProjectScreen) handleLoaded(m planProjectLoadedMsg) (Screen, tea.Cm
 	if m.err != nil {
 		return s, notificationCmd(m.err.Severity(), m.err.Error())
 	}
-	s.loaded = true
-	s.prof = m.prof
 	s.profileName = m.prof.Manifest.Name
 	s.projectName = m.proj.Name
 	s.preview = m.preview
@@ -258,7 +258,7 @@ func (s *planProjectScreen) StatusKeys() []key.Binding {
 }
 
 func (s *planProjectScreen) Body(width int) string {
-	if !s.loaded {
+	if s.preview == nil {
 		return " Loading…"
 	}
 	header := fmt.Sprintf(" Planning project %q (%s)", s.projectName, s.profileName)
@@ -291,51 +291,45 @@ func (s *planProjectScreen) rebuildSet() {
 }
 
 func (s *planProjectScreen) statusValue(n *treetable.Node) string {
-	d, ok := n.Data.(planNode)
-	if !ok || d.kind != planNodeFile {
+	d, ok := planFileNode(n)
+	if !ok {
 		return ""
 	}
 	switch d.change.Kind {
-	case llmsync.ChangeCreate:
+	case app.ChangeCreate:
 		return "+ add"
-	case llmsync.ChangeUpdate:
+	case app.ChangeUpdate:
 		return "~ update"
-	case llmsync.ChangeDelete:
+	case app.ChangeDelete:
 		return "- delete"
-	case llmsync.ChangeDrift:
+	case app.ChangeDrift:
 		return "* drift"
-	case llmsync.ChangeUnknown:
+	case app.ChangeUnknown:
 		return "? unknown"
 	}
 	return ""
 }
 
 func (s *planProjectScreen) actionValue(n *treetable.Node) string {
-	d, ok := n.Data.(planNode)
-	if !ok || d.kind != planNodeFile {
+	d, ok := planFileNode(n)
+	if !ok {
 		return ""
 	}
 	switch d.change.Kind {
-	case llmsync.ChangeCreate, llmsync.ChangeUpdate, llmsync.ChangeDelete:
+	case app.ChangeCreate, app.ChangeUpdate, app.ChangeDelete:
 		return "-"
-	}
-	switch s.actionStateOf(d.path) {
-	case planOverwrite:
-		return "Overwrite"
-	case planDelete:
-		return "Delete"
-	default:
+	case app.ChangeDrift:
+		if s.driftResolutions[d.path] == app.DriftOverwrite {
+			return "Overwrite"
+		}
+		return "Keep"
+	case app.ChangeUnknown:
+		if s.unknownResolutions[d.path] == app.UnknownDelete {
+			return "Delete"
+		}
 		return "Keep"
 	}
-}
-
-// actionStateOf returns the user's chosen resolution for path. Absence
-// from the map means default — planKeep for both drift and unknown.
-func (s *planProjectScreen) actionStateOf(path string) planActionState {
-	if v, ok := s.resolutions[path]; ok {
-		return v
-	}
-	return planKeep
+	return ""
 }
 
 // treeActionsFn returns the per-row toggle button factory the treetable
@@ -343,14 +337,14 @@ func (s *planProjectScreen) actionStateOf(path string) planActionState {
 // option — pressing it swaps the resolution and re-renders.
 func (s *planProjectScreen) treeActionsFn() treetable.ActionsFunc {
 	return func(n *treetable.Node) []*mnemonic.Button {
-		d, ok := n.Data.(planNode)
-		if !ok || d.kind != planNodeFile {
+		d, ok := planFileNode(n)
+		if !ok {
 			return nil
 		}
 		switch d.change.Kind {
-		case llmsync.ChangeDrift:
+		case app.ChangeDrift:
 			return []*mnemonic.Button{s.driftToggleBtn(d.path)}
-		case llmsync.ChangeUnknown:
+		case app.ChangeUnknown:
 			return []*mnemonic.Button{s.unknownToggleBtn(d.path)}
 		}
 		return nil
@@ -358,68 +352,66 @@ func (s *planProjectScreen) treeActionsFn() treetable.ActionsFunc {
 }
 
 func (s *planProjectScreen) driftToggleBtn(path string) *mnemonic.Button {
-	if s.actionStateOf(path) == planOverwrite {
-		return mnemonic.New("Keep", 'k', func() tea.Cmd { return s.toggle(path, planKeep) })
+	if s.driftResolutions[path] == app.DriftOverwrite {
+		return mnemonic.New("Keep", 'k', func() tea.Cmd { return s.toggleDrift(path, app.DriftKeep) })
 	}
-	return mnemonic.New("Overwrite", 'o', func() tea.Cmd { return s.toggle(path, planOverwrite) })
+	return mnemonic.New("Overwrite", 'o', func() tea.Cmd { return s.toggleDrift(path, app.DriftOverwrite) })
 }
 
 func (s *planProjectScreen) unknownToggleBtn(path string) *mnemonic.Button {
-	if s.actionStateOf(path) == planDelete {
-		return mnemonic.New("Keep", 'k', func() tea.Cmd { return s.toggle(path, planKeep) })
+	if s.unknownResolutions[path] == app.UnknownDelete {
+		return mnemonic.New("Keep", 'k', func() tea.Cmd { return s.toggleUnknown(path, app.UnknownKeep) })
 	}
-	return mnemonic.New("Delete", 'd', func() tea.Cmd { return s.toggle(path, planDelete) })
+	return mnemonic.New("Delete", 'd', func() tea.Cmd { return s.toggleUnknown(path, app.UnknownDelete) })
 }
 
-// toggle stores the new state (or clears it on a return to default),
-// rebuilds the tree so the row's Current Action and Actions cells
-// re-render with the new state, and refreshes the mnemonic set so the
-// status bar key matches the newly-shown toggle button.
-//
-// treetable.SetRoot preserves the underlying table cursor, so toggling
-// does not jump the user off the active row.
-func (s *planProjectScreen) toggle(path string, next planActionState) tea.Cmd {
-	if next == planKeep {
-		delete(s.resolutions, path)
+func (s *planProjectScreen) toggleDrift(path string, next app.DriftDecision) tea.Cmd {
+	if next == app.DriftKeep {
+		delete(s.driftResolutions, path)
 	} else {
-		s.resolutions[path] = next
+		s.driftResolutions[path] = next
 	}
-	if s.preview != nil {
-		s.tree.SetRoot(buildPlanTree(s.projectName, s.preview.Changes))
-	}
+	s.tree.RefreshActions()
 	s.rebuildSet()
 	return nil
 }
 
-// onApply iterates preview.Changes (not the map) so the output order is
-// deterministic and stale resolutions for paths no longer present in
-// the plan are silently ignored.
+func (s *planProjectScreen) toggleUnknown(path string, next app.UnknownDecision) tea.Cmd {
+	if next == app.UnknownKeep {
+		delete(s.unknownResolutions, path)
+	} else {
+		s.unknownResolutions[path] = next
+	}
+	s.tree.RefreshActions()
+	s.rebuildSet()
+	return nil
+}
+
+// onApply iterates preview.Changes (not the resolution maps) so the
+// output order is deterministic and emits an explicit decision for every
+// drift/unknown row. The domain remains the single source of the default
+// — DriftKeep / UnknownKeep — so a future change to that default needs
+// no follow-up here.
 func (s *planProjectScreen) onApply() tea.Cmd {
-	if s.preview == nil {
+	if s.preview == nil || len(s.preview.Changes) == 0 {
 		return nil
 	}
 	var drift []app.DriftResolution
 	var unknown []app.UnknownResolution
 	for _, ch := range s.preview.Changes {
-		st, has := s.resolutions[ch.Path]
-		if !has {
-			continue
-		}
 		switch ch.Kind {
-		case llmsync.ChangeDrift:
-			if st == planOverwrite {
-				drift = append(drift, app.DriftResolution{
-					Path:     ch.Path,
-					Decision: app.DriftOverwrite,
-				})
+		case app.ChangeDrift:
+			decision := app.DriftKeep
+			if s.driftResolutions[ch.Path] == app.DriftOverwrite {
+				decision = app.DriftOverwrite
 			}
-		case llmsync.ChangeUnknown:
-			if st == planDelete {
-				unknown = append(unknown, app.UnknownResolution{
-					Path:     ch.Path,
-					Decision: app.UnknownDelete,
-				})
+			drift = append(drift, app.DriftResolution{Path: ch.Path, Decision: decision})
+		case app.ChangeUnknown:
+			decision := app.UnknownKeep
+			if s.unknownResolutions[ch.Path] == app.UnknownDelete {
+				decision = app.UnknownDelete
 			}
+			unknown = append(unknown, app.UnknownResolution{Path: ch.Path, Decision: decision})
 		}
 	}
 	profileRef := s.profileID
@@ -440,9 +432,9 @@ func (s *planProjectScreen) onApply() tea.Cmd {
 
 // buildPlanTree turns the preview's FileChange list into a directory
 // tree rooted at the project name. Paths are split on "/" because
-// llmsync.FileChange.Path is forward-slash relative per
-// llmsync.validatePathKey.
-func buildPlanTree(projectName string, changes []llmsync.FileChange) *treetable.Node {
+// app.FileChange.Path is forward-slash relative per the domain's
+// validatePathKey rule.
+func buildPlanTree(projectName string, changes []app.FileChange) *treetable.Node {
 	label := "(plan)"
 	if projectName != "" {
 		label = projectName + "/"
