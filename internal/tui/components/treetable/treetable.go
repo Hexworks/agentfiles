@@ -60,12 +60,18 @@ type Column struct {
 // stripped, CR/LF/TAB are collapsed to a single space, and the result is
 // truncated to Width using ANSI-aware width measurement.
 //
+// Style is optional. When non-nil it re-styles the sanitized cell text
+// per node — applied after sanitize/truncate so callbacks remain pure
+// text and ANSI smuggling stays neutralized. Returning a zero
+// [lipgloss.Style] yields the unstyled cell.
+//
 // Title and Width follow the same shape as [Column]; declared as fields here
 // (rather than embedded) so call sites can use flat struct literals.
 type ValueColumn struct {
 	Title string
 	Width int
 	Value func(*Node) string
+	Style func(*Node) lipgloss.Style
 }
 
 // ActionsFunc returns the mnemonic buttons for n. Returning nil renders an
@@ -258,7 +264,11 @@ func (m *Model) buildRow(i int, n *Node, cursor int) table.Row {
 	}
 	row := table.Row{name}
 	for _, vc := range m.valueColumns {
-		row = append(row, sanitizeCell(vc.Value(n), vc.Width))
+		cell := sanitizeCell(vc.Value(n), vc.Width)
+		if vc.Style != nil {
+			cell = vc.Style(n).Render(cell)
+		}
+		row = append(row, cell)
 	}
 	if m.actionsFn != nil {
 		cell := ""

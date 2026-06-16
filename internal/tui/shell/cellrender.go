@@ -7,9 +7,12 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-// tableCellPadding is the bubbles/v2 default Cell-style padding
-// (2 cols total) applied across the package's four-column tables.
-const tableCellPadding = 8
+// tableCellPaddingPerColumn is the horizontal padding bubbles/v2's
+// default Cell style adds to each column (Padding(0, 1) = 1 left + 1
+// right). [tableNaturalWidth] multiplies by the column count so a
+// table's viewport width matches the total rendered row width regardless
+// of how many columns it carries.
+const tableCellPaddingPerColumn = 2
 
 // naturalColumns sizes each column to the maximum visible width of its
 // title and any row's content for that column. Columns are content-fit
@@ -43,7 +46,7 @@ func tableNaturalWidth(cols []table.Column) int {
 	for _, c := range cols {
 		sum += c.Width
 	}
-	return sum + tableCellPadding
+	return sum + len(cols)*tableCellPaddingPerColumn
 }
 
 // hiddenActionsCell returns a whitespace-only placeholder of the same

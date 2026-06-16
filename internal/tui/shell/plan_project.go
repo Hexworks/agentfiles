@@ -139,7 +139,12 @@ func (s *planProjectScreen) buildTree() {
 		treetable.WithRoot(emptyPlanRoot()),
 		treetable.WithNameColumn(treetable.Column{Title: "Name", Width: 40}),
 		treetable.WithValueColumns(
-			treetable.ValueColumn{Title: "Status", Width: 10, Value: s.statusValue},
+			treetable.ValueColumn{
+				Title: "Status",
+				Width: 10,
+				Value: s.statusValue,
+				Style: s.statusStyle,
+			},
 			treetable.ValueColumn{Title: "Current Action", Width: 14, Value: s.actionValue},
 		),
 		treetable.WithActions(treetable.Column{Title: "Actions", Width: 14}, s.treeActionsFn()),
@@ -313,6 +318,26 @@ func (s *planProjectScreen) statusValue(n *treetable.Node) string {
 		return "? unknown"
 	}
 	return ""
+}
+
+func (s *planProjectScreen) statusStyle(n *treetable.Node) lipgloss.Style {
+	d, ok := planFileNode(n)
+	if !ok {
+		return lipgloss.NewStyle()
+	}
+	switch d.change.Kind {
+	case app.ChangeCreate:
+		return styles.CreateStyle
+	case app.ChangeUpdate:
+		return styles.UpdateStyle
+	case app.ChangeDelete:
+		return styles.DeleteStyle
+	case app.ChangeDrift:
+		return styles.DriftStyle
+	case app.ChangeUnknown:
+		return styles.MutedStyle
+	}
+	return lipgloss.NewStyle()
 }
 
 func (s *planProjectScreen) actionValue(n *treetable.Node) string {

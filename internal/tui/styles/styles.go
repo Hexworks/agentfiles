@@ -187,7 +187,7 @@ func Apply(p Palette) {
 
 	BorderStyle = lipgloss.NewStyle().Foreground(p.Muted)
 	BorderFocusedStyle = lipgloss.NewStyle().Foreground(p.Cyan)
-	PanelTitleStyle = lipgloss.NewStyle().Foreground(p.Text).Bold(true)
+	PanelTitleStyle = lipgloss.NewStyle().Foreground(p.Text).Bold(true).PaddingLeft(1)
 
 	ConfirmPromptStyle = lipgloss.NewStyle().Foreground(p.Text).Padding(0, 0, 1, 0)
 	ConfirmButtonStyle = lipgloss.NewStyle().
@@ -218,7 +218,7 @@ func Apply(p Palette) {
 		Foreground(p.Text).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(p.Muted).
-		Padding(0, 2).
+		Padding(0, 1).
 		Bold(true)
 }
 
