@@ -25,16 +25,18 @@ func HuhTheme() huh.Theme {
 		s.Focused.Description = s.Focused.Description.Foreground(p.Muted)
 		s.Focused.SelectSelector = s.Focused.SelectSelector.Foreground(p.Cyan)
 		s.Focused.MultiSelectSelector = s.Focused.MultiSelectSelector.Foreground(p.Cyan)
+		s.Focused.Option = s.Focused.Option.Foreground(p.Text)
 		s.Focused.SelectedOption = s.Focused.SelectedOption.Foreground(p.Cyan)
 		s.Focused.SelectedPrefix = s.Focused.SelectedPrefix.Foreground(p.Green)
-		s.Focused.UnselectedOption = s.Focused.UnselectedOption.Foreground(p.Muted)
+		s.Focused.UnselectedOption = s.Focused.UnselectedOption.Foreground(p.Text)
 		s.Focused.FocusedButton = s.Focused.FocusedButton.
 			Foreground(lipgloss.Color("0")).
 			Background(p.Cyan)
 		s.Focused.BlurredButton = s.Focused.BlurredButton.
-			Foreground(p.Muted)
+			Foreground(p.Text)
 		s.Focused.TextInput.Cursor = s.Focused.TextInput.Cursor.Foreground(p.Cyan)
 		s.Focused.TextInput.Prompt = s.Focused.TextInput.Prompt.Foreground(p.Cyan)
+		s.Focused.TextInput.Text = s.Focused.TextInput.Text.Foreground(p.Text)
 		s.Focused.ErrorMessage = s.Focused.ErrorMessage.Foreground(p.Red)
 		s.Focused.ErrorIndicator = s.Focused.ErrorIndicator.Foreground(p.Red)
 
@@ -43,8 +45,10 @@ func HuhTheme() huh.Theme {
 		s.Blurred.Description = s.Blurred.Description.Foreground(p.Muted)
 		s.Blurred.SelectSelector = s.Blurred.SelectSelector.Foreground(p.Muted)
 		s.Blurred.MultiSelectSelector = s.Blurred.MultiSelectSelector.Foreground(p.Muted)
-		s.Blurred.SelectedOption = s.Blurred.SelectedOption.Foreground(p.Muted)
-		s.Blurred.UnselectedOption = s.Blurred.UnselectedOption.Foreground(p.Muted)
+		s.Blurred.Option = s.Blurred.Option.Foreground(p.Text)
+		s.Blurred.SelectedOption = s.Blurred.SelectedOption.Foreground(p.Text)
+		s.Blurred.UnselectedOption = s.Blurred.UnselectedOption.Foreground(p.Text)
+		s.Blurred.TextInput.Text = s.Blurred.TextInput.Text.Foreground(p.Text)
 		s.Blurred.ErrorMessage = s.Blurred.ErrorMessage.Foreground(p.Red)
 		s.Blurred.ErrorIndicator = s.Blurred.ErrorIndicator.Foreground(p.Red)
 

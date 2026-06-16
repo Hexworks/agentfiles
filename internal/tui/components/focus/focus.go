@@ -28,6 +28,8 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+
+	"github.com/hexworks/agentfiles/internal/tui/styles"
 )
 
 // Focusable is the uniform contract registered components must satisfy. The
@@ -250,9 +252,9 @@ type tableAdapter struct {
 }
 
 func newTableAdapter(m *table.Model) *tableAdapter {
-	focused := table.DefaultStyles()
+	focused := styles.TableStyles()
 	blurred := focused
-	blurred.Selected = lipgloss.NewStyle()
+	blurred.Selected = lipgloss.NewStyle().Foreground(styles.Current().Text)
 	return &tableAdapter{m: m, focused: focused, blurred: blurred}
 }
 

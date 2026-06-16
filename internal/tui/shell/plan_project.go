@@ -16,6 +16,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/tui/components/help"
 	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
 	"github.com/hexworks/agentfiles/internal/tui/components/treetable"
+	"github.com/hexworks/agentfiles/internal/tui/styles"
 )
 
 // planProjectActions is the narrow slice of *actions.Actions the Plan
@@ -264,9 +265,11 @@ func (s *planProjectScreen) StatusKeys() []key.Binding {
 
 func (s *planProjectScreen) Body(width int) string {
 	if s.preview == nil {
-		return " Loading…"
+		return styles.TextStyle.Render(" Loading…")
 	}
-	header := fmt.Sprintf(" Planning project %q (%s)", s.projectName, s.profileName)
+	header := styles.TextStyle.Render(
+		fmt.Sprintf(" Planning project %q (%s)", s.projectName, s.profileName),
+	)
 	buttonRow := " " + s.applyBtn.View() + "  " + s.backBtn.View()
 	return lipgloss.JoinVertical(
 		lipgloss.Left,

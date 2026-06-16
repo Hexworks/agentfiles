@@ -7,6 +7,7 @@ import (
 
 	"github.com/hexworks/agentfiles/internal/tui/components/help"
 	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
+	"github.com/hexworks/agentfiles/internal/tui/styles"
 )
 
 // settingsScreen is the MVP Settings screen: a single
@@ -58,7 +59,7 @@ func (s *settingsScreen) StatusKeys() []key.Binding {
 func (s *settingsScreen) InputFocused() bool { return false }
 
 func (s *settingsScreen) Body(width int) string {
-	msg := " Coming soon."
+	msg := styles.TextStyle.Render(" Coming soon.")
 	back := " " + s.back.View()
 	return lipgloss.JoinVertical(lipgloss.Left, msg, "", back)
 }

@@ -37,16 +37,24 @@ var (
 
 // Mnemonic-button palette vars rebuilt by [Apply]. Distinct from the
 // severity palette so the activating-key hint reads as a control glyph
-// rather than a status.
+// rather than a status. ColorHighlight is the selected-row color used
+// by the mnemonic button's "selected-row" render variant and by every
+// table's Selected style — keeping the two in sync means a button on
+// the cursor row visually merges with the row highlight.
 var (
-	ColorAccent   color.Color
-	ColorMnemonic color.Color
-	ColorText     color.Color
+	ColorMnemonic  color.Color
+	ColorText      color.Color
+	ColorHighlight color.Color
 )
 
 // Lipgloss styles rebuilt by [Apply]. Every component renders through
 // one of these — a palette swap touches Apply only.
 var (
+	// TextStyle is the baseline body foreground. Every non-muted
+	// caller renders through this so the whole TUI shares one text
+	// color independent of the terminal's default foreground.
+	TextStyle lipgloss.Style
+
 	HeaderStyle lipgloss.Style
 	CleanStyle  lipgloss.Style
 	MutedStyle  lipgloss.Style
@@ -97,6 +105,15 @@ var (
 	// ShellTitleStyle is the rounded title bar at the top of the
 	// alt-screen body. Inherits HeaderStyle's Bold attribute.
 	ShellTitleStyle lipgloss.Style
+
+	// TableHeaderStyle / TableCellStyle / TableSelectedStyle compose
+	// the canonical [table.Styles] returned by [TableStyles]. Every
+	// table — screen-level (profiles, edit_profile, select assets)
+	// and the inner table inside treetable — uses these so the
+	// selected-row highlight is identical everywhere.
+	TableHeaderStyle   lipgloss.Style
+	TableCellStyle     lipgloss.Style
+	TableSelectedStyle lipgloss.Style
 )
 
 // current holds the active palette. Read with [Current]; replace with
@@ -128,11 +145,28 @@ func Apply(p Palette) {
 	ColorMagenta = p.Magenta
 	ColorCyan = p.Cyan
 
-	ColorAccent = p.MnemonicAccent
 	ColorMnemonic = p.MnemonicHL
-	ColorText = p.MnemonicText
+	ColorText = p.Text
+	ColorHighlight = p.Highlight
 
-	HeaderStyle = lipgloss.NewStyle().Bold(true)
+	TextStyle = lipgloss.NewStyle().Foreground(p.Text)
+
+	// Header pins Foreground(Text) because the header row is never
+	// wrapped in [TableSelectedStyle] — its color cannot be
+	// overridden by a row-level highlight, so the explicit
+	// foreground is safe.
+	TableHeaderStyle = lipgloss.NewStyle().Foreground(p.Text).Bold(true).Padding(0, 1)
+	// Cell intentionally does NOT pin Foreground. bubbles/table
+	// wraps the cursor row in [TableSelectedStyle] AROUND the
+	// already-cell-rendered cells; an inner Cell foreground would
+	// leak through every SGR reset and override the outer
+	// Selected.Foreground(Highlight). Cell text inherits the
+	// terminal foreground for non-selected rows; the cursor row
+	// picks up the Highlight color from [TableSelectedStyle].
+	TableCellStyle = lipgloss.NewStyle().Padding(0, 1)
+	TableSelectedStyle = lipgloss.NewStyle().Foreground(p.Highlight).Bold(true)
+
+	HeaderStyle = lipgloss.NewStyle().Foreground(p.Text).Bold(true)
 	CleanStyle = lipgloss.NewStyle().Foreground(p.Green)
 	MutedStyle = lipgloss.NewStyle().Foreground(p.Muted)
 
@@ -146,20 +180,23 @@ func Apply(p Palette) {
 	InfoStyle = lipgloss.NewStyle().Foreground(p.Cyan)
 
 	ModalStyle = lipgloss.NewStyle().
+		Foreground(p.Text).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(p.Cyan).
 		Padding(1, 2)
 
 	BorderStyle = lipgloss.NewStyle().Foreground(p.Muted)
 	BorderFocusedStyle = lipgloss.NewStyle().Foreground(p.Cyan)
-	PanelTitleStyle = lipgloss.NewStyle().Bold(true)
+	PanelTitleStyle = lipgloss.NewStyle().Foreground(p.Text).Bold(true)
 
-	ConfirmPromptStyle = lipgloss.NewStyle().Padding(0, 0, 1, 0)
+	ConfirmPromptStyle = lipgloss.NewStyle().Foreground(p.Text).Padding(0, 0, 1, 0)
 	ConfirmButtonStyle = lipgloss.NewStyle().
+		Foreground(p.Text).
 		Padding(0, 2).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(p.Muted)
 	ConfirmSelectedStyle = lipgloss.NewStyle().
+		Foreground(p.Text).
 		Padding(0, 2).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(p.Cyan).
@@ -168,14 +205,17 @@ func Apply(p Palette) {
 
 	HelpHintStyle = lipgloss.NewStyle().Foreground(p.Muted)
 	HelpTabStyle = lipgloss.NewStyle().
+		Foreground(p.Text).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(p.Muted).
 		Padding(0, 1)
 	HelpModalStyle = lipgloss.NewStyle().
+		Foreground(p.Text).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(p.Cyan)
 
 	ShellTitleStyle = lipgloss.NewStyle().
+		Foreground(p.Text).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(p.Muted).
 		Padding(0, 2).

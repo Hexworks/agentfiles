@@ -94,14 +94,17 @@ type Styles struct {
 }
 
 // DefaultStyles returns styles taken from the active [styles.Palette]:
-// muted border when blurred, cyan border when focused. Callers pass
-// [WithStyles] to override.
+// muted border when blurred, cyan border when focused, the canonical
+// [styles.TableStyles] for the inner table (header/cell/selected). The
+// selected-row highlight is the same color every other table in the
+// TUI uses so the cursor row reads identically across screens.
+// Callers pass [WithStyles] to override.
 func DefaultStyles() Styles {
 	return Styles{
 		Border:        styles.BorderStyle,
 		BorderFocused: styles.BorderFocusedStyle,
 		Title:         styles.PanelTitleStyle,
-		Table:         table.DefaultStyles(),
+		Table:         styles.TableStyles(),
 	}
 }
 
@@ -305,13 +308,17 @@ func sanitizeCell(s string, width int) string {
 	return trunc.String()
 }
 
+// renderButtons formats the cursor-row's action buttons. Called only
+// from [Model.buildRow] for the cursor row, so every button rendered
+// here sits on the selected row — they use [Button.ViewSelected] so
+// the label color merges with the row highlight.
 func renderButtons(bs []*mnemonic.Button) string {
 	if len(bs) == 0 {
 		return ""
 	}
 	parts := make([]string, len(bs))
 	for i, b := range bs {
-		parts[i] = b.View()
+		parts[i] = b.ViewSelected()
 	}
 	return strings.Join(parts, " ")
 }
@@ -329,10 +336,12 @@ func (m *Model) Focus() tea.Cmd {
 
 // Blur removes keyboard focus from the underlying table and hides the
 // selection highlight and actions cell until Focus is called again.
+// The blurred Selected style keeps the palette Text foreground so the
+// cursor row stays readable but loses its highlight color.
 func (m *Model) Blur() tea.Cmd {
 	m.table.Blur()
 	blurred := m.styles.Table
-	blurred.Selected = lipgloss.NewStyle()
+	blurred.Selected = lipgloss.NewStyle().Foreground(styles.Current().Text)
 	m.table.SetStyles(blurred)
 	m.refreshRows()
 	return nil

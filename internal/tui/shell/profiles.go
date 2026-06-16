@@ -18,6 +18,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/tui/components/panel"
 	"github.com/hexworks/agentfiles/internal/tui/modals"
 	"github.com/hexworks/agentfiles/internal/tui/notifications"
+	"github.com/hexworks/agentfiles/internal/tui/styles"
 )
 
 // profilesScreen is the Profiles management screen reached from Welcome.
@@ -207,7 +208,7 @@ func (s *profilesScreen) Body(width int) string {
 func (s *profilesScreen) bodyContent() string {
 	buttonRow := " " + s.create.View() + "  " + s.register.View() + "  " + s.back.View()
 	if len(s.profiles) == 0 {
-		empty := " No profiles registered. Press 'c' to create one or 'r' to register an existing folder."
+		empty := styles.TextStyle.Render(" No profiles registered. Press 'c' to create one or 'r' to register an existing folder.")
 		return lipgloss.JoinVertical(lipgloss.Left, empty, "", buttonRow)
 	}
 	sanitizeCursor(&s.table, len(s.profiles))
@@ -231,6 +232,7 @@ func (s *profilesScreen) rebuildTable() {
 		table.WithFocused(true),
 		table.WithWidth(tableNaturalWidth(cols)),
 		table.WithHeight(len(rows)+1),
+		table.WithStyles(styles.TableStyles()),
 	)
 	s.table = t
 }
@@ -260,7 +262,7 @@ func (s *profilesScreen) buildRows(cursor int) []table.Row {
 // button row, and any future status-bar rendering all share one
 // SGR-aware code path.
 func (s *profilesScreen) actionsCellContent() string {
-	return s.edit.View() + " " + s.delete.View()
+	return s.edit.ViewSelected() + " " + s.delete.ViewSelected()
 }
 
 // selectedProfile returns the profile under the table cursor. Returns

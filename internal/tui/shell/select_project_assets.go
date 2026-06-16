@@ -17,6 +17,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/tui/components/help"
 	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
 	"github.com/hexworks/agentfiles/internal/tui/components/panel"
+	"github.com/hexworks/agentfiles/internal/tui/styles"
 )
 
 // selectProjectAssetsOwnActions is the narrow slice of *actions.Actions
@@ -330,10 +331,10 @@ func (s *selectProjectAssetsScreen) Body(width int) string {
 	applyTable(s.selectedTable, selectedCols, selectedRows)
 	applyTable(s.availableTable, availableCols, availableRows)
 
-	header := fmt.Sprintf(
+	header := styles.TextStyle.Render(fmt.Sprintf(
 		" Selecting assets for project %q (%s)",
 		s.projectName, s.profileName,
-	)
+	))
 	buttonRow := " " + s.planBtn.View() + "  " + s.backBtn.View()
 	st := focusAwarePanelStyles()
 
@@ -390,15 +391,17 @@ func (s *selectProjectAssetsScreen) buildAvailableRows(cursor int, showActions b
 
 // unselectActionsCell renders "[Unselect]" through the screen's
 // existing mnemonic.Button instance so the cursor-row cell uses the
-// same SGR-aware themed render path as the bottom button row.
+// same SGR-aware themed render path as the bottom button row. The
+// cell sits on the cursor row, so [ViewSelected] paints the label
+// chunk in the table's selected-row highlight color.
 func (s *selectProjectAssetsScreen) unselectActionsCell() string {
-	return s.unselectBtn.View()
+	return s.unselectBtn.ViewSelected()
 }
 
 // selectActionsCell renders "[Select]" through the screen's existing
 // mnemonic.Button instance. Same rationale as unselectActionsCell.
 func (s *selectProjectAssetsScreen) selectActionsCell() string {
-	return s.selectBtn.View()
+	return s.selectBtn.ViewSelected()
 }
 
 func (s *selectProjectAssetsScreen) availableAtCursor() (*asset.Asset, bool) {

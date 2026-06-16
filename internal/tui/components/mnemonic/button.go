@@ -44,35 +44,47 @@ type Action func() tea.Cmd
 // wrapping the button (e.g. a table's selected-row highlight). Each
 // style should set foreground + bold + underline explicitly so a
 // transition fully overrides whatever the parent left enabled.
+//
+// Text covers both the brackets framing the label and the
+// non-mnemonic characters inside it — the brackets share the label's
+// color so only the mnemonic character stands out.
 type Styles struct {
-	// Accent renders the `[` and `]` framing the label.
-	Accent ansi.Style
 	// Mnemonic renders the single highlighted mnemonic character.
 	Mnemonic ansi.Style
-	// Text renders the non-mnemonic characters of the label.
+	// Text renders the brackets and the non-mnemonic characters of
+	// the label.
 	Text ansi.Style
 	// Separator joins buttons in [Set.View]. Ignored by [Button.View].
 	Separator string
 }
 
-// DefaultStyles returns the standard themed palette: accent on the
-// brackets, mnemonic color (bold + underlined) on the shortcut letter,
-// muted text color on the rest of the label. Pulls colors from
-// [styles.ColorAccent], [styles.ColorMnemonic], and [styles.ColorText]
-// so a theme change touches one file.
+// DefaultStyles returns the standard themed palette: palette Text
+// color on the brackets and the non-mnemonic label characters,
+// mnemonic color (bold + underlined) on the shortcut letter. Pulls
+// from [styles.ColorMnemonic] and [styles.ColorText] so a theme
+// change touches one file.
 func DefaultStyles() Styles {
-	return ThemedStyles(styles.ColorAccent, styles.ColorMnemonic, styles.ColorText)
+	return ThemedStyles(styles.ColorText, styles.ColorMnemonic)
 }
 
-// ThemedStyles builds [Styles] with the three foreground colors fully
-// pinned: bold + underline are explicitly disabled on the accent and
-// text chunks (so a parent's bold does not leak in) and explicitly
-// enabled on the mnemonic chunk. Pass any [ansi.Color] (basic, indexed,
-// or true-color) — lipgloss.Color values satisfy the interface and may
+// SelectedStyles returns the same palette as [DefaultStyles] except
+// the Text chunk (brackets + label) is painted with
+// [styles.ColorHighlight]. Used by [Button.ViewSelected] so a button
+// rendered inside a cursor-row (selected-row) visually merges with
+// the table's highlight color while keeping its mnemonic character
+// recognizable.
+func SelectedStyles() Styles {
+	return ThemedStyles(styles.ColorHighlight, styles.ColorMnemonic)
+}
+
+// ThemedStyles builds [Styles] with both foreground colors fully
+// pinned: bold + underline are explicitly disabled on the text chunk
+// (so a parent's bold does not leak in) and explicitly enabled on the
+// mnemonic chunk. Pass any [ansi.Color] (basic, indexed, or
+// true-color) — lipgloss.Color values satisfy the interface and may
 // be passed directly.
-func ThemedStyles(accent, mnemonic, text ansi.Color) Styles {
+func ThemedStyles(text, mnemonic ansi.Color) Styles {
 	return Styles{
-		Accent:    ansi.Style{}.Normal().Underline(false).ForegroundColor(accent),
 		Mnemonic:  ansi.Style{}.Bold().Underline(true).ForegroundColor(mnemonic),
 		Text:      ansi.Style{}.Normal().Underline(false).ForegroundColor(text),
 		Separator: " ",
@@ -173,27 +185,46 @@ func (b *Button) Trigger() tea.Cmd {
 
 // chunk classifies a span of the rendered button so the render loop
 // only emits an SGR transition when the target style actually changes.
+// Brackets and label characters share the Text chunk — only the
+// mnemonic letter is rendered with a different style.
 type chunk int
 
 const (
-	chunkAccent chunk = iota
+	chunkText chunk = iota
 	chunkMnemonic
-	chunkText
 )
 
-// View renders the button as `[Label]` with the mnemonic character styled
-// distinctly. The first case-insensitive occurrence of the mnemonic is the
-// one highlighted; subsequent occurrences fall under the text style.
+// View renders the button using its stored styles. See [Button.render]
+// for the chunk-transition mechanics.
+func (b *Button) View() string {
+	return b.render(b.styles)
+}
+
+// ViewSelected renders the button with the selected-row palette
+// ([styles.ColorHighlight] in place of [styles.ColorText] on the
+// label chunk). Used by container widgets (e.g. treetable's actions
+// cell) when the button sits inside the cursor row so the label color
+// merges with the row highlight while the accent and mnemonic colors
+// stay recognizable.
+func (b *Button) ViewSelected() string {
+	return b.render(SelectedStyles())
+}
+
+// render emits the button as `[Label]` with the mnemonic character
+// styled distinctly. The first case-insensitive occurrence of the
+// mnemonic is the one highlighted; subsequent occurrences fall under
+// the text style. Brackets share the text style — only the mnemonic
+// letter gets a different SGR.
 //
-// Internally, View emits exactly one SGR sequence per chunk transition
-// (accent → mnemonic → text → accent) plus a single trailing reset.
+// Internally, render emits exactly one SGR sequence per chunk
+// transition (text → mnemonic → text) plus a single trailing reset.
 // Bare `\x1b[0m` mid-string would terminate a wrapping parent style
 // (e.g. a treetable selected-row highlight), so each transition fully
 // re-states bold, underline, and foreground instead.
-func (b *Button) View() string {
+func (b *Button) render(st Styles) string {
 	var sb strings.Builder
-	current := chunkAccent
-	writeStyle(&sb, b.styles.Accent)
+	current := chunkText
+	writeStyle(&sb, st.Text)
 	sb.WriteString("[")
 	highlighted := false
 	for _, r := range b.label {
@@ -205,16 +236,16 @@ func (b *Button) View() string {
 		if next != current {
 			switch next {
 			case chunkMnemonic:
-				writeStyle(&sb, b.styles.Mnemonic)
+				writeStyle(&sb, st.Mnemonic)
 			case chunkText:
-				writeStyle(&sb, b.styles.Text)
+				writeStyle(&sb, st.Text)
 			}
 			current = next
 		}
 		sb.WriteRune(r)
 	}
-	if current != chunkAccent {
-		writeStyle(&sb, b.styles.Accent)
+	if current != chunkText {
+		writeStyle(&sb, st.Text)
 	}
 	sb.WriteString("]")
 	sb.WriteString(ansi.ResetStyle)

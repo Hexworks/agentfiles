@@ -28,23 +28,22 @@ func TestButtonViewEmitsNoInternalResets(t *testing.T) {
 }
 
 // TestThemedStylesPinsBoldAndUnderline guards the "fully restate"
-// contract of the chunk SGRs. Each transition (accent → mnemonic → text
-// → accent) must explicitly set bold + underline so a parent style with
-// either attribute enabled does not bleed through, and a transition
-// away from the mnemonic must explicitly disable them.
+// contract of the chunk SGRs. The text chunk (brackets + label) must
+// explicitly disable bold + underline so a parent style with either
+// attribute enabled does not bleed through; the mnemonic chunk must
+// explicitly enable both.
 func TestThemedStylesPinsBoldAndUnderline(t *testing.T) {
 	t.Parallel()
 
-	s := ThemedStyles(ansi.Red, ansi.Green, ansi.White)
+	s := ThemedStyles(ansi.White, ansi.Green)
 
 	cases := []struct {
 		name string
 		st   ansi.Style
 		want []string
 	}{
-		{"accent", s.Accent, []string{"22", "24"}},   // normal weight, no underline
 		{"mnemonic", s.Mnemonic, []string{"1", "4"}}, // bold, underline
-		{"text", s.Text, []string{"22", "24"}},
+		{"text", s.Text, []string{"22", "24"}},       // normal weight, no underline
 	}
 	for _, tc := range cases {
 		seq := tc.st.String()
@@ -57,26 +56,24 @@ func TestThemedStylesPinsBoldAndUnderline(t *testing.T) {
 }
 
 // TestButtonViewChunksUseConfiguredStyles checks that View emits each
-// configured style's SGR sequence exactly where expected: accent before
+// configured style's SGR sequence exactly where expected: text before
 // `[`, mnemonic before the highlighted letter, text before the rest,
-// accent again before `]`. Distinct foreground colors per chunk make
+// text again before `]`. Distinct foreground colors per chunk make
 // each SGR sequence identifiable.
 func TestButtonViewChunksUseConfiguredStyles(t *testing.T) {
 	t.Parallel()
 
-	s := ThemedStyles(ansi.Red, ansi.Green, ansi.Blue)
+	s := ThemedStyles(ansi.Blue, ansi.Green)
 	b := New("Apply", 'A', noopAction(), WithStyles(s))
 
 	got := b.View()
-	accent := s.Accent.String()
 	mn := s.Mnemonic.String()
 	text := s.Text.String()
 
 	wantOrder := []string{
-		accent + "[",
+		text + "[",
 		mn + "A",
-		text + "pply",
-		accent + "]",
+		text + "pply]",
 		ansi.ResetStyle,
 	}
 	prev := 0

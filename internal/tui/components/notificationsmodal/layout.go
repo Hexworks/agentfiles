@@ -73,6 +73,7 @@ func buildTableModel(entries []notifications.Notification, outerW, outerH int) t
 		table.WithFocused(true),
 		table.WithHeight(innerH),
 		table.WithWidth(innerW),
+		table.WithStyles(styles.TableStyles()),
 	)
 }
 

@@ -600,7 +600,7 @@ func TestProfilesScreen_ActionsCellRoutesThroughMnemonicButtons(t *testing.T) {
 	// "no intermediate full-reset" invariant tested directly in
 	// mnemonic/button_test.go and we don't re-verify those substrings here.
 	got := s.actionsCellContent()
-	want := s.edit.View() + " " + s.delete.View()
+	want := s.edit.ViewSelected() + " " + s.delete.ViewSelected()
 	if got != want {
 		t.Errorf("actionsCellContent = %q, want %q", got, want)
 	}

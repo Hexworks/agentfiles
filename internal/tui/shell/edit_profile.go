@@ -490,9 +490,11 @@ func (s *editProfileScreen) buildProjectsRows(cursor int, showActions bool) []ta
 
 // assetActionsCell renders "[Edit] [Delete]" through the screen's
 // existing mnemonic.Button instances so the cursor-row cell uses the
-// same SGR-aware themed render path as the bottom button row.
+// same SGR-aware themed render path as the bottom button row. The
+// cell sits on the cursor row, so [ViewSelected] paints the label
+// chunks in the table's selected-row highlight color.
 func (s *editProfileScreen) assetActionsCell() string {
-	return s.editAsset.View() + " " + s.deleteAsset.View()
+	return s.editAsset.ViewSelected() + " " + s.deleteAsset.ViewSelected()
 }
 
 // projectActionsCell renders "[Edit] [Select Assets] [Plan] [Delete]"
@@ -500,8 +502,8 @@ func (s *editProfileScreen) assetActionsCell() string {
 // rationale as assetActionsCell: one themed render path for both cell
 // and button row.
 func (s *editProfileScreen) projectActionsCell() string {
-	return s.editProject.View() + " " + s.selectAssets.View() + " " +
-		s.planProject.View() + " " + s.deleteProject.View()
+	return s.editProject.ViewSelected() + " " + s.selectAssets.ViewSelected() + " " +
+		s.planProject.ViewSelected() + " " + s.deleteProject.ViewSelected()
 }
 
 func (s *editProfileScreen) selectedAsset() (*asset.Asset, bool) {

@@ -83,7 +83,7 @@ func (s *welcomeScreen) Body(width int) string {
 		if i == s.cursor {
 			marker = "> "
 		}
-		rows = append(rows, bar+" "+marker+clampLabel(it.label, width-rowPrefixWidth))
+		rows = append(rows, bar+" "+styles.TextStyle.Render(marker+clampLabel(it.label, width-rowPrefixWidth)))
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }

@@ -23,16 +23,16 @@ const ConfigFileName = "theme.json"
 // value for that role; empty string is treated as "unset", same as
 // absent.
 type configSchema struct {
-	Muted   string `json:"muted,omitempty"`
-	Cyan    string `json:"cyan,omitempty"`
-	Red     string `json:"red,omitempty"`
-	Green   string `json:"green,omitempty"`
-	Yellow  string `json:"yellow,omitempty"`
-	Magenta string `json:"magenta,omitempty"`
+	Text      string `json:"text,omitempty"`
+	Muted     string `json:"muted,omitempty"`
+	Highlight string `json:"highlight,omitempty"`
+	Cyan      string `json:"cyan,omitempty"`
+	Red       string `json:"red,omitempty"`
+	Green     string `json:"green,omitempty"`
+	Yellow    string `json:"yellow,omitempty"`
+	Magenta   string `json:"magenta,omitempty"`
 
-	MnemonicAccent string `json:"mnemonic_accent,omitempty"`
-	MnemonicHL     string `json:"mnemonic_highlight,omitempty"`
-	MnemonicText   string `json:"mnemonic_text,omitempty"`
+	MnemonicHL string `json:"mnemonic_highlight,omitempty"`
 }
 
 // LoadConfig reads a theme override from path, merges it onto
@@ -92,15 +92,15 @@ func mergePalette(base Palette, cfg configSchema) Palette {
 		}
 		*dst = lipgloss.Color(raw)
 	}
+	overlay(&base.Text, cfg.Text)
 	overlay(&base.Muted, cfg.Muted)
+	overlay(&base.Highlight, cfg.Highlight)
 	overlay(&base.Cyan, cfg.Cyan)
 	overlay(&base.Red, cfg.Red)
 	overlay(&base.Green, cfg.Green)
 	overlay(&base.Yellow, cfg.Yellow)
 	overlay(&base.Magenta, cfg.Magenta)
-	overlay(&base.MnemonicAccent, cfg.MnemonicAccent)
 	overlay(&base.MnemonicHL, cfg.MnemonicHL)
-	overlay(&base.MnemonicText, cfg.MnemonicText)
 	return base
 }
 
