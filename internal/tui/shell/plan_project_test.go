@@ -238,19 +238,20 @@ func TestPlanProjectScreen_ActionValueReflectsResolutionMap(t *testing.T) {
 	}
 }
 
-func TestPlanProjectScreen_TreeActionsFnDriftKeepRendersOverwriteBtn(t *testing.T) {
+func TestPlanProjectScreen_TreeActionsFnDriftKeepRendersOpenAndOverwriteBtn(t *testing.T) {
 	f := newPlanActionsFake("Proj", nil)
 	s := newPlanProjectScreen(f, "alpha", "proj-1")
 	fn := s.treeActionsFn()
 	n := &treetable.Node{Data: planNode{kind: planNodeFile, path: "p", change: app.FileChange{Path: "p", Kind: app.ChangeDrift}}}
 	got := fn(n)
-	if len(got) != 1 {
-		t.Fatalf("got %d buttons, want 1", len(got))
+	if len(got) != 2 {
+		t.Fatalf("got %d buttons, want 2", len(got))
 	}
-	assertBtn(t, got[0], "Overwrite", 'o')
+	assertBtn(t, got[0], "Open", 'o')
+	assertBtn(t, got[1], "Overwrite", 'w')
 }
 
-func TestPlanProjectScreen_TreeActionsFnDriftOverwriteRendersKeepBtn(t *testing.T) {
+func TestPlanProjectScreen_TreeActionsFnDriftOverwriteRendersOpenAndKeepBtn(t *testing.T) {
 	f := newPlanActionsFake("Proj", nil)
 	s := newPlanProjectScreen(f, "alpha", "proj-1")
 	_ = s.driftToggleBtn("p").Trigger()
@@ -258,25 +259,27 @@ func TestPlanProjectScreen_TreeActionsFnDriftOverwriteRendersKeepBtn(t *testing.
 	fn := s.treeActionsFn()
 	n := &treetable.Node{Data: planNode{kind: planNodeFile, path: "p", change: app.FileChange{Path: "p", Kind: app.ChangeDrift}}}
 	got := fn(n)
-	if len(got) != 1 {
-		t.Fatalf("got %d buttons, want 1", len(got))
+	if len(got) != 2 {
+		t.Fatalf("got %d buttons, want 2", len(got))
 	}
-	assertBtn(t, got[0], "Keep", 'p')
+	assertBtn(t, got[0], "Open", 'o')
+	assertBtn(t, got[1], "Keep", 'p')
 }
 
-func TestPlanProjectScreen_TreeActionsFnUnknownKeepRendersDeleteBtn(t *testing.T) {
+func TestPlanProjectScreen_TreeActionsFnUnknownKeepRendersOpenAndDeleteBtn(t *testing.T) {
 	f := newPlanActionsFake("Proj", nil)
 	s := newPlanProjectScreen(f, "alpha", "proj-1")
 	fn := s.treeActionsFn()
 	n := &treetable.Node{Data: planNode{kind: planNodeFile, path: "p", change: app.FileChange{Path: "p", Kind: app.ChangeUnknown}}}
 	got := fn(n)
-	if len(got) != 1 {
-		t.Fatalf("got %d buttons, want 1", len(got))
+	if len(got) != 2 {
+		t.Fatalf("got %d buttons, want 2", len(got))
 	}
-	assertBtn(t, got[0], "Delete", 'd')
+	assertBtn(t, got[0], "Open", 'o')
+	assertBtn(t, got[1], "Delete", 'd')
 }
 
-func TestPlanProjectScreen_TreeActionsFnUnknownDeleteRendersKeepBtn(t *testing.T) {
+func TestPlanProjectScreen_TreeActionsFnUnknownDeleteRendersOpenAndKeepBtn(t *testing.T) {
 	f := newPlanActionsFake("Proj", nil)
 	s := newPlanProjectScreen(f, "alpha", "proj-1")
 	_ = s.unknownToggleBtn("p").Trigger()
@@ -284,22 +287,25 @@ func TestPlanProjectScreen_TreeActionsFnUnknownDeleteRendersKeepBtn(t *testing.T
 	fn := s.treeActionsFn()
 	n := &treetable.Node{Data: planNode{kind: planNodeFile, path: "p", change: app.FileChange{Path: "p", Kind: app.ChangeUnknown}}}
 	got := fn(n)
-	if len(got) != 1 {
-		t.Fatalf("got %d buttons, want 1", len(got))
+	if len(got) != 2 {
+		t.Fatalf("got %d buttons, want 2", len(got))
 	}
-	assertBtn(t, got[0], "Keep", 'p')
+	assertBtn(t, got[0], "Open", 'o')
+	assertBtn(t, got[1], "Keep", 'p')
 }
 
-func TestPlanProjectScreen_TreeActionsFnNoButtonForCreateUpdateDelete(t *testing.T) {
+func TestPlanProjectScreen_TreeActionsFnFileRowsAlwaysGetOpen(t *testing.T) {
 	f := newPlanActionsFake("Proj", nil)
 	s := newPlanProjectScreen(f, "alpha", "proj-1")
 	fn := s.treeActionsFn()
 	for _, kind := range []app.ChangeKind{app.ChangeCreate, app.ChangeUpdate, app.ChangeDelete} {
 		t.Run(string(kind), func(t *testing.T) {
 			n := &treetable.Node{Data: planNode{kind: planNodeFile, path: "p", change: app.FileChange{Path: "p", Kind: kind}}}
-			if got := fn(n); got != nil {
-				t.Errorf("fn(%s) = %v, want nil", kind, got)
+			got := fn(n)
+			if len(got) != 1 {
+				t.Fatalf("fn(%s) returned %d buttons, want 1", kind, len(got))
 			}
+			assertBtn(t, got[0], "Open", 'o')
 		})
 	}
 	root := &treetable.Node{Data: planNode{kind: planNodeRoot}}
@@ -321,13 +327,15 @@ func TestPlanProjectScreen_ToggleDriftSwapsState(t *testing.T) {
 	fn := s.treeActionsFn()
 	n := &treetable.Node{Data: planNode{kind: planNodeFile, path: "p", change: changes[0]}}
 
-	btn := fn(n)[0]
+	// Index 0 is the always-present [Open] button; index 1 is the drift
+	// resolution toggle which flips between Overwrite and Keep.
+	btn := fn(n)[1]
 	_ = btn.Trigger()
 	if s.driftResolutions["p"] != app.DriftOverwrite {
 		t.Fatalf("after first toggle: state = %v, want DriftOverwrite", s.driftResolutions["p"])
 	}
 
-	btn = fn(n)[0]
+	btn = fn(n)[1]
 	_ = btn.Trigger()
 	if _, present := s.driftResolutions["p"]; present {
 		t.Fatalf("after second toggle: state still present (%v), want absent", s.driftResolutions["p"])
@@ -343,13 +351,15 @@ func TestPlanProjectScreen_ToggleUnknownSwapsState(t *testing.T) {
 	fn := s.treeActionsFn()
 	n := &treetable.Node{Data: planNode{kind: planNodeFile, path: "p", change: changes[0]}}
 
-	btn := fn(n)[0]
+	// Index 0 is the always-present [Open] button; index 1 is the
+	// unknown resolution toggle which flips between Delete and Keep.
+	btn := fn(n)[1]
 	_ = btn.Trigger()
 	if s.unknownResolutions["p"] != app.UnknownDelete {
 		t.Fatalf("after first toggle: state = %v, want UnknownDelete", s.unknownResolutions["p"])
 	}
 
-	btn = fn(n)[0]
+	btn = fn(n)[1]
 	_ = btn.Trigger()
 	if _, present := s.unknownResolutions["p"]; present {
 		t.Fatalf("after second toggle: state still present (%v), want absent", s.unknownResolutions["p"])

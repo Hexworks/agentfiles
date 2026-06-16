@@ -2,6 +2,7 @@ package shell
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
@@ -16,6 +17,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/tui/components/help"
 	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
 	"github.com/hexworks/agentfiles/internal/tui/components/treetable"
+	"github.com/hexworks/agentfiles/internal/tui/editor"
 	"github.com/hexworks/agentfiles/internal/tui/styles"
 )
 
@@ -75,14 +77,16 @@ type planProjectLoadedMsg struct {
 // planProjectScreen is the read-and-apply screen reached from the Edit
 // Profile project row's [Plan] button and the Select Project Assets
 // [Plan] button. It hosts a single treetable with two value columns
-// (Status, Current Action), per-row mnemonic toggle buttons for drift
-// and unknown rows, and screen-level [Apply] / [Back] buttons.
+// (Status, Resolution), per-row [Open] on every file leaf plus a
+// resolution toggle for drift / unknown rows, and screen-level [Apply]
+// / [Back] buttons.
 type planProjectScreen struct {
 	actions   planProjectActions
 	profileID string
 	projectID string
 
 	projectName string
+	projectPath string
 	profileName string
 	preview     *app.Preview
 	// driftResolutions stores only off-default drift selections
@@ -145,9 +149,9 @@ func (s *planProjectScreen) buildTree() {
 				Value: s.statusValue,
 				Style: s.statusStyle,
 			},
-			treetable.ValueColumn{Title: "Current Action", Width: 14, Value: s.actionValue},
+			treetable.ValueColumn{Title: "Resolution", Width: 14, Value: s.actionValue},
 		),
-		treetable.WithActions(treetable.Column{Title: "Actions", Width: 14}, s.treeActionsFn()),
+		treetable.WithActions(treetable.Column{Title: "Actions", Width: 22}, s.treeActionsFn()),
 		treetable.WithHeight(treetableHeight),
 		treetable.WithStyles(focusAwareTreetableStyles()),
 		treetable.WithTitle("Changes"),
@@ -217,10 +221,23 @@ func (s *planProjectScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 		return s.handleLoaded(m)
 	case mutationDoneMsg:
 		return s.handleMutationDone(m)
+	case editor.FinishedMsg:
+		return s.handleEditorFinished(m)
 	case tea.KeyPressMsg:
 		return s.handleKey(m)
 	}
 	return s, nil
+}
+
+// handleEditorFinished re-runs the load command after the user exits the
+// external editor so any on-disk change the edit produced is reflected
+// in a freshly computed preview. A failed editor invocation surfaces a
+// toast and leaves the existing preview intact.
+func (s *planProjectScreen) handleEditorFinished(m editor.FinishedMsg) (Screen, tea.Cmd) {
+	if m.Err != nil {
+		return s, notificationCmd(errs.SeverityError, fmt.Sprintf("Editor failed: %v", m.Err))
+	}
+	return s, s.loadCmd()
 }
 
 func (s *planProjectScreen) handleLoaded(m planProjectLoadedMsg) (Screen, tea.Cmd) {
@@ -229,6 +246,7 @@ func (s *planProjectScreen) handleLoaded(m planProjectLoadedMsg) (Screen, tea.Cm
 	}
 	s.profileName = m.prof.Manifest.Name
 	s.projectName = m.proj.Name
+	s.projectPath = m.proj.Path
 	s.preview = m.preview
 	s.tree.SetRoot(buildPlanTree(s.projectName, m.preview.Changes))
 	s.rebuildSet()
@@ -364,30 +382,37 @@ func (s *planProjectScreen) actionValue(n *treetable.Node) string {
 	return ""
 }
 
-// treeActionsFn returns the per-row toggle button factory the treetable
-// invokes for the cursor row only. The button always shows the *other*
-// option — pressing it swaps the resolution and re-renders.
+// treeActionsFn returns the per-row action button factory the treetable
+// invokes for the cursor row only. Every file leaf exposes [Open] so the
+// user can inspect or edit the file before applying; drift / unknown
+// rows additionally expose the resolution toggle which always shows the
+// *other* option — pressing it swaps the resolution and re-renders.
 func (s *planProjectScreen) treeActionsFn() treetable.ActionsFunc {
 	return func(n *treetable.Node) []*mnemonic.Button {
 		d, ok := planFileNode(n)
 		if !ok {
 			return nil
 		}
+		btns := []*mnemonic.Button{s.openFileBtn(d.path)}
 		switch d.change.Kind {
 		case app.ChangeDrift:
-			return []*mnemonic.Button{s.driftToggleBtn(d.path)}
+			btns = append(btns, s.driftToggleBtn(d.path))
 		case app.ChangeUnknown:
-			return []*mnemonic.Button{s.unknownToggleBtn(d.path)}
+			btns = append(btns, s.unknownToggleBtn(d.path))
 		}
-		return nil
+		return btns
 	}
+}
+
+func (s *planProjectScreen) openFileBtn(path string) *mnemonic.Button {
+	return mnemonic.New("Open", 'o', func() tea.Cmd { return s.onOpen(path) })
 }
 
 func (s *planProjectScreen) driftToggleBtn(path string) *mnemonic.Button {
 	if s.driftResolutions[path] == app.DriftOverwrite {
 		return mnemonic.New("Keep", 'p', func() tea.Cmd { return s.toggleDrift(path, app.DriftKeep) })
 	}
-	return mnemonic.New("Overwrite", 'o', func() tea.Cmd { return s.toggleDrift(path, app.DriftOverwrite) })
+	return mnemonic.New("Overwrite", 'w', func() tea.Cmd { return s.toggleDrift(path, app.DriftOverwrite) })
 }
 
 func (s *planProjectScreen) unknownToggleBtn(path string) *mnemonic.Button {
@@ -395,6 +420,18 @@ func (s *planProjectScreen) unknownToggleBtn(path string) *mnemonic.Button {
 		return mnemonic.New("Keep", 'p', func() tea.Cmd { return s.toggleUnknown(path, app.UnknownKeep) })
 	}
 	return mnemonic.New("Delete", 'd', func() tea.Cmd { return s.toggleUnknown(path, app.UnknownDelete) })
+}
+
+// onOpen suspends the program in the system editor pointed at the
+// repo-relative path under the loaded project root. The path may not
+// exist yet (ChangeCreate rows have no on-disk file); the editor opens
+// an empty buffer in that case and the post-edit reload picks up any
+// resulting change.
+func (s *planProjectScreen) onOpen(path string) tea.Cmd {
+	if s.projectPath == "" || path == "" {
+		return nil
+	}
+	return editor.Open(filepath.Join(s.projectPath, path))
 }
 
 func (s *planProjectScreen) toggleDrift(path string, next app.DriftDecision) tea.Cmd {

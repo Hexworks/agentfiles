@@ -123,7 +123,6 @@ Edit `description.md` frontmatter: `status: in-progress`.
 
 ## Step 10 — Write the Plan
 
-**Important**: make sure that you save the plan to the following path:
 Plan file path: `tasks/current/{task-id}_{task-type}_{short-description}/plan.md`.
 
 **Important**: if `plan.md` already exists ask the user to review it.
