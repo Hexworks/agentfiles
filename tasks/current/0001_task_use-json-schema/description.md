@@ -1,8 +1,8 @@
 ---
 id: 0001
 type: task
-status: Pending
-tags: research
+status: pending
+topics: research
 ---
 
 # Use Json Schema

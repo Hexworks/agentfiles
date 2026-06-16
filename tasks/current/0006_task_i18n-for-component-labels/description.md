@@ -2,7 +2,7 @@
 id: 0006
 type: feature
 status: pending
-tags: research
+topics: research
 ---
 
 # Extract all text labels and use an i18n tool to handle them
