@@ -21,7 +21,7 @@ func HuhTheme() huh.Theme {
 		s := huh.ThemeBase(isDark)
 
 		s.Focused.Base = s.Focused.Base.BorderForeground(p.Cyan)
-		s.Focused.Title = s.Focused.Title.Foreground(p.Cyan).Bold(true)
+		s.Focused.Title = s.Focused.Title.Foreground(p.Text).Bold(true)
 		s.Focused.Description = s.Focused.Description.Foreground(p.Muted)
 		s.Focused.SelectSelector = s.Focused.SelectSelector.Foreground(p.Cyan)
 		s.Focused.MultiSelectSelector = s.Focused.MultiSelectSelector.Foreground(p.Cyan)
@@ -41,7 +41,7 @@ func HuhTheme() huh.Theme {
 		s.Focused.ErrorIndicator = s.Focused.ErrorIndicator.Foreground(p.Red)
 
 		s.Blurred.Base = s.Blurred.Base.BorderForeground(p.Muted)
-		s.Blurred.Title = s.Blurred.Title.Foreground(p.Muted)
+		s.Blurred.Title = s.Blurred.Title.Foreground(p.Text)
 		s.Blurred.Description = s.Blurred.Description.Foreground(p.Muted)
 		s.Blurred.SelectSelector = s.Blurred.SelectSelector.Foreground(p.Muted)
 		s.Blurred.MultiSelectSelector = s.Blurred.MultiSelectSelector.Foreground(p.Muted)

@@ -19,7 +19,7 @@ type CreateProfileInput struct {
 // flows); a zero value starts the form empty.
 func NewCreateProfile(initial CreateProfileInput) *modal.Modal {
 	form, _, extract := buildCreateProfile(initial)
-	return modal.NewForm("create-profile", form, extract)
+	return modal.NewForm("create-profile", form, extract, modal.WithCaption("Creating Profile"))
 }
 
 func buildCreateProfile(initial CreateProfileInput) (*huh.Form, *CreateProfileInput, func(*huh.Form) any) {

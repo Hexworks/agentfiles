@@ -16,7 +16,7 @@ type CreateFileInput struct {
 // NewCreateFile builds the Create File modal.
 func NewCreateFile(initial CreateFileInput) *modal.Modal {
 	form, _, extract := buildCreateFile(initial)
-	return modal.NewForm("create-file", form, extract)
+	return modal.NewForm("create-file", form, extract, modal.WithCaption("Creating File"))
 }
 
 func buildCreateFile(initial CreateFileInput) (*huh.Form, *CreateFileInput, func(*huh.Form) any) {

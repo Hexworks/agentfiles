@@ -23,7 +23,7 @@ type EditProjectInput struct {
 // modal cannot edit them — see `EditProjectInput`.
 func NewEditProject(initial EditProjectInput) *modal.Modal {
 	form, _, extract := buildEditProject(initial)
-	return modal.NewForm("edit-project", form, extract)
+	return modal.NewForm("edit-project", form, extract, modal.WithCaption("Editing Project"))
 }
 
 func buildEditProject(initial EditProjectInput) (*huh.Form, *EditProjectInput, func(*huh.Form) any) {

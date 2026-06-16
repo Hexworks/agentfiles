@@ -16,7 +16,7 @@ type RegisterProfileInput struct {
 // NewRegisterProfile builds the Register Profile modal.
 func NewRegisterProfile(initial RegisterProfileInput) *modal.Modal {
 	form, _, extract := buildRegisterProfile(initial)
-	return modal.NewForm("register-profile", form, extract)
+	return modal.NewForm("register-profile", form, extract, modal.WithCaption("Registering Profile"))
 }
 
 func buildRegisterProfile(initial RegisterProfileInput) (*huh.Form, *RegisterProfileInput, func(*huh.Form) any) {

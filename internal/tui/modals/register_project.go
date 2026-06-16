@@ -24,7 +24,7 @@ type RegisterProjectInput struct {
 // returned value passes `Manifest.Validate()` without further work.
 func NewRegisterProject(initial RegisterProjectInput) *modal.Modal {
 	form, _, extract := buildRegisterProject(initial)
-	return modal.NewForm("register-project", form, extract)
+	return modal.NewForm("register-project", form, extract, modal.WithCaption("Registering Project"))
 }
 
 func buildRegisterProject(initial RegisterProjectInput) (*huh.Form, *RegisterProjectInput, func(*huh.Form) any) {

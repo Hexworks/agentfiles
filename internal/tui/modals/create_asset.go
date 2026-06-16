@@ -27,7 +27,7 @@ type createAssetState struct {
 // via `utils.Slug`, mirroring how `AddProject` slugs project ids.
 func NewCreateAsset(initial asset.Manifest) *modal.Modal {
 	form, _, extract := buildCreateAsset(initial)
-	return modal.NewForm("create-asset", form, extract)
+	return modal.NewForm("create-asset", form, extract, modal.WithCaption("Creating Asset"))
 }
 
 func buildCreateAsset(initial asset.Manifest) (*huh.Form, *createAssetState, func(*huh.Form) any) {

@@ -68,6 +68,6 @@ func DefaultPalette() Palette {
 		Yellow:    lipgloss.Color("11"),
 		Magenta:   lipgloss.Color("13"),
 
-		MnemonicHL: lipgloss.Color("10"),
+		MnemonicHL: lipgloss.Color("208"),
 	}
 }
