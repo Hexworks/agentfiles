@@ -54,6 +54,18 @@ text. This keeps stable policy independent of presentation, and makes
 output styling (icons, colors, severity) testable in one place. See ADR
 0007.
 
+## Theming And Palette
+
+All TUI color lives in a single semantic `Palette` (roles such as `Text`,
+`Muted`, `Highlight`, not raw shades) in `internal/tui/styles`. Styles are
+rebuilt from the active palette through one `Apply(Palette)` call rather
+than frozen at package init, so the look is swappable in one place. An
+optional `theme.json` (default `$XDG_CONFIG_HOME/agentfiles/theme.json`,
+overridable with `--theme`) merges over the defaults at startup; a missing
+file is a no-op and a malformed file aborts startup with a typed error.
+Theming is purely presentational — no domain package imports `tui/styles`.
+See ADR 0012.
+
 ## Typed Errors With Accumulation
 
 Domain packages declare typed error structs that satisfy `errs.DomainError`

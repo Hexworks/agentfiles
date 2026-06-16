@@ -13,6 +13,9 @@ durable rationale is recorded as ADRs in [`../adr/`](../adr/README.md).
 - `0006`: remove CLI subcommands in favor of pure TUI
 - `0007`: rendering belongs to the TUI
 - `0010`: sync resolution model and first-apply clean slate
+- `0012`: palette-driven theming with external configuration
+- `0013`: help and notifications as shell-owned modals
+- `0014`: project scripting with single-file Go via gorun
 
 ## Usage
 

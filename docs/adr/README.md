@@ -40,4 +40,7 @@ Each ADR uses a small Michael Nygard style structure:
 - 0009 — Edit files via system editor
 - 0010 — Sync resolutions and first apply
 - 0011 — TUI screen router
+- 0012 — Palette-driven theming with external configuration
+- 0013 — Help and notifications as shell-owned modals
+- 0014 — Project scripting with single-file Go via gorun
 

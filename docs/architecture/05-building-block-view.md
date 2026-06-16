@@ -12,8 +12,9 @@ flowchart TD
     cmdaf --> registry
     tui_shell --> actions
     tui_shell --> tui_notifications["tui/notifications"]
-    tui_shell -.future.-> tui_mnemonic["tui/components/mnemonic"]
+    tui_shell --> tui_mnemonic["tui/components/mnemonic"]
     tui_shell --> tui_styles["tui/styles"]
+    tui_shell --> tui_components_panel["tui/components/panel"]
     actions --> app
     app --> render
     app --> sync
@@ -30,19 +31,20 @@ flowchart TD
     project --> config
     registry --> config
     surfaces --> config
-    tui_shell -.future.-> tui_components_modal["tui/components/modal"]
+    tui_shell --> tui_components_modal["tui/components/modal"]
 
     classDef leaf fill:#eef,stroke:#88a;
-    class config,errs,utils,tui_components_modal,tui_styles leaf;
+    class config,errs,utils,tui_components_modal,tui_styles,tui_components_panel leaf;
 ```
 
-The dotted `-.future.->` arrows from `tui/shell` to `tui/components/mnemonic`
-and `tui/components/modal` mark planned coupling: today the shell only consumes
-`bubbles/v2/key.Binding` values via `Screen.StatusKeys()` and never imports
-either component package directly. Tasks 0024–0029 land the real entity
-screens and turn those arrows solid. Task 0029 replaces the Plan Project
-stub with a treetable-driven screen that toggles drift/unknown resolutions
-inline and dispatches `actions.SyncProject` on `[Apply]`.
+The shell imports the component packages directly: `mnemonic` for labelled
+buttons, `modal` for the help and notifications overlays (ADR 0013), and
+`panel` for the reusable captioned frame. `tui/styles`, `tui/components/modal`,
+and `tui/components/panel` are leaf components (highlighted blue) that import
+nothing from `internal/`. The real entity screens (Profiles, Edit Profile,
+Edit Asset, Select Project Assets, Plan Project) all live in `tui/shell`; the
+Plan Project screen renders the sync `Preview` through a treetable and
+dispatches `actions.SyncProject` on `[Apply]`.
 
 `config`, `errs`, and `utils` are leaf packages that the rest of the
 codebase reads from but that import nothing internal. They are highlighted
@@ -134,16 +136,20 @@ return `[]errs.DomainError`; non-accumulator calls wrap render slices in
 
 The root Bubble Tea program. Runs in alt-screen mode, owns the screen
 router stack (`PushScreenMsg` / `PopScreenMsg`), intercepts the global
-key set (`n` notifications, `s` settings, `?` info, `q` quit) before
+key set (`n` notifications, `s` settings, `?` help, `q` quit) before
 the active screen sees them, mounts the toast widget above the status
-bar, and forwards everything else to the top-of-stack `Screen`. The
-status bar joins a fixed global set of hints with each screen's
+bar, and forwards everything else to the top-of-stack `Screen`. Help
+and notifications are not stack screens: the shell owns them as
+`modal.Modal` overlays (`helpModal` / `notificationsModal`) so the
+global quit binding stays live while a dialog is open (ADR 0013). Each
+`Screen` contributes a `Title()` and a `Description()`; the shell
+renders the muted description row under the title (`chromeHeight` = 7).
+The status bar joins a fixed global set of hints with each screen's
 dynamic `StatusKeys()` (the focused row's mnemonic bindings) without
-duplicating screen-level labelled buttons. Screens that render entity
-data live next to the shell; the package itself ships a placeholder
-Welcome plus three stubs that stand in for the Notifications modal,
-Settings screen, and Info modal until tasks 0023 and 0024 land.
-Rationale and routing rules: ADR 0011.
+duplicating screen-level labelled buttons. The real entity screens
+(Welcome, Profiles, Edit Profile, Edit Asset, Select Project Assets,
+Settings, Plan Project) live next to the shell. Rationale and routing
+rules: ADR 0011.
 
 ### `tui/notifications`
 
@@ -159,10 +165,20 @@ identically (ADR 0007).
 
 ### `tui/styles`
 
-Leaf package holding the palette, named lipgloss styles, severity
-→ icon/style switch (`SeverityStyle`), and the terminal-safe string
-sanitizer. Imported by both the shell and the notifications package
-so the styles vocabulary stays in one place.
+Leaf package holding the theming engine. `palette.go` defines the
+semantic `Palette` (color roles, not shades) and `DefaultPalette()`;
+`styles.go` rebuilds every exported lipgloss style through
+`Apply(Palette)` — the single edit-point for a palette swap — and an
+`init()` seeds it with the defaults. `huh.go` (`HuhTheme()`) and
+`table.go` (`TableStyles()`) derive the form and table styles from the
+active palette. `config.go` adds an optional external override:
+`LoadConfig(path)` merges a `theme.json` (default
+`$XDG_CONFIG_HOME/agentfiles/theme.json`) over the defaults, returning
+typed `ConfigReadError` / `ConfigParseError`; a missing file is a
+no-op. The package also holds the severity → icon/style switch
+(`SeverityStyle`) and the terminal-safe string sanitizer. Imported by
+the shell, the components, and the notifications package so the styles
+vocabulary stays in one place. See ADR 0012.
 
 ### `tui/components/modal`
 
@@ -175,11 +191,20 @@ on completion so `*huh.Form` does not leak past the modal boundary.
 
 The package is a **leaf**: it imports only `charm.land/{bubbletea,
 lipgloss,huh}/v2` and nothing from `internal/`. That keeps it free of
-cycle risk so any future `internal/tui` flow can pull it in. Themed
-borders come from `internal/tui/styles.go` (`modalStyle`) passed in via
-`modal.WithStyle`, not from inside the package itself. The
-`components/<name>/` layout is the home for future reusable widgets
-(picker, confirm dialog, …) that follow the same leaf contract.
+cycle risk so any `internal/tui` flow can pull it in. A modal frame is
+configured with `modal.WithCaption(caption)` (drawn through the `panel`
+component) or `modal.WithStyle`; `modal.Active()` reports whether a
+modal is open and unresolved. The shell uses these for the help and
+notifications overlays (ADR 0013). The `components/<name>/` layout is
+the home for reusable widgets that follow the same leaf contract.
+
+### `tui/components/panel`
+
+Leaf presentation component. `Render(focused, caption, body, Styles)`
+draws a rounded frame with the caption spliced into the top border, and
+`DefaultStyles()` supplies the palette-derived look. The frame logic was
+extracted from `treetable` so the treetable, modal captions, and any
+future framed widget share one implementation.
 
 ### `cmd/af`
 

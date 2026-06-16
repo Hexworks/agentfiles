@@ -19,6 +19,14 @@ func nameInput(value *string, description string) *huh.Input {
 		Validate(requiredString)
 }
 
+func idInput(value *string, description string) *huh.Input {
+	return huh.NewInput().
+		Key("id").
+		Title("ID").
+		Description(description).
+		Value(value)
+}
+
 func pathInput(value *string, description string) *huh.Input {
 	return huh.NewInput().
 		Key("path").
