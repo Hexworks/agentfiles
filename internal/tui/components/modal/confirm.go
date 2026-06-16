@@ -6,6 +6,8 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+
+	"github.com/hexworks/agentfiles/internal/tui/styles"
 )
 
 // confirmContent implements [Content] for a binary Yes / No prompt. The
@@ -33,13 +35,15 @@ type ConfirmStyles struct {
 	Selected lipgloss.Style
 }
 
-// DefaultConfirmStyles returns palette-neutral defaults; callers that want
-// themed buttons pass [WithConfirmStyles].
+// DefaultConfirmStyles returns the themed confirmation palette read
+// from the active [styles.Palette]. Callers that want a non-themed
+// dialog still pass [WithConfirmStyles] with their own ConfirmStyles
+// value; the default tracks the surrounding TUI.
 func DefaultConfirmStyles() ConfirmStyles {
 	return ConfirmStyles{
-		Prompt:   lipgloss.NewStyle().Padding(0, 0, 1, 0),
-		Button:   lipgloss.NewStyle().Padding(0, 2).Border(lipgloss.RoundedBorder()),
-		Selected: lipgloss.NewStyle().Padding(0, 2).Border(lipgloss.RoundedBorder()).Bold(true).Reverse(true),
+		Prompt:   styles.ConfirmPromptStyle,
+		Button:   styles.ConfirmButtonStyle,
+		Selected: styles.ConfirmSelectedStyle,
 	}
 }
 

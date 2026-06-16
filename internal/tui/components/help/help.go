@@ -26,6 +26,7 @@ import (
 	"github.com/charmbracelet/glamour"
 
 	"github.com/hexworks/agentfiles/internal/tui/components/modal"
+	"github.com/hexworks/agentfiles/internal/tui/styles"
 )
 
 // ManualRoot is the only folder the help dialog will read from. Paths in a
@@ -83,8 +84,7 @@ func New(id string, req Request, width, height int) *modal.Modal {
 	c.viewport = vp
 	c.applySize(width, height, innerW, vH)
 
-	style := lipgloss.NewStyle().Border(lipgloss.RoundedBorder())
-	return modal.New(id, c, modal.WithStyle(style))
+	return modal.New(id, c, modal.WithStyle(styles.HelpModalStyle))
 }
 
 // helpInner translates the outer modal dimensions into the inner
@@ -142,8 +142,7 @@ func (c *content) Update(msg tea.Msg) (modal.Content, tea.Cmd) {
 func (c *content) View() string {
 	innerW := c.width - 2
 
-	tabStyle := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1)
-	tab := tabStyle.Render("Help: " + c.topic)
+	tab := styles.HelpTabStyle.Render("Help: " + c.topic)
 	tabW := lipgloss.Width(tab)
 	titleRow := lipgloss.JoinHorizontal(
 		lipgloss.Center,
@@ -152,7 +151,7 @@ func (c *content) View() string {
 	)
 
 	pct := fmt.Sprintf("%3.0f%%", c.viewport.ScrollPercent()*100)
-	pctBox := tabStyle.Render(pct)
+	pctBox := styles.HelpTabStyle.Render(pct)
 	pctW := lipgloss.Width(pctBox)
 	bottomRow := lipgloss.JoinHorizontal(
 		lipgloss.Center,
@@ -160,10 +159,7 @@ func (c *content) View() string {
 		pctBox,
 	)
 
-	help := lipgloss.NewStyle().
-		Width(innerW).
-		Foreground(lipgloss.Color("8")).
-		Render("↑/k up • ↓/j down • esc close")
+	help := styles.HelpHintStyle.Width(innerW).Render("↑/k up • ↓/j down • esc close")
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,

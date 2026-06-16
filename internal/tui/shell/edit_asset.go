@@ -21,6 +21,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/tui/components/treetable"
 	"github.com/hexworks/agentfiles/internal/tui/editor"
 	"github.com/hexworks/agentfiles/internal/tui/modals"
+	"github.com/hexworks/agentfiles/internal/tui/styles"
 )
 
 // editAssetActions is the narrow slice of *actions.Actions the Edit
@@ -213,7 +214,7 @@ func (s *editAssetScreen) buildFields() {
 	// honors upstream defaults (space/x toggle, j/k navigation, visible
 	// `[x]` / `[ ]` selectors).
 	keymap := huh.NewDefaultKeyMap()
-	theme := huh.ThemeFunc(huh.ThemeCharm)
+	theme := styles.HuhTheme()
 	s.description = huh.NewText().
 		Key("description").
 		Title("Description").

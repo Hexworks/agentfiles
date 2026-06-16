@@ -28,6 +28,7 @@ import (
 
 	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
 	"github.com/hexworks/agentfiles/internal/tui/components/panel"
+	"github.com/hexworks/agentfiles/internal/tui/styles"
 )
 
 // Node is a single entry in the tree displayed by the component. Children
@@ -92,14 +93,14 @@ type Styles struct {
 	Table table.Styles
 }
 
-// DefaultStyles returns palette-neutral defaults; callers pass [WithStyles]
-// to integrate with the surrounding theme.
+// DefaultStyles returns styles taken from the active [styles.Palette]:
+// muted border when blurred, cyan border when focused. Callers pass
+// [WithStyles] to override.
 func DefaultStyles() Styles {
-	base := lipgloss.NewStyle()
 	return Styles{
-		Border:        base,
-		BorderFocused: base,
-		Title:         lipgloss.NewStyle().Bold(true),
+		Border:        styles.BorderStyle,
+		BorderFocused: styles.BorderFocusedStyle,
+		Title:         styles.PanelTitleStyle,
 		Table:         table.DefaultStyles(),
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"charm.land/huh/v2"
 
 	"github.com/hexworks/agentfiles/internal/tui/components/modal"
+	"github.com/hexworks/agentfiles/internal/tui/styles"
 )
 
 // CreateFileInput is the typed payload returned by the Create File modal.
@@ -24,6 +25,6 @@ func buildCreateFile(initial CreateFileInput) (*huh.Form, *CreateFileInput, func
 		huh.NewGroup(
 			pathInput(&state.Path, "File path relative to the asset folder"),
 		),
-	)
+	).WithTheme(styles.HuhTheme())
 	return form, state, func(*huh.Form) any { return *state }
 }

@@ -15,11 +15,18 @@ import (
 	"github.com/hexworks/agentfiles/internal/registry"
 	"github.com/hexworks/agentfiles/internal/tui/notifications"
 	"github.com/hexworks/agentfiles/internal/tui/shell"
+	"github.com/hexworks/agentfiles/internal/tui/styles"
 )
 
 func main() {
 	registryPath := flag.String("registry", registry.DefaultPath(), "path to profile registry")
+	themePath := flag.String("theme", "", "path to theme override (default $XDG_CONFIG_HOME/agentfiles/theme.json)")
 	flag.Parse()
+
+	if err := styles.LoadConfig(*themePath); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 
 	svc := app.New(*registryPath)
 	a := actions.New(svc)

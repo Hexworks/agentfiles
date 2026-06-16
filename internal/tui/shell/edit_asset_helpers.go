@@ -6,8 +6,6 @@ import (
 	"sort"
 	"strings"
 
-	"charm.land/lipgloss/v2"
-
 	"github.com/hexworks/agentfiles/internal/asset"
 	"github.com/hexworks/agentfiles/internal/tui/components/panel"
 	"github.com/hexworks/agentfiles/internal/tui/components/treetable"
@@ -20,8 +18,8 @@ import (
 // treetables line up visually.
 func focusAwarePanelStyles() panel.Styles {
 	st := panel.DefaultStyles()
-	st.Border = lipgloss.NewStyle().Foreground(styles.ColorMuted)
-	st.BorderFocused = lipgloss.NewStyle().Foreground(styles.ColorCyan)
+	st.Border = styles.BorderStyle
+	st.BorderFocused = styles.BorderFocusedStyle
 	return st
 }
 
@@ -35,8 +33,8 @@ func assetHeader(title string) string {
 // them on its own based on its focus state.
 func focusAwareTreetableStyles() treetable.Styles {
 	st := treetable.DefaultStyles()
-	st.Border = lipgloss.NewStyle().Foreground(styles.ColorMuted)
-	st.BorderFocused = lipgloss.NewStyle().Foreground(styles.ColorCyan)
+	st.Border = styles.BorderStyle
+	st.BorderFocused = styles.BorderFocusedStyle
 	return st
 }
 

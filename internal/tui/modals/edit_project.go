@@ -4,6 +4,7 @@ import (
 	"charm.land/huh/v2"
 
 	"github.com/hexworks/agentfiles/internal/tui/components/modal"
+	"github.com/hexworks/agentfiles/internal/tui/styles"
 )
 
 // EditProjectInput is the typed payload delivered through `modal.ResolvedMsg`
@@ -37,6 +38,6 @@ func buildEditProject(initial EditProjectInput) (*huh.Form, *EditProjectInput, f
 			pathInput(&state.Path, "The path of the project"),
 			enabledAgentsSelect(&state.EnabledAgents, "Multi-select of agents enabled for this project. At least one required."),
 		),
-	)
+	).WithTheme(styles.HuhTheme())
 	return form, state, func(*huh.Form) any { return *state }
 }

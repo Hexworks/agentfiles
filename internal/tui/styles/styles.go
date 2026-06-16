@@ -1,12 +1,20 @@
-// Package styles holds the shared TUI presentation primitives — color
-// constants, lipgloss styles, the severity icon/style switch, and the
-// terminal-safe string sanitizer. Both internal/tui and
-// internal/tui/notifications depend on this leaf package, so the styles
+// Package styles holds the shared TUI presentation primitives — the
+// semantic [Palette], the package-level color vars derived from it, the
+// lipgloss styles every component renders through, the severity icon
+// switch, and the terminal-safe string sanitizer. Both internal/tui and
+// internal/tui/notifications depend on this leaf package so the styles
 // vocabulary stays in one place and no import cycle appears when the
 // shell mounts notification components.
+//
+// Theme model: [Palette] is the single source of truth. [Apply]
+// rebuilds every exported var from a palette; callers reference the
+// vars by name and never construct their own lipgloss.Style at the
+// edge. To install a user-supplied theme call Apply once at startup
+// (cmd/af/main.go) before tea.NewProgram runs.
 package styles
 
 import (
+	"image/color"
 	"strconv"
 	"unicode"
 
@@ -15,54 +23,164 @@ import (
 	"github.com/hexworks/agentfiles/internal/errs"
 )
 
-// ANSI palette indices used across the render helpers. Naming them
-// means a palette change touches one constant instead of every style
-// declaration.
+// ANSI color vars rebuilt by [Apply]. Existing call sites read these
+// by name (e.g. styles.ColorCyan); keeping them avoids a flag-day
+// rename when a theme is installed.
 var (
-	ColorMuted   = lipgloss.Color("8")  // dim grey
-	ColorRed     = lipgloss.Color("9")  // red
-	ColorGreen   = lipgloss.Color("10") // bright green
-	ColorYellow  = lipgloss.Color("11") // yellow
-	ColorMagenta = lipgloss.Color("13") // magenta
-	ColorCyan    = lipgloss.Color("14") // cyan
+	ColorMuted   color.Color
+	ColorRed     color.Color
+	ColorGreen   color.Color
+	ColorYellow  color.Color
+	ColorMagenta color.Color
+	ColorCyan    color.Color
 )
 
-// Mnemonic-button palette. Distinct from the severity palette so the
-// activating-key hint reads as a control glyph rather than a status.
-// ColorAccent paints the surrounding `[`/`]` brackets; ColorMnemonic
-// paints the highlighted shortcut letter (rendered bold + underlined);
-// ColorText paints the rest of the label.
+// Mnemonic-button palette vars rebuilt by [Apply]. Distinct from the
+// severity palette so the activating-key hint reads as a control glyph
+// rather than a status.
 var (
-	ColorAccent   = ColorRed
-	ColorMnemonic = ColorGreen
-	ColorText     = ColorMuted
+	ColorAccent   color.Color
+	ColorMnemonic color.Color
+	ColorText     color.Color
 )
 
-// Lipgloss styles consumed by the render helpers and by the
-// notifications subsystem. Centralizing them keeps future palette
-// changes local; callers only reference these vars.
+// Lipgloss styles rebuilt by [Apply]. Every component renders through
+// one of these — a palette swap touches Apply only.
 var (
-	HeaderStyle = lipgloss.NewStyle().Bold(true)
-	CleanStyle  = lipgloss.NewStyle().Foreground(ColorGreen)
-	MutedStyle  = lipgloss.NewStyle().Foreground(ColorMuted)
+	HeaderStyle lipgloss.Style
+	CleanStyle  lipgloss.Style
+	MutedStyle  lipgloss.Style
 
-	CreateStyle = lipgloss.NewStyle().Foreground(ColorGreen)
-	UpdateStyle = lipgloss.NewStyle().Foreground(ColorYellow)
-	DriftStyle  = lipgloss.NewStyle().Foreground(ColorMagenta)
-	DeleteStyle = lipgloss.NewStyle().Foreground(ColorRed)
+	CreateStyle lipgloss.Style
+	UpdateStyle lipgloss.Style
+	DriftStyle  lipgloss.Style
+	DeleteStyle lipgloss.Style
 
-	ErrorStyle = lipgloss.NewStyle().Foreground(ColorRed).Bold(true)
-	WarnStyle  = lipgloss.NewStyle().Foreground(ColorYellow)
-	InfoStyle  = lipgloss.NewStyle().Foreground(ColorCyan)
+	ErrorStyle lipgloss.Style
+	WarnStyle  lipgloss.Style
+	InfoStyle  lipgloss.Style
 
 	// ModalStyle is the themed border for components/modal callers.
-	// Pass it via modal.WithStyle so the modal package itself stays
+	// Pass via modal.WithStyle so the modal package itself stays
 	// palette-free.
-	ModalStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(ColorCyan).
-			Padding(1, 2)
+	ModalStyle lipgloss.Style
+
+	// BorderStyle / BorderFocusedStyle are the muted / focused frame
+	// foregrounds consumed by panel and treetable. Stored as styles
+	// (not raw colors) so consumers compose them via Style.Inherit
+	// without rebuilding identical NewStyle().Foreground(...) calls
+	// at every site.
+	BorderStyle        lipgloss.Style
+	BorderFocusedStyle lipgloss.Style
+
+	// PanelTitleStyle is the caption embedded in a panel's top
+	// border. Bold so it reads as chrome rather than body text.
+	PanelTitleStyle lipgloss.Style
+
+	// ConfirmPromptStyle / ConfirmButtonStyle / ConfirmSelectedStyle
+	// drive the confirm modal's prompt + Yes/No buttons.
+	ConfirmPromptStyle   lipgloss.Style
+	ConfirmButtonStyle   lipgloss.Style
+	ConfirmSelectedStyle lipgloss.Style
+
+	// HelpHintStyle is the single-line footer below the manual
+	// viewport ("↑/k up • ↓/j down • esc close").
+	HelpHintStyle lipgloss.Style
+	// HelpTabStyle is the rounded tab embedded in the help dialog's
+	// top and bottom borders (title + scroll percent).
+	HelpTabStyle lipgloss.Style
+	// HelpModalStyle is the help dialog's outer frame: rounded
+	// border, no padding, so the viewport's own title row sits flush
+	// against the top edge.
+	HelpModalStyle lipgloss.Style
+
+	// ShellTitleStyle is the rounded title bar at the top of the
+	// alt-screen body. Inherits HeaderStyle's Bold attribute.
+	ShellTitleStyle lipgloss.Style
 )
+
+// current holds the active palette. Read with [Current]; replace with
+// [Apply].
+var current Palette
+
+func init() {
+	Apply(DefaultPalette())
+}
+
+// Current returns the palette currently installed. Useful for tests
+// that want to assert against the active theme without bypassing the
+// public surface.
+func Current() Palette { return current }
+
+// Apply installs p as the active palette and rebuilds every exported
+// color and style var. Call once at startup after loading any
+// user-supplied theme, and again on a runtime palette change. The
+// function is not safe for concurrent use; callers are expected to
+// Apply on the main goroutine before tea.NewProgram runs (or inside an
+// Update handler, which is single-threaded by Bubble Tea contract).
+func Apply(p Palette) {
+	current = p
+
+	ColorMuted = p.Muted
+	ColorRed = p.Red
+	ColorGreen = p.Green
+	ColorYellow = p.Yellow
+	ColorMagenta = p.Magenta
+	ColorCyan = p.Cyan
+
+	ColorAccent = p.MnemonicAccent
+	ColorMnemonic = p.MnemonicHL
+	ColorText = p.MnemonicText
+
+	HeaderStyle = lipgloss.NewStyle().Bold(true)
+	CleanStyle = lipgloss.NewStyle().Foreground(p.Green)
+	MutedStyle = lipgloss.NewStyle().Foreground(p.Muted)
+
+	CreateStyle = lipgloss.NewStyle().Foreground(p.Green)
+	UpdateStyle = lipgloss.NewStyle().Foreground(p.Yellow)
+	DriftStyle = lipgloss.NewStyle().Foreground(p.Magenta)
+	DeleteStyle = lipgloss.NewStyle().Foreground(p.Red)
+
+	ErrorStyle = lipgloss.NewStyle().Foreground(p.Red).Bold(true)
+	WarnStyle = lipgloss.NewStyle().Foreground(p.Yellow)
+	InfoStyle = lipgloss.NewStyle().Foreground(p.Cyan)
+
+	ModalStyle = lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(p.Cyan).
+		Padding(1, 2)
+
+	BorderStyle = lipgloss.NewStyle().Foreground(p.Muted)
+	BorderFocusedStyle = lipgloss.NewStyle().Foreground(p.Cyan)
+	PanelTitleStyle = lipgloss.NewStyle().Bold(true)
+
+	ConfirmPromptStyle = lipgloss.NewStyle().Padding(0, 0, 1, 0)
+	ConfirmButtonStyle = lipgloss.NewStyle().
+		Padding(0, 2).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(p.Muted)
+	ConfirmSelectedStyle = lipgloss.NewStyle().
+		Padding(0, 2).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(p.Cyan).
+		Bold(true).
+		Reverse(true)
+
+	HelpHintStyle = lipgloss.NewStyle().Foreground(p.Muted)
+	HelpTabStyle = lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(p.Muted).
+		Padding(0, 1)
+	HelpModalStyle = lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(p.Cyan)
+
+	ShellTitleStyle = lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(p.Muted).
+		Padding(0, 2).
+		Bold(true)
+}
 
 // SeverityStyle picks the icon and lipgloss style for a domain severity.
 // The notifications subsystem and the error renderer share this switch

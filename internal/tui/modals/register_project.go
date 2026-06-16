@@ -5,6 +5,7 @@ import (
 
 	"github.com/hexworks/agentfiles/internal/project"
 	"github.com/hexworks/agentfiles/internal/tui/components/modal"
+	"github.com/hexworks/agentfiles/internal/tui/styles"
 )
 
 // RegisterProjectInput captures the fields collected by the Register Project
@@ -38,7 +39,7 @@ func buildRegisterProject(initial RegisterProjectInput) (*huh.Form, *RegisterPro
 			pathInput(&state.Path, "The path of the project"),
 			enabledAgentsSelect(&state.EnabledAgents, "Multi-select of agents to enable for this project. At least one required."),
 		),
-	)
+	).WithTheme(styles.HuhTheme())
 	return form, state, func(*huh.Form) any {
 		return project.NewDraft(state.Name, state.Path, state.EnabledAgents)
 	}

@@ -4,6 +4,7 @@ import (
 	"charm.land/huh/v2"
 
 	"github.com/hexworks/agentfiles/internal/tui/components/modal"
+	"github.com/hexworks/agentfiles/internal/tui/styles"
 )
 
 // RegisterProfileInput is the typed payload returned by the Register Profile
@@ -24,6 +25,6 @@ func buildRegisterProfile(initial RegisterProfileInput) (*huh.Form, *RegisterPro
 		huh.NewGroup(
 			pathInput(&state.Path, "Profile directory path. ~ is expanded."),
 		),
-	)
+	).WithTheme(styles.HuhTheme())
 	return form, state, func(*huh.Form) any { return *state }
 }

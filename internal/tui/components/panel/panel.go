@@ -13,6 +13,8 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+
+	"github.com/hexworks/agentfiles/internal/tui/styles"
 )
 
 // Styles bundles the frame and caption presentation.
@@ -31,15 +33,15 @@ type Styles struct {
 	Title         lipgloss.Style
 }
 
-// DefaultStyles returns palette-neutral styles. Hosts override via the
-// helpers in their styling package to integrate with the surrounding
-// theme.
+// DefaultStyles returns styles taken from the active [styles.Palette]:
+// muted border when blurred, cyan border when focused, bold caption.
+// Hosts that want a different palette pass an explicit [Styles] value
+// to [Render].
 func DefaultStyles() Styles {
-	base := lipgloss.NewStyle()
 	return Styles{
-		Border:        base,
-		BorderFocused: base,
-		Title:         lipgloss.NewStyle().Bold(true),
+		Border:        styles.BorderStyle,
+		BorderFocused: styles.BorderFocusedStyle,
+		Title:         styles.PanelTitleStyle,
 	}
 }
 

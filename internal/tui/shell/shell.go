@@ -271,13 +271,8 @@ func (m Model) View() tea.View {
 	return v
 }
 
-var titleStyle = lipgloss.NewStyle().
-	Border(lipgloss.RoundedBorder()).
-	Padding(0, 2).
-	Inherit(styles.HeaderStyle)
-
 func renderTitle(s string) string {
-	return titleStyle.Render(s)
+	return styles.ShellTitleStyle.Render(s)
 }
 
 // bodyCanvasHeight returns the height of the canvas the help overlay

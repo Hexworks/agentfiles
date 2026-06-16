@@ -5,6 +5,7 @@ import (
 
 	"github.com/hexworks/agentfiles/internal/asset"
 	"github.com/hexworks/agentfiles/internal/tui/components/modal"
+	"github.com/hexworks/agentfiles/internal/tui/styles"
 )
 
 // createAssetState is the in-flight form state shared by the field bindings
@@ -47,7 +48,7 @@ func buildCreateAsset(initial asset.Manifest) (*huh.Form, *createAssetState, fun
 			compatibleAgentsSelect(&state.CompatibleAgents, "Multi-select of agents this asset renders for. Empty means \"all enabled agents\"."),
 			exclusiveGroupInput(&state.ExclusiveGroup, "Assign (optional) exclusive group (eg: `agents_doc`)"),
 		),
-	)
+	).WithTheme(styles.HuhTheme())
 	return form, state, func(*huh.Form) any { return assetManifestFromState(state) }
 }
 

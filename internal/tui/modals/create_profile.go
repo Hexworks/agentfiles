@@ -4,6 +4,7 @@ import (
 	"charm.land/huh/v2"
 
 	"github.com/hexworks/agentfiles/internal/tui/components/modal"
+	"github.com/hexworks/agentfiles/internal/tui/styles"
 )
 
 // CreateProfileInput is the typed payload delivered through
@@ -28,6 +29,6 @@ func buildCreateProfile(initial CreateProfileInput) (*huh.Form, *CreateProfileIn
 			nameInput(&state.Name, "Display name for the profile"),
 			pathInput(&state.Path, "Profile directory path. ~ is expanded."),
 		),
-	)
+	).WithTheme(styles.HuhTheme())
 	return form, state, func(*huh.Form) any { return *state }
 }
