@@ -385,14 +385,14 @@ func (s *planProjectScreen) treeActionsFn() treetable.ActionsFunc {
 
 func (s *planProjectScreen) driftToggleBtn(path string) *mnemonic.Button {
 	if s.driftResolutions[path] == app.DriftOverwrite {
-		return mnemonic.New("Keep", 'k', func() tea.Cmd { return s.toggleDrift(path, app.DriftKeep) })
+		return mnemonic.New("Keep", 'p', func() tea.Cmd { return s.toggleDrift(path, app.DriftKeep) })
 	}
 	return mnemonic.New("Overwrite", 'o', func() tea.Cmd { return s.toggleDrift(path, app.DriftOverwrite) })
 }
 
 func (s *planProjectScreen) unknownToggleBtn(path string) *mnemonic.Button {
 	if s.unknownResolutions[path] == app.UnknownDelete {
-		return mnemonic.New("Keep", 'k', func() tea.Cmd { return s.toggleUnknown(path, app.UnknownKeep) })
+		return mnemonic.New("Keep", 'p', func() tea.Cmd { return s.toggleUnknown(path, app.UnknownKeep) })
 	}
 	return mnemonic.New("Delete", 'd', func() tea.Cmd { return s.toggleUnknown(path, app.UnknownDelete) })
 }

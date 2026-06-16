@@ -261,7 +261,7 @@ func TestPlanProjectScreen_TreeActionsFnDriftOverwriteRendersKeepBtn(t *testing.
 	if len(got) != 1 {
 		t.Fatalf("got %d buttons, want 1", len(got))
 	}
-	assertBtn(t, got[0], "Keep", 'k')
+	assertBtn(t, got[0], "Keep", 'p')
 }
 
 func TestPlanProjectScreen_TreeActionsFnUnknownKeepRendersDeleteBtn(t *testing.T) {
@@ -287,7 +287,7 @@ func TestPlanProjectScreen_TreeActionsFnUnknownDeleteRendersKeepBtn(t *testing.T
 	if len(got) != 1 {
 		t.Fatalf("got %d buttons, want 1", len(got))
 	}
-	assertBtn(t, got[0], "Keep", 'k')
+	assertBtn(t, got[0], "Keep", 'p')
 }
 
 func TestPlanProjectScreen_TreeActionsFnNoButtonForCreateUpdateDelete(t *testing.T) {

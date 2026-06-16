@@ -25,7 +25,7 @@ func focusAwarePanelStyles() panel.Styles {
 
 // assetHeader renders the bold section header used by the right column.
 func assetHeader(title string) string {
-	return styles.HeaderStyle.Render(title)
+	return styles.HeaderStyle.PaddingLeft(1).Render(title)
 }
 
 // focusAwareTreetableStyles returns the default treetable styles with
@@ -58,15 +58,6 @@ func splitWidth(width int) (int, int) {
 	left := width / 2
 	right := width - left
 	return left, right
-}
-
-// assetSummaryValue returns the styled summary value for one cell, or
-// the empty string when no asset is loaded.
-func assetSummaryValue(a *asset.Asset, pick func(*asset.Asset) string) string {
-	if a == nil {
-		return ""
-	}
-	return styles.Safe(pick(a))
 }
 
 // sortedRelativeFiles wraps asset.RelativeFiles and returns a stable
@@ -132,7 +123,8 @@ func buildAssetTree(a *asset.Asset, files []string) *treetable.Node {
 // on. slices.Equal treats nil and an empty slice as equal so a freshly
 // loaded form is never reported as dirty.
 func formsEqual(a, b editAssetForm) bool {
-	return a.descriptionText == b.descriptionText &&
+	return a.nameText == b.nameText &&
+		a.descriptionText == b.descriptionText &&
 		a.tagsCSV == b.tagsCSV &&
 		a.exclusiveGroup == b.exclusiveGroup &&
 		slices.Equal(a.compatibleAgents, b.compatibleAgents)

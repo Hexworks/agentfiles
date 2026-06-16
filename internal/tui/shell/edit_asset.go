@@ -69,6 +69,8 @@ type assetNode struct {
 // *asset.Asset stays immutable between load and save. dirty() compares
 // this struct against snapshot.
 type editAssetForm struct {
+	nameText         string
+	typeText         string
 	descriptionText  string
 	tagsCSV          string
 	compatibleAgents []string
@@ -82,8 +84,9 @@ const treetableHeight = 8
 
 // editAssetScreen is the management screen reached from the Edit Profile
 // row-level `[Edit]` action on an asset row. It hosts a left-pane files
-// treetable + a right-pane Summary (read-only) and Customize (editable
-// huh fields) layout, mnemonic-driven row actions, modal-composited
+// treetable + a right-pane Customize layout of huh fields (Name editable,
+// Type read-only, Description / Tags / Compatible Agents / Exclusive
+// Group editable), mnemonic-driven row actions, modal-composited
 // confirmation dialogs, and typed-message mutations.
 type editAssetScreen struct {
 	actions   editAssetActions
@@ -100,6 +103,8 @@ type editAssetScreen struct {
 
 	handler     *focus.Handler
 	tree        *treetable.Model
+	name        *huh.Input
+	typ         *huh.Input
 	description *huh.Text
 	tags        *huh.Input
 	compatible  *huh.MultiSelect[string]
@@ -107,8 +112,10 @@ type editAssetScreen struct {
 
 	// per-field focus indices captured at registration time so
 	// renderCustomize and the tests stay aligned with the actual order
-	// the focus.Handler hands out.
+	// the focus.Handler hands out. `typ` is intentionally not registered
+	// because it renders as a read-only field.
 	treeIdx       int
+	nameIdx       int
 	descIdx       int
 	tagsIdx       int
 	compatibleIdx int
@@ -177,13 +184,15 @@ func newEditAssetScreen(a editAssetActions, profileID, assetID string) *editAsse
 	// tests stay aligned with the actual order the handler hands out.
 	s.treeIdx = 0
 	s.handler.Add(s.tree)
-	s.descIdx = 1
+	s.nameIdx = 1
+	s.handler.Add(s.name)
+	s.descIdx = 2
 	s.handler.Add(s.description)
-	s.tagsIdx = 2
+	s.tagsIdx = 3
 	s.handler.Add(s.tags)
-	s.compatibleIdx = 3
+	s.compatibleIdx = 4
 	s.handler.Add(s.compatible)
-	s.exclusiveIdx = 4
+	s.exclusiveIdx = 5
 	s.handler.Add(s.exclusive)
 	s.registerModalHandlers()
 	s.rebuildSet()
@@ -215,6 +224,20 @@ func (s *editAssetScreen) buildFields() {
 	// `[x]` / `[ ]` selectors).
 	keymap := huh.NewDefaultKeyMap()
 	theme := styles.HuhTheme()
+	s.name = huh.NewInput().
+		Key("name").
+		Title("Name").
+		Description("Asset display name").
+		Value(&s.form.nameText)
+	s.name.WithKeyMap(keymap)
+	s.name.WithTheme(theme)
+	s.typ = huh.NewInput().
+		Key("type").
+		Title("Type").
+		Description("Asset type (read-only)").
+		Value(&s.form.typeText)
+	s.typ.WithKeyMap(keymap)
+	s.typ.WithTheme(theme)
 	s.description = huh.NewText().
 		Key("description").
 		Title("Description").
@@ -449,11 +472,23 @@ func (s *editAssetScreen) handleLoaded(m editAssetLoadedMsg) (Screen, tea.Cmd) {
 // "a new Manifest field needs both sides" obvious.
 func (s *editAssetScreen) hydrateForm(a *asset.Asset) {
 	s.form = editAssetForm{
+		nameText:         a.Name,
+		typeText:         string(a.Type),
 		descriptionText:  a.Description,
 		tagsCSV:          modals.JoinTags(a.Tags),
 		compatibleAgents: append([]string(nil), a.CompatibleAgents...),
 		exclusiveGroup:   a.ExclusiveGroup,
 	}
+	// huh fields snapshot the bound pointer's value into their internal
+	// textinput/textarea on Value(). Re-bind so the freshly hydrated form
+	// values surface on render instead of the construction-time zero
+	// values.
+	s.name.Value(&s.form.nameText)
+	s.typ.Value(&s.form.typeText)
+	s.description.Value(&s.form.descriptionText)
+	s.tags.Value(&s.form.tagsCSV)
+	s.compatible.Value(&s.form.compatibleAgents)
+	s.exclusive.Value(&s.form.exclusiveGroup)
 }
 
 // composeManifest builds the asset.Manifest the Save flow persists by
@@ -463,7 +498,7 @@ func (s *editAssetScreen) hydrateForm(a *asset.Asset) {
 func (s *editAssetScreen) composeManifest() asset.Manifest {
 	return asset.Manifest{
 		ID:               s.asset.ID,
-		Name:             s.asset.Name,
+		Name:             s.form.nameText,
 		Type:             s.asset.Type,
 		Description:      s.form.descriptionText,
 		Tags:             modals.ParseTags(s.form.tagsCSV),
@@ -611,16 +646,7 @@ func (s *editAssetScreen) renderLeft(_ int) string {
 }
 
 func (s *editAssetScreen) renderRight(width int) string {
-	summary := s.renderSummary(width)
-	customize := s.renderCustomize(width)
-	return lipgloss.JoinVertical(lipgloss.Left, summary, "", customize)
-}
-
-func (s *editAssetScreen) renderSummary(_ int) string {
-	header := assetHeader("Summary")
-	name := "Name: " + assetSummaryValue(s.asset, func(a *asset.Asset) string { return a.Name })
-	typ := "Type: " + assetSummaryValue(s.asset, func(a *asset.Asset) string { return string(a.Type) })
-	return lipgloss.JoinVertical(lipgloss.Left, header, name, typ)
+	return s.renderCustomize(width)
 }
 
 func (s *editAssetScreen) renderCustomize(width int) string {
@@ -635,6 +661,8 @@ func (s *editAssetScreen) renderCustomize(width int) string {
 	if innerWidth < 1 {
 		innerWidth = 1
 	}
+	s.name.WithWidth(innerWidth)
+	s.typ.WithWidth(innerWidth)
 	s.description.WithWidth(innerWidth)
 	s.tags.WithWidth(innerWidth)
 	s.compatible.WithWidth(innerWidth)
@@ -644,6 +672,8 @@ func (s *editAssetScreen) renderCustomize(width int) string {
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
 		header,
+		panel.Render(focus == s.nameIdx, "", s.name.View(), st),
+		panel.Render(false, "", s.typ.View(), st),
 		panel.Render(focus == s.descIdx, "", s.description.View(), st),
 		panel.Render(focus == s.tagsIdx, "", s.tags.View(), st),
 		panel.Render(focus == s.compatibleIdx, "", s.compatible.View(), st),
