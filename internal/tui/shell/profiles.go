@@ -178,6 +178,10 @@ func (s *profilesScreen) forwardToModal(msg tea.Msg) (Screen, tea.Cmd) {
 
 func (s *profilesScreen) Title() string { return "Profiles" }
 
+func (s *profilesScreen) Description() string {
+	return fmt.Sprintf("Browsing %d registered profile(s)", len(s.profiles))
+}
+
 func (s *profilesScreen) Topic() help.Topic {
 	return help.Topic{Label: "Profiles", File: "profiles.md"}
 }

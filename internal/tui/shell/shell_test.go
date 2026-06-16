@@ -72,6 +72,7 @@ func (s *initSentinelScreen) Init() tea.Cmd {
 func (s *initSentinelScreen) Update(_ tea.Msg) (Screen, tea.Cmd) { return s, nil }
 func (s *initSentinelScreen) Body(_ int) string                  { return "" }
 func (s *initSentinelScreen) Title() string                      { return "init-sentinel" }
+func (s *initSentinelScreen) Description() string                { return "" }
 func (s *initSentinelScreen) StatusKeys() []key.Binding          { return nil }
 func (s *initSentinelScreen) InputFocused() bool                 { return false }
 
@@ -222,6 +223,7 @@ func (s *recordingScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 }
 func (s *recordingScreen) Body(_ int) string         { return "" }
 func (s *recordingScreen) Title() string             { return "rec" }
+func (s *recordingScreen) Description() string       { return "" }
 func (s *recordingScreen) StatusKeys() []key.Binding { return nil }
 func (s *recordingScreen) InputFocused() bool        { return false }
 
@@ -391,6 +393,7 @@ func (s *sizingSpy) Update(msg tea.Msg) (Screen, tea.Cmd) {
 }
 func (s *sizingSpy) Body(_ int) string         { return "" }
 func (s *sizingSpy) Title() string             { return "spy" }
+func (s *sizingSpy) Description() string       { return "" }
 func (s *sizingSpy) StatusKeys() []key.Binding { return nil }
 func (s *sizingSpy) InputFocused() bool        { return false }
 
@@ -505,6 +508,7 @@ type bodyWidthSpy struct {
 func (s *bodyWidthSpy) Init() tea.Cmd                      { return nil }
 func (s *bodyWidthSpy) Update(_ tea.Msg) (Screen, tea.Cmd) { return s, nil }
 func (s *bodyWidthSpy) Title() string                      { return "size" }
+func (s *bodyWidthSpy) Description() string                { return "" }
 func (s *bodyWidthSpy) StatusKeys() []key.Binding          { return nil }
 func (s *bodyWidthSpy) InputFocused() bool                 { return false }
 func (s *bodyWidthSpy) Body(w int) string {

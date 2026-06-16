@@ -106,6 +106,12 @@ var (
 	// alt-screen body. Inherits HeaderStyle's Bold attribute.
 	ShellTitleStyle lipgloss.Style
 
+	// ScreenDescriptionStyle is the muted italic caption rendered by
+	// the shell directly under the title. Each Screen supplies the
+	// text via Screen.Description; the shell prefixes the nerd-font
+	// info glyph and renders through this style.
+	ScreenDescriptionStyle lipgloss.Style
+
 	// TableHeaderStyle / TableCellStyle / TableSelectedStyle compose
 	// the canonical [table.Styles] returned by [TableStyles]. Every
 	// table — screen-level (profiles, edit_profile, select assets)
@@ -220,6 +226,11 @@ func Apply(p Palette) {
 		BorderForeground(p.Muted).
 		Padding(0, 1).
 		Bold(true)
+
+	ScreenDescriptionStyle = lipgloss.NewStyle().
+		Foreground(p.Muted).
+		Italic(true).
+		PaddingLeft(1)
 }
 
 // SeverityStyle picks the icon and lipgloss style for a domain severity.

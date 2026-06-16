@@ -294,6 +294,7 @@ func (m Model) View() tea.View {
 	top := m.stack[len(m.stack)-1]
 
 	title := renderTitle(top.Title())
+	description := renderDescription(top.Description())
 	toast := m.toast.View()
 	status := renderStatusBar(m.keys, top.StatusKeys())
 
@@ -316,7 +317,7 @@ func (m Model) View() tea.View {
 	if toast == "" {
 		toast = " "
 	}
-	sections := []string{title, body, toast, status}
+	sections := []string{title, "", description, "", body, toast, status}
 
 	v := tea.NewView(lipgloss.JoinVertical(lipgloss.Left, sections...))
 	v.AltScreen = true
@@ -325,6 +326,23 @@ func (m Model) View() tea.View {
 
 func renderTitle(s string) string {
 	return styles.ShellTitleStyle.Render(s)
+}
+
+// descriptionIcon is the Nerd Font glyph rendered ahead of every
+// screen description. nf-fa-info_circle (U+F05A) so the muted italic
+// caption reads as informational metadata, not body text.
+const descriptionIcon = ""
+
+// renderDescription emits the muted italic caption row the shell
+// stacks under the title. An empty description still renders as a
+// single blank line so the body's vertical offset stays stable as the
+// user moves between screens. Outer blank rows above and below are
+// stacked by the View() composer, not this helper.
+func renderDescription(s string) string {
+	if s == "" {
+		return " "
+	}
+	return styles.ScreenDescriptionStyle.Render(descriptionIcon + "  " + s)
 }
 
 // bodyCanvasHeight returns the height of the canvas the help overlay

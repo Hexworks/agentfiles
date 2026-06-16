@@ -44,6 +44,10 @@ func (s *settingsScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 
 func (s *settingsScreen) Title() string { return "Settings" }
 
+func (s *settingsScreen) Description() string {
+	return "Application preferences and configuration"
+}
+
 func (s *settingsScreen) Topic() help.Topic {
 	return help.Topic{Label: "Settings", File: "settings.md"}
 }

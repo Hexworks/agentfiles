@@ -170,6 +170,13 @@ func (s *planProjectScreen) ProjectID() string  { return s.projectID }
 func (s *planProjectScreen) Title() string      { return "Plan Project" }
 func (s *planProjectScreen) InputFocused() bool { return false }
 
+func (s *planProjectScreen) Description() string {
+	if s.projectName == "" {
+		return "Loading plan…"
+	}
+	return fmt.Sprintf("Planning project %q (%s)", s.projectName, s.profileName)
+}
+
 func (s *planProjectScreen) Topic() help.Topic {
 	return help.Topic{Label: "Plan Project", File: "plan_project.md"}
 }
@@ -272,14 +279,9 @@ func (s *planProjectScreen) Body(width int) string {
 	if s.preview == nil {
 		return styles.TextStyle.Render(" Loading…")
 	}
-	header := styles.TextStyle.Render(
-		fmt.Sprintf(" Planning project %q (%s)", s.projectName, s.profileName),
-	)
 	buttonRow := " " + s.applyBtn.View() + "  " + s.backBtn.View()
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
-		header,
-		"",
 		s.tree.View(),
 		"",
 		buttonRow,

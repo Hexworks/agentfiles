@@ -70,6 +70,10 @@ func (s *welcomeScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 
 func (s *welcomeScreen) Title() string { return "Agentfiles" }
 
+func (s *welcomeScreen) Description() string {
+	return "Main menu — pick a task to get started"
+}
+
 func (s *welcomeScreen) StatusKeys() []key.Binding { return nil }
 
 func (s *welcomeScreen) InputFocused() bool { return false }

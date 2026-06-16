@@ -17,7 +17,6 @@ import (
 	"github.com/hexworks/agentfiles/internal/tui/components/help"
 	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
 	"github.com/hexworks/agentfiles/internal/tui/components/panel"
-	"github.com/hexworks/agentfiles/internal/tui/styles"
 )
 
 // selectProjectAssetsOwnActions is the narrow slice of *actions.Actions
@@ -285,6 +284,13 @@ func (s *selectProjectAssetsScreen) routeToFocusedTable(m tea.KeyPressMsg) tea.C
 
 func (s *selectProjectAssetsScreen) Title() string { return "Select Project Assets" }
 
+func (s *selectProjectAssetsScreen) Description() string {
+	if s.projectName == "" {
+		return "Loading project…"
+	}
+	return fmt.Sprintf("Selecting assets for project %q (%s)", s.projectName, s.profileName)
+}
+
 func (s *selectProjectAssetsScreen) Topic() help.Topic {
 	return help.Topic{Label: "Select Project Assets", File: "select_project_assets.md"}
 }
@@ -331,17 +337,11 @@ func (s *selectProjectAssetsScreen) Body(width int) string {
 	applyTable(s.selectedTable, selectedCols, selectedRows)
 	applyTable(s.availableTable, availableCols, availableRows)
 
-	header := styles.TextStyle.Render(fmt.Sprintf(
-		" Selecting assets for project %q (%s)",
-		s.projectName, s.profileName,
-	))
 	buttonRow := " " + s.planBtn.View() + "  " + s.backBtn.View()
 	st := focusAwarePanelStyles()
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
-		header,
-		"",
 		panel.Render(focused == s.selectedIdx, "Selected Assets", s.selectedTable.View(), st),
 		"",
 		panel.Render(focused == s.availableIdx, "Available Assets", s.availableTable.View(), st),

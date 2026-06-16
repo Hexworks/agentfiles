@@ -45,6 +45,14 @@ type Screen interface {
 	Update(msg tea.Msg) (Screen, tea.Cmd)
 	Body(width int) string
 	Title() string
+	// Description returns a short, screen-specific caption rendered
+	// by the shell directly under the title. It is dynamic — screens
+	// interpolate the currently-loaded entity (e.g. project name,
+	// profile name) so the user sees what they are operating on. The
+	// shell prefixes a nerd-font info glyph and renders the text in
+	// the muted italic style; an empty string still reserves the row
+	// so layout stays stable.
+	Description() string
 	StatusKeys() []key.Binding
 	InputFocused() bool
 }
@@ -113,9 +121,10 @@ const (
 	modalMinWidth  = 40
 	modalMinHeight = 10
 	// chromeHeight is the rows the shell reserves outside any modal:
-	// the title bar (3) plus the status bar (1). Kept in sync with
+	// the title bar (3), a blank spacer (1), the description row (1),
+	// a blank spacer (1), and the status bar (1). Kept in sync with
 	// the layout in shell.go::View.
-	chromeHeight = 4
+	chromeHeight = 7
 )
 
 // modalSize returns the (width, height) the shell hands to a modal

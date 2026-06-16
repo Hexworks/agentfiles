@@ -559,6 +559,13 @@ func (s *editAssetScreen) routeToFocusedComponent(m tea.KeyPressMsg) tea.Cmd {
 
 func (s *editAssetScreen) Title() string { return "Edit Asset" }
 
+func (s *editAssetScreen) Description() string {
+	if s.asset == nil {
+		return "Loading asset…"
+	}
+	return fmt.Sprintf("Editing asset %q (%s)", s.asset.Manifest.Name, s.asset.Manifest.Type)
+}
+
 func (s *editAssetScreen) Topic() help.Topic {
 	return help.Topic{Label: "Edit Asset", File: "edit_asset.md"}
 }

@@ -68,8 +68,9 @@ const (
 // Confirmation + form modals composite over the body; no sub-screen is
 // pushed for them.
 type editProfileScreen struct {
-	actions   editProfileActions
-	profileID string
+	actions     editProfileActions
+	profileID   string
+	profileName string
 
 	assets   []*asset.Asset
 	projects []*project.Manifest
@@ -307,6 +308,13 @@ func (s *editProfileScreen) routeToFocusedTable(m tea.KeyPressMsg) tea.Cmd {
 
 func (s *editProfileScreen) Title() string { return "Edit Profile" }
 
+func (s *editProfileScreen) Description() string {
+	if s.profileName == "" {
+		return "Loading profile…"
+	}
+	return fmt.Sprintf("Editing profile %q", s.profileName)
+}
+
 func (s *editProfileScreen) Topic() help.Topic {
 	return help.Topic{Label: "Edit Profile", File: "edit_profile.md"}
 }
@@ -423,10 +431,12 @@ func (s *editProfileScreen) rebuildLists(prof *profile.Profile) {
 	if prof == nil {
 		s.assets = nil
 		s.projects = nil
+		s.profileName = ""
 		return
 	}
 	s.assets = prof.AssetList()
 	s.projects = prof.ProjectList()
+	s.profileName = prof.Manifest.Name
 }
 
 // rebuildAssetsTable seeds rows + naturally-sized columns from the
