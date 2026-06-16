@@ -12,7 +12,7 @@ import (
 // are display-only (Up/Down are owned by individual screens but the
 // status bar still advertises them so the user knows how to move).
 type globalKeyMap struct {
-	Notifications key.Binding // n  → push notificationsScreen
+	Notifications key.Binding // n  → emit ShowNotificationsMsg (shell-owned overlay)
 	Settings      key.Binding // s  → push settingsScreen
 	Help          key.Binding // ?  → emit ShowHelpMsg (shell-owned overlay)
 	Quit          key.Binding // q  / ctrl+c → tea.Quit
@@ -67,7 +67,7 @@ func (m Model) helpTopic() help.Topic {
 func (m Model) handleGlobalKey(kp tea.KeyPressMsg) (tea.Cmd, bool) {
 	switch {
 	case key.Matches(kp, m.keys.Notifications):
-		return pushCmd(m.newNotificationsScreen()), true
+		return showNotificationsCmd(), true
 	case key.Matches(kp, m.keys.Settings):
 		return pushCmd(newSettingsScreen()), true
 	case key.Matches(kp, m.keys.Help):

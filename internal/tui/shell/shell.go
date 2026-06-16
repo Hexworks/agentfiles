@@ -10,6 +10,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/actions"
 	"github.com/hexworks/agentfiles/internal/tui/components/help"
 	"github.com/hexworks/agentfiles/internal/tui/components/modal"
+	"github.com/hexworks/agentfiles/internal/tui/components/notificationsmodal"
 	"github.com/hexworks/agentfiles/internal/tui/notifications"
 	"github.com/hexworks/agentfiles/internal/tui/styles"
 )
@@ -28,18 +29,19 @@ type toaster interface {
 // is held so future screens (tasks 0024+) can request domain work
 // without reaching into app.Service directly.
 //
-// helpModal is the manual-page overlay opened with `?`. It is owned at
-// the shell level (rather than living on the stack as a screen) so that
-// the global key handler can keep `q` wired to quit while the dialog is
-// visible. nil = closed.
+// helpModal is the manual-page overlay opened with `?`. notificationsModal
+// is the in-memory log overlay opened with `n`. Both live at the shell
+// level (rather than on the stack as screens) so the global key handler
+// can keep `q` wired to quit while either dialog is visible. nil = closed.
 type Model struct {
 	actions *actions.Actions
 	toast   toaster
 	log     *notifications.Log
 
-	keys      globalKeyMap
-	stack     []Screen
-	helpModal *modal.Modal
+	keys               globalKeyMap
+	stack              []Screen
+	helpModal          *modal.Modal
+	notificationsModal *modal.Modal
 
 	width, height int
 }
@@ -99,6 +101,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			w, h := modalSize(msg.Width, msg.Height)
 			m.helpModal.SetSize(w, h)
 		}
+		if m.notificationsModal.Active() {
+			w, h := modalSize(msg.Width, msg.Height)
+			m.notificationsModal.SetSize(w, h)
+		}
 		cmds := make([]tea.Cmd, len(m.stack))
 		for i, s := range m.stack {
 			updated, cmd := s.Update(msg)
@@ -111,6 +117,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.helpModal.Active() {
 			return m.routeHelpKey(msg)
 		}
+		if m.notificationsModal.Active() {
+			return m.routeNotificationsKey(msg)
+		}
 		top := m.stack[len(m.stack)-1]
 		if !screenWantsRawKey(top, msg) {
 			if cmd, handled := m.handleGlobalKey(msg); handled {
@@ -121,9 +130,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ShowHelpMsg:
 		return m.openHelp(msg.Topic)
 
+	case ShowNotificationsMsg:
+		return m.openNotifications()
+
 	case modal.ResolvedMsg:
-		if msg.ID == helpModalID {
+		switch msg.ID {
+		case helpModalID:
 			m.helpModal = nil
+			return m, nil
+		case notificationsModalID:
+			m.notificationsModal = nil
 			return m, nil
 		}
 
@@ -223,6 +239,37 @@ func (m Model) routeHelpKey(kp tea.KeyPressMsg) (Model, tea.Cmd) {
 	return m, cmd
 }
 
+// notificationsModalID is the modal.Modal ID used for the shell-owned
+// notifications overlay. Constants for both shell-owned modals live next
+// to each other so the open path and the ResolvedMsg filter cannot drift.
+const notificationsModalID = "notifications"
+
+// openNotifications mounts the notifications overlay. The dialog is
+// owned by the shell rather than pushed onto the screen stack so the
+// global key handler can keep `q` mapped to quit while it is visible.
+// A second `n` press while the modal is open is a no-op.
+func (m Model) openNotifications() (Model, tea.Cmd) {
+	if m.notificationsModal.Active() {
+		return m, nil
+	}
+	w, h := modalSize(m.width, m.height)
+	m.notificationsModal = notificationsmodal.New(notificationsModalID, m.log, w, h)
+	return m, m.notificationsModal.Init()
+}
+
+// routeNotificationsKey dispatches a key press while the notifications
+// modal is open. `q` and `ctrl+c` reach the shell-level quit binding so
+// the user can always exit the application; every other key is forwarded
+// to the modal (Esc cancels; ↑/↓/j/k scroll the table).
+func (m Model) routeNotificationsKey(kp tea.KeyPressMsg) (Model, tea.Cmd) {
+	if key.Matches(kp, m.keys.Quit) {
+		return m, tea.Quit
+	}
+	var cmd tea.Cmd
+	m.notificationsModal, cmd = m.notificationsModal.Update(kp)
+	return m, cmd
+}
+
 // popScreen removes the top screen. On a single-screen stack it is a
 // no-op (root cannot be popped). The popped slot is zeroed before
 // shrinking so the backing array no longer holds the screen.
@@ -255,6 +302,11 @@ func (m Model) View() tea.View {
 		canvasH := m.bodyCanvasHeight(body)
 		body = padBodyHeight(body, m.width, canvasH)
 		body = m.helpModal.Render(body, m.width, canvasH)
+	}
+	if m.notificationsModal.Active() {
+		canvasH := m.bodyCanvasHeight(body)
+		body = padBodyHeight(body, m.width, canvasH)
+		body = m.notificationsModal.Render(body, m.width, canvasH)
 	}
 
 	// Toast slot is always reserved so the status bar does not jump

@@ -9,17 +9,21 @@ import (
 )
 
 // Column widths are tuned for the level + time slots; everything else
-// goes to the content column. The minimum content width keeps the
-// table readable when the host shrinks the modal.
+// goes to the content column. Widths include the per-cell padding that
+// bubbles/table draws inside the column, so they must be wide enough to
+// hold the header label and the longest data value combined with the
+// padding — otherwise the header truncates to "severi…". The minimum
+// content width keeps the table readable when the host shrinks the modal.
 const (
-	levelColW   = 7
-	timeColW    = 8
+	levelColW   = 9
+	timeColW    = 10
 	minContentW = 10
-	// modalHFrame reserves space for ModalStyle's rounded border (2
-	// cols) plus padding(1, 2) (4 cols).
+	// modalHFrame reserves space for the modal's captioned-panel frame:
+	// 2 cols for the panel border + 4 cols for the Padding(1, 2) the
+	// modal applies to content when [modal.WithCaption] is used.
 	modalHFrame = 6
-	// modalVFrame reserves space for the rounded border (2 rows) plus
-	// padding(1, 2) (2 rows).
+	// modalVFrame reserves space for the panel border (2 rows) plus the
+	// modal's Padding(1, 2) vertical inset (2 rows).
 	modalVFrame = 4
 	// cellPadding is the per-column horizontal padding bubbles/table
 	// adds via its Cell style (Padding(0, 1)). Subtracted so the row
@@ -49,9 +53,9 @@ func buildTable(entries []notifications.Notification, innerW int) ([]table.Colum
 		contentW = minContentW
 	}
 	cols := []table.Column{
-		{Title: "severity", Width: levelColW},
-		{Title: "content", Width: contentW},
-		{Title: "time", Width: timeColW},
+		{Title: "Level", Width: levelColW},
+		{Title: "Message", Width: contentW},
+		{Title: "Time", Width: timeColW},
 	}
 	rows := make([]table.Row, len(entries))
 	for i, e := range entries {

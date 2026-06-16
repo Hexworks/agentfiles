@@ -12,28 +12,91 @@ import (
 	"github.com/hexworks/agentfiles/internal/tui/components/modal"
 )
 
-// The notifications screen owns the Notifications modal. Title is the
-// load-bearing observable the status bar and global-key test rely on.
-func TestNotificationsScreen_Title(t *testing.T) {
+// Pressing `n` while a screen is focused must emit a ShowNotificationsMsg
+// instead of pushing a screen onto the stack. The shell owns the
+// notifications overlay so the global key handler can keep `q` mapped to
+// quit while it is visible.
+func TestGlobalKey_NEmitsShowNotificationsMsg(t *testing.T) {
 	m := newTestShell(t)
-	s := m.newNotificationsScreen()
-	if got := s.Title(); got != "Notifications" {
-		t.Errorf("Title() = %q, want Notifications", got)
+	tm, cmd := m.Update(tea.KeyPressMsg{Code: 'n', Text: "n"})
+	m = tm.(Model)
+	if cmd == nil {
+		t.Fatalf("n produced nil cmd, want ShowNotificationsMsg")
+	}
+	if _, ok := cmd().(ShowNotificationsMsg); !ok {
+		t.Fatalf("n produced %T, want ShowNotificationsMsg", cmd())
+	}
+	if m.notificationsModal.Active() {
+		t.Errorf("notificationsModal opened before ShowNotificationsMsg was dispatched")
 	}
 }
 
-// A modal.ResolvedMsg arriving from the wrapped modal must close the
-// screen (pop). Without this the user would be stuck on a modal that
-// has already reported itself done.
-func TestNotificationsScreen_ResolvedMsgPops(t *testing.T) {
+// ShowNotificationsMsg mounts the modal on the shell. A second `n` while
+// the modal is open is a no-op so users do not stack identical overlays.
+func TestShowNotificationsMsg_MountsModal(t *testing.T) {
 	m := newTestShell(t)
-	s := m.newNotificationsScreen()
-	_, cmd := s.Update(modal.ResolvedMsg{ID: "notifications", Confirmed: false})
-	if cmd == nil {
-		t.Fatalf("ResolvedMsg produced nil cmd, want popCmd")
+	tm, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = tm.(Model)
+
+	tm, _ = m.Update(ShowNotificationsMsg{})
+	m = tm.(Model)
+	if !m.notificationsModal.Active() {
+		t.Fatalf("notificationsModal not active after ShowNotificationsMsg")
 	}
-	if _, ok := cmd().(PopScreenMsg); !ok {
-		t.Fatalf("cmd produced %T, want PopScreenMsg", cmd())
+	first := m.notificationsModal
+
+	tm, _ = m.Update(ShowNotificationsMsg{})
+	m = tm.(Model)
+	if m.notificationsModal != first {
+		t.Errorf("second ShowNotificationsMsg replaced live modal, want no-op")
+	}
+}
+
+// While the notifications overlay is open, `q` must still quit the
+// application: it is the universal exit binding, not a modal-close
+// shortcut.
+func TestNotificationsOverlay_QQuitsApplication(t *testing.T) {
+	m := newTestShell(t)
+	tm, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = tm.(Model)
+	tm, _ = m.Update(ShowNotificationsMsg{})
+	m = tm.(Model)
+	if !m.notificationsModal.Active() {
+		t.Fatalf("precondition: notifications modal not active")
+	}
+
+	_, cmd := m.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
+	if cmd == nil {
+		t.Fatalf("q produced nil cmd while notifications open, want tea.Quit")
+	}
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Fatalf("q produced %T, want tea.QuitMsg", cmd())
+	}
+}
+
+// Esc forwarded to the notifications modal cancels its lifecycle; the
+// resulting ResolvedMsg fed back through Update must clear the shell's
+// modal slot so the next `n` opens a fresh overlay.
+func TestNotificationsOverlay_EscClosesModal(t *testing.T) {
+	m := newTestShell(t)
+	tm, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = tm.(Model)
+	tm, _ = m.Update(ShowNotificationsMsg{})
+	m = tm.(Model)
+
+	tm, cmd := m.Update(tea.KeyPressMsg{Code: 27})
+	m = tm.(Model)
+	if cmd == nil {
+		t.Fatalf("Esc produced nil cmd, want ResolvedMsg")
+	}
+	resolved, ok := cmd().(modal.ResolvedMsg)
+	if !ok {
+		t.Fatalf("Esc cmd produced %T, want modal.ResolvedMsg", cmd())
+	}
+	tm, _ = m.Update(resolved)
+	m = tm.(Model)
+	if m.notificationsModal.Active() {
+		t.Errorf("notificationsModal still active after ResolvedMsg, want cleared")
 	}
 }
 

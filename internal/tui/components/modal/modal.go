@@ -23,6 +23,8 @@ package modal
 import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+
+	"github.com/hexworks/agentfiles/internal/tui/components/panel"
 )
 
 // LifecycleState enumerates the three states a [Content] can be in. It
@@ -86,6 +88,7 @@ type Modal struct {
 	id       string
 	content  Content
 	style    lipgloss.Style
+	caption  string
 	z        int
 	resolved bool
 	anchor   *anchorPoint
@@ -123,6 +126,18 @@ func WithZ(z int) Option {
 // confirmation directly below the button that triggered it.
 func WithAnchor(x, y int) Option {
 	return func(m *Modal) { m.anchor = &anchorPoint{x: x, y: y} }
+}
+
+// WithCaption switches the modal frame from a styled border (the default
+// path that uses [WithStyle]) to a captioned panel: the supplied label is
+// embedded in the top border via the shared panel component — the same
+// `╭ Caption ─╮` look every table-shaped view in the TUI renders.
+//
+// When set, [WithStyle] is ignored — the panel owns the frame — but the
+// modal still applies a fixed Padding(1, 2) inside the panel so the
+// content has the same interior breathing room as the default style.
+func WithCaption(caption string) Option {
+	return func(m *Modal) { m.caption = caption }
 }
 
 // defaultStyle returns a fresh, palette-neutral rounded-border style. The
@@ -215,9 +230,23 @@ func (m *Modal) Update(msg tea.Msg) (*Modal, tea.Cmd) {
 	return m, tea.Batch(cmd, resolveCmd)
 }
 
+// captionedInnerPadding is the Padding(1, 2) the modal applies to content
+// before handing it to the panel frame, so the inside of a captioned modal
+// matches the breathing room the styled-border path produces from the
+// default style's Padding(1, 2).
+var captionedInnerPadding = lipgloss.NewStyle().Padding(1, 2)
+
 // View renders the styled content as a plain string (no compositing). Use
 // [Modal.Layer] or [Modal.Render] for placement over a background.
+//
+// When [WithCaption] is set, the frame is drawn by the shared panel
+// component instead of m.style: the caption embeds in the top border and
+// the configured style is ignored.
 func (m *Modal) View() string {
+	if m.caption != "" {
+		body := captionedInnerPadding.Render(m.content.View())
+		return panel.Render(true, m.caption, body, panel.DefaultStyles())
+	}
 	return m.style.Render(m.content.View())
 }
 

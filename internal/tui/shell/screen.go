@@ -76,6 +76,11 @@ type PopScreenMsg struct{}
 // screen the user was looking at when they pressed `?`.
 type ShowHelpMsg struct{ Topic help.Topic }
 
+// ShowNotificationsMsg asks the shell to open the notifications overlay.
+// Emitted by the global `n` binding so the shell can own the dialog at
+// the root level — same arrangement as ShowHelpMsg.
+type ShowNotificationsMsg struct{}
+
 // pushCmd returns a tea.Cmd that, when run, emits a PushScreenMsg for
 // s. Lives next to the message type so authors searching for "how do I
 // push a screen?" find the constructor and the message together.
@@ -92,6 +97,12 @@ func popCmd() tea.Cmd {
 // the manual overlay for topic.
 func showHelpCmd(topic help.Topic) tea.Cmd {
 	return func() tea.Msg { return ShowHelpMsg{Topic: topic} }
+}
+
+// showNotificationsCmd returns a tea.Cmd that, when run, asks the shell
+// to open the notifications overlay.
+func showNotificationsCmd() tea.Cmd {
+	return func() tea.Msg { return ShowNotificationsMsg{} }
 }
 
 // modalMinWidth / modalMinHeight is the floor the shell guarantees a

@@ -16,13 +16,17 @@ import (
 
 	"github.com/hexworks/agentfiles/internal/tui/components/modal"
 	"github.com/hexworks/agentfiles/internal/tui/notifications"
-	"github.com/hexworks/agentfiles/internal/tui/styles"
 )
 
 // emptyMessage is the body shown when the log is empty. Tests redeclare
 // the expected text locally so the modal's wording stays an internal
 // contract.
 const emptyMessage = "No notifications yet"
+
+// modalCaption is the label embedded in the modal's top border via
+// [modal.WithCaption]. Centralized so the constructor and any tests
+// that assert the visible caption agree on the wording.
+const modalCaption = "Notifications"
 
 // LogReader is the narrow read-side of the notifications log the modal
 // depends on. Defined consumer-side so the modal package does not
@@ -54,10 +58,12 @@ type content struct {
 
 // New constructs a Notifications [modal.Modal] sized for (width x height).
 // The log is snapshotted at construction time; a closed-then-reopened
-// modal will pull fresh entries.
+// modal will pull fresh entries. The dialog is framed by a captioned
+// panel via [modal.WithCaption] so the "Notifications" label sits in the
+// top border the same way it does on every other table-shaped view.
 func New(id string, log LogReader, width, height int) *modal.Modal {
 	c := newContent(log, width, height)
-	return modal.New(id, c, modal.WithStyle(styles.ModalStyle))
+	return modal.New(id, c, modal.WithCaption(modalCaption))
 }
 
 func newContent(log LogReader, width, height int) *content {
