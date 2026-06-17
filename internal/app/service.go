@@ -156,6 +156,35 @@ func (s *Service) InitAsset(profileRef string, manifest asset.Manifest) (string,
 	return asset.Init(loaded.Root, manifest)
 }
 
+// CreateAssetFromFolder creates a profile-owned asset whose content is
+// copied from sourceDir (an unmanaged folder in the project repo) and
+// selects it for the project in one step. The three effects — create the
+// asset, copy its files into the profile, and add it to the project's
+// selection — form a single consistency boundary so a re-plan reclassifies
+// those files as managed instead of unknown. The selection is appended and
+// persisted inline rather than via SelectAsset because the freshly loaded
+// profile's asset map predates the creation. Returns the new asset id.
+func (s *Service) CreateAssetFromFolder(profileRef, projectID string, manifest asset.Manifest, sourceDir string) (string, errs.DomainError) {
+	loaded, p, err := s.resolveProject(profileRef, projectID)
+	if err != nil {
+		return "", err
+	}
+	if manifest.ID == "" {
+		manifest.ID = utils.Slug(manifest.Name, config.DefaultAssetSlug)
+	}
+	if loaded.Assets[manifest.ID] != nil {
+		return "", AssetExistsError{AssetID: manifest.ID}
+	}
+	if _, initErr := asset.InitFromFolder(loaded.Root, manifest, sourceDir); initErr != nil {
+		return "", initErr
+	}
+	p.SelectedAssetIDs = append(p.SelectedAssetIDs, manifest.ID)
+	if saveErr := project.Save(loaded.Root, p); saveErr != nil {
+		return "", saveErr
+	}
+	return manifest.ID, nil
+}
+
 // Plan builds a sync preview for one project. This is the read-only half of the
 // pipeline: load profile -> render desired files -> compare with the repo.
 func (s *Service) Plan(profileRef, projectID string) (*Preview, errs.DomainError) {

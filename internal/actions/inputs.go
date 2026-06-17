@@ -87,6 +87,17 @@ type CreateAssetInput struct {
 	Manifest   asset.Manifest
 }
 
+// CreateAssetFromFolderInput carries the data for the Plan Project
+// "Register as Asset" action: the manifest the user filled in plus the
+// absolute source folder whose files become the asset's content. The
+// service selects the new asset for the project.
+type CreateAssetFromFolderInput struct {
+	ProfileRef string
+	ProjectID  string
+	Manifest   asset.Manifest
+	SourceDir  string
+}
+
 // UpdateAssetInput carries the profile reference plus the edited
 // manifest. The Service derives the on-disk directory; Dir is not part
 // of this input.

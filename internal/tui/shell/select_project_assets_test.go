@@ -85,6 +85,10 @@ func (f *fakeSelectActions) SyncProject(in actions.SyncProjectInput) (*app.Previ
 	return f.preview, nil
 }
 
+func (f *fakeSelectActions) CreateAssetFromFolder(in actions.CreateAssetFromFolderInput) (string, errs.DomainError) {
+	return "", nil
+}
+
 func newSelectActionsFake(assets []*asset.Asset, proj *project.Manifest) *fakeSelectActions {
 	prof := &profile.Profile{
 		Root:     "/tmp/x",

@@ -1,7 +1,7 @@
 ---
 id: 0030
 type: feature
-status: pending
+status: in-review
 topics: tui, profile, asset
 depends_on: 0029
 ---
@@ -46,3 +46,7 @@ add it to the profile.
 make build && make test && make lint
 ./bin/af   # Plan Project → cursor on an unknown folder → r → fill modal → submit
 ```
+
+## Plan
+
+[plan.md](./plan.md)

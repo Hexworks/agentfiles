@@ -8,10 +8,12 @@ import (
 
 	"github.com/hexworks/agentfiles/internal/actions"
 	"github.com/hexworks/agentfiles/internal/app"
+	"github.com/hexworks/agentfiles/internal/asset"
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/profile"
 	"github.com/hexworks/agentfiles/internal/project"
 	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
+	"github.com/hexworks/agentfiles/internal/tui/components/modal"
 	"github.com/hexworks/agentfiles/internal/tui/components/treetable"
 	"github.com/hexworks/agentfiles/internal/tui/notifications"
 )
@@ -30,6 +32,10 @@ type fakePlanActions struct {
 	syncResult *app.Preview
 	planErr    errs.DomainError
 	syncInputs []actions.SyncProjectInput
+
+	createInputs []actions.CreateAssetFromFolderInput
+	createID     string
+	createErr    errs.DomainError
 }
 
 func (f *fakePlanActions) LoadProfile(in actions.LoadProfileInput) (*profile.Profile, errs.DomainError) {
@@ -50,6 +56,14 @@ func (f *fakePlanActions) PlanProject(in actions.PlanProjectInput) (*app.Preview
 func (f *fakePlanActions) SyncProject(in actions.SyncProjectInput) (*app.Preview, errs.DomainError) {
 	f.syncInputs = append(f.syncInputs, in)
 	return f.syncResult, nil
+}
+
+func (f *fakePlanActions) CreateAssetFromFolder(in actions.CreateAssetFromFolderInput) (string, errs.DomainError) {
+	f.createInputs = append(f.createInputs, in)
+	if f.createErr != nil {
+		return "", f.createErr
+	}
+	return f.createID, nil
 }
 
 func newPlanActionsFake(projName string, changes []app.FileChange) *fakePlanActions {
@@ -315,6 +329,115 @@ func TestPlanProjectScreen_TreeActionsFnFileRowsAlwaysGetOpen(t *testing.T) {
 	dir := &treetable.Node{Data: planNode{kind: planNodeDir, path: "sub"}}
 	if got := fn(dir); got != nil {
 		t.Errorf("fn(dir) = %v, want nil", got)
+	}
+}
+
+func fileNode(p string, kind app.ChangeKind) *treetable.Node {
+	return &treetable.Node{Data: planNode{kind: planNodeFile, path: p, change: app.FileChange{Path: p, Kind: kind}}}
+}
+
+func dirNode(p string, children ...*treetable.Node) *treetable.Node {
+	return &treetable.Node{Data: planNode{kind: planNodeDir, path: p}, Children: children}
+}
+
+func TestDirAllUnknown(t *testing.T) {
+	cases := []struct {
+		name string
+		node *treetable.Node
+		want bool
+	}{
+		{
+			name: "all unknown",
+			node: dirNode("sub", fileNode("sub/a.md", app.ChangeUnknown), fileNode("sub/b.md", app.ChangeUnknown)),
+			want: true,
+		},
+		{
+			name: "nested all unknown",
+			node: dirNode("sub", dirNode("sub/deep", fileNode("sub/deep/a.md", app.ChangeUnknown))),
+			want: true,
+		},
+		{
+			name: "mixed",
+			node: dirNode("sub", fileNode("sub/a.md", app.ChangeUnknown), fileNode("sub/b.md", app.ChangeCreate)),
+			want: false,
+		},
+		{
+			name: "empty",
+			node: dirNode("sub"),
+			want: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := dirAllUnknown(tc.node); got != tc.want {
+				t.Errorf("dirAllUnknown = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestPlanProjectScreen_TreeActionsFnAllUnknownDirGetsRegisterBtn(t *testing.T) {
+	f := newPlanActionsFake("Proj", nil)
+	s := newPlanProjectScreen(f, "alpha", "proj-1")
+	fn := s.treeActionsFn()
+	n := dirNode("sub", fileNode("sub/a.md", app.ChangeUnknown))
+	got := fn(n)
+	if len(got) != 1 {
+		t.Fatalf("got %d buttons, want 1", len(got))
+	}
+	assertBtn(t, got[0], "Register", 'r')
+}
+
+func TestPlanProjectScreen_TreeActionsFnMixedDirGetsNoBtn(t *testing.T) {
+	f := newPlanActionsFake("Proj", nil)
+	s := newPlanProjectScreen(f, "alpha", "proj-1")
+	fn := s.treeActionsFn()
+	n := dirNode("sub", fileNode("sub/a.md", app.ChangeUnknown), fileNode("sub/b.md", app.ChangeCreate))
+	if got := fn(n); got != nil {
+		t.Errorf("fn(mixed dir) = %v, want nil", got)
+	}
+}
+
+func TestPlanProjectScreen_AfterRegisterAssetForwardsInputAndReloads(t *testing.T) {
+	f := newPlanActionsFake("Proj", nil)
+	f.createID = "something"
+	s := newPlanProjectScreen(f, "alpha", "proj-1")
+
+	cmd := s.afterRegisterAsset(
+		modal.ResolvedMsg{Confirmed: true, Value: asset.Manifest{Name: "Something", Type: asset.TypeSkill}},
+		"/abs/source",
+	)
+	if cmd == nil {
+		t.Fatal("afterRegisterAsset returned nil cmd")
+	}
+	msg, ok := cmd().(registerAssetDoneMsg)
+	if !ok {
+		t.Fatalf("cmd produced %T, want registerAssetDoneMsg", cmd())
+	}
+	if msg.err != nil {
+		t.Fatalf("unexpected err: %v", msg.err)
+	}
+	if len(f.createInputs) != 1 {
+		t.Fatalf("CreateAssetFromFolder called %d times, want 1", len(f.createInputs))
+	}
+	in := f.createInputs[0]
+	if in.ProfileRef != "alpha" || in.ProjectID != "proj-1" || in.SourceDir != "/abs/source" || in.Manifest.Name != "Something" {
+		t.Fatalf("unexpected input: %+v", in)
+	}
+
+	if _, reload := s.handleRegisterAssetDone(msg); reload == nil {
+		t.Error("handleRegisterAssetDone success returned nil cmd, want reload batch")
+	}
+}
+
+func TestPlanProjectScreen_AfterRegisterAssetCancelDoesNothing(t *testing.T) {
+	f := newPlanActionsFake("Proj", nil)
+	s := newPlanProjectScreen(f, "alpha", "proj-1")
+	if cmd := s.afterRegisterAsset(modal.ResolvedMsg{Confirmed: false}, "/abs/source"); cmd != nil {
+		t.Error("cancelled register returned non-nil cmd")
+	}
+	if len(f.createInputs) != 0 {
+		t.Error("cancelled register still invoked the action")
 	}
 }
 

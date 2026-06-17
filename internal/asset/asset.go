@@ -186,6 +186,29 @@ func Init(root string, manifest Manifest) (string, errs.DomainError) {
 	return dir, nil
 }
 
+// InitFromFolder creates a new asset whose content is copied from an
+// existing folder instead of scaffolded from a starter template. It is
+// the source-from-folder counterpart of Init: the manifest is validated,
+// the asset directory is created, sourceDir's files are copied in, and the
+// asset.json manifest is written last so a stray asset.json in the source
+// cannot clobber the authoritative manifest. Returns the directory path.
+func InitFromFolder(root string, manifest Manifest, sourceDir string) (string, errs.DomainError) {
+	if err := manifest.Validate(); err != nil {
+		return "", err
+	}
+	dir := filepath.Join(root, config.AssetsDirName, string(manifest.Type), manifest.ID)
+	if err := utils.EnsureDir(dir); err != nil {
+		return "", err
+	}
+	if err := utils.CopyDir(sourceDir, dir); err != nil {
+		return "", err
+	}
+	if err := utils.WriteJSON(filepath.Join(dir, config.AssetManifestFileName), manifest); err != nil {
+		return "", err
+	}
+	return dir, nil
+}
+
 // Delete removes the asset directory at dir. A pre-missing directory is
 // treated as success so the operation is idempotent — symmetric with
 // project.Delete.

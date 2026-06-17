@@ -113,6 +113,26 @@ func (e HashFileError) Unwrap() error {
 	return e.Err
 }
 
+// CopyDirError reports a failure while recursively copying a directory
+// tree from Src to Dst. Err preserves the underlying read/write error.
+type CopyDirError struct {
+	Src string
+	Dst string
+	Err error
+}
+
+func (e CopyDirError) Error() string {
+	return fmt.Sprintf("copy directory %s -> %s: %s", e.Src, e.Dst, e.Err.Error())
+}
+
+func (CopyDirError) Severity() errs.Severity {
+	return errs.SeverityError
+}
+
+func (e CopyDirError) Unwrap() error {
+	return e.Err
+}
+
 // AbsPathError reports a failure to resolve a path to an absolute form.
 type AbsPathError struct {
 	Path string

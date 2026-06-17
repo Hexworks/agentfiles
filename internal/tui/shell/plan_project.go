@@ -2,6 +2,7 @@ package shell
 
 import (
 	"fmt"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -11,13 +12,16 @@ import (
 
 	"github.com/hexworks/agentfiles/internal/actions"
 	"github.com/hexworks/agentfiles/internal/app"
+	"github.com/hexworks/agentfiles/internal/asset"
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/profile"
 	"github.com/hexworks/agentfiles/internal/project"
 	"github.com/hexworks/agentfiles/internal/tui/components/help"
 	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
+	"github.com/hexworks/agentfiles/internal/tui/components/modal"
 	"github.com/hexworks/agentfiles/internal/tui/components/treetable"
 	"github.com/hexworks/agentfiles/internal/tui/editor"
+	"github.com/hexworks/agentfiles/internal/tui/modals"
 	"github.com/hexworks/agentfiles/internal/tui/styles"
 )
 
@@ -30,7 +34,18 @@ type planProjectActions interface {
 	LoadProject(in actions.LoadProjectInput) (*project.Manifest, errs.DomainError)
 	PlanProject(in actions.PlanProjectInput) (*app.Preview, errs.DomainError)
 	SyncProject(in actions.SyncProjectInput) (*app.Preview, errs.DomainError)
+	CreateAssetFromFolder(in actions.CreateAssetFromFolderInput) (string, errs.DomainError)
 }
+
+// planModalKind identifies which modal flow the Plan Project screen is
+// hosting so the shared ResolvedMsg handler can route to the right
+// post-action. none means no modal is open.
+type planModalKind int
+
+const (
+	planModalNone planModalKind = iota
+	planModalRegisterAsset
+)
 
 // planNodeKind classifies a treetable row payload. The root row is its
 // own kind so callers do not have to special-case the empty path.
@@ -62,6 +77,41 @@ func planFileNode(n *treetable.Node) (planNode, bool) {
 		return planNode{}, false
 	}
 	return d, true
+}
+
+// planDirNode unpacks n's payload and reports ok only for directory rows,
+// the rows that can host the [Register] action.
+func planDirNode(n *treetable.Node) (planNode, bool) {
+	d, ok := n.Data.(planNode)
+	if !ok || d.kind != planNodeDir {
+		return planNode{}, false
+	}
+	return d, true
+}
+
+// dirAllUnknown reports whether every file under n is an unknown/unmanaged
+// change and there is at least one such file. Only then may the directory
+// be registered as an asset: a directory with managed (create/update/drift)
+// leaves is partly owned already, so offering to register the whole folder
+// would be misleading.
+func dirAllUnknown(n *treetable.Node) bool {
+	files := 0
+	allUnknown := true
+	var walk func(*treetable.Node)
+	walk = func(node *treetable.Node) {
+		for _, child := range node.Children {
+			if f, ok := planFileNode(child); ok {
+				files++
+				if f.change.Kind != app.ChangeUnknown {
+					allUnknown = false
+				}
+				continue
+			}
+			walk(child)
+		}
+	}
+	walk(n)
+	return files > 0 && allUnknown
 }
 
 // planProjectLoadedMsg is the envelope the Init command emits after
@@ -103,6 +153,17 @@ type planProjectScreen struct {
 	applyBtn *mnemonic.Button
 	backBtn  *mnemonic.Button
 	set      *mnemonic.Set
+
+	// modal hosts the Create Asset dialog opened by the row-level
+	// [Register] action; nil when closed. registerSourceDir is the
+	// absolute folder whose files become the new asset's content, carried
+	// here because asset.Manifest has no source field. width/height track
+	// the last WindowSizeMsg so the modal can be sized when opened.
+	modal             *modal.Modal
+	modalKind         planModalKind
+	registerSourceDir string
+	width             int
+	height            int
 }
 
 func newPlanProjectScreen(a planProjectActions, profileID, projectID string) *planProjectScreen {
@@ -169,10 +230,12 @@ func emptyPlanRoot() *treetable.Node {
 	}
 }
 
-func (s *planProjectScreen) ProfileID() string  { return s.profileID }
-func (s *planProjectScreen) ProjectID() string  { return s.projectID }
-func (s *planProjectScreen) Title() string      { return "Plan Project" }
-func (s *planProjectScreen) InputFocused() bool { return false }
+func (s *planProjectScreen) ProfileID() string { return s.profileID }
+func (s *planProjectScreen) ProjectID() string { return s.projectID }
+func (s *planProjectScreen) Title() string     { return "Plan Project" }
+func (s *planProjectScreen) InputFocused() bool {
+	return s.modal != nil && s.modal.Active()
+}
 
 func (s *planProjectScreen) Description() string {
 	if s.projectName == "" {
@@ -216,15 +279,52 @@ func (s *planProjectScreen) loadCmd() tea.Cmd {
 }
 
 func (s *planProjectScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
+	// While a modal is open it owns every message except the ones the
+	// screen still needs to process itself (resize for sizing, the modal's
+	// own resolution, and async results in flight).
+	if s.modal != nil {
+		switch msg.(type) {
+		case modal.ResolvedMsg, tea.WindowSizeMsg, planProjectLoadedMsg, mutationDoneMsg, registerAssetDoneMsg:
+			// fall through to type-specific handling
+		default:
+			return s.forwardToModal(msg)
+		}
+	}
+
 	switch m := msg.(type) {
 	case planProjectLoadedMsg:
 		return s.handleLoaded(m)
 	case mutationDoneMsg:
 		return s.handleMutationDone(m)
+	case registerAssetDoneMsg:
+		return s.handleRegisterAssetDone(m)
+	case modal.ResolvedMsg:
+		return s, s.handleResolved(m)
+	case tea.WindowSizeMsg:
+		return s.handleResize(m)
 	case editor.FinishedMsg:
 		return s.handleEditorFinished(m)
 	case tea.KeyPressMsg:
 		return s.handleKey(m)
+	}
+	return s, nil
+}
+
+func (s *planProjectScreen) forwardToModal(msg tea.Msg) (Screen, tea.Cmd) {
+	var cmd tea.Cmd
+	s.modal, cmd = s.modal.Update(msg)
+	return s, cmd
+}
+
+func (s *planProjectScreen) handleResize(m tea.WindowSizeMsg) (Screen, tea.Cmd) {
+	s.width = m.Width
+	s.height = m.Height
+	if s.modal != nil {
+		mw, mh := modalSize(m.Width, m.Height)
+		s.modal.SetSize(mw, mh)
+		var cmd tea.Cmd
+		s.modal, cmd = s.modal.Update(m)
+		return s, cmd
 	}
 	return s, nil
 }
@@ -266,6 +366,9 @@ func (s *planProjectScreen) handleMutationDone(m mutationDoneMsg) (Screen, tea.C
 }
 
 func (s *planProjectScreen) handleKey(m tea.KeyPressMsg) (Screen, tea.Cmd) {
+	if s.modal != nil {
+		return s.forwardToModal(m)
+	}
 	if btn := s.set.Match(m); btn != nil {
 		return s, btn.Trigger()
 	}
@@ -298,12 +401,16 @@ func (s *planProjectScreen) Body(width int) string {
 		return styles.TextStyle.Render(" Loading…")
 	}
 	buttonRow := " " + s.applyBtn.View() + "  " + s.backBtn.View()
-	return lipgloss.JoinVertical(
+	background := lipgloss.JoinVertical(
 		lipgloss.Left,
 		s.tree.View(),
 		"",
 		buttonRow,
 	)
+	if s.modal == nil {
+		return background
+	}
+	return s.modal.Render(background, width, lipgloss.Height(background))
 }
 
 // rebuildSet refreshes the mnemonic set so its registration-time
@@ -389,6 +496,12 @@ func (s *planProjectScreen) actionValue(n *treetable.Node) string {
 // *other* option — pressing it swaps the resolution and re-renders.
 func (s *planProjectScreen) treeActionsFn() treetable.ActionsFunc {
 	return func(n *treetable.Node) []*mnemonic.Button {
+		if d, ok := planDirNode(n); ok {
+			if dirAllUnknown(n) {
+				return []*mnemonic.Button{s.registerAssetBtn(d.path)}
+			}
+			return nil
+		}
 		d, ok := planFileNode(n)
 		if !ok {
 			return nil
@@ -402,6 +515,10 @@ func (s *planProjectScreen) treeActionsFn() treetable.ActionsFunc {
 		}
 		return btns
 	}
+}
+
+func (s *planProjectScreen) registerAssetBtn(dirPath string) *mnemonic.Button {
+	return mnemonic.New("Register", 'r', func() tea.Cmd { return s.onRegisterAsset(dirPath) })
 }
 
 func (s *planProjectScreen) openFileBtn(path string) *mnemonic.Button {
@@ -454,6 +571,86 @@ func (s *planProjectScreen) toggleUnknown(path string, next app.UnknownDecision)
 	s.tree.RefreshActions()
 	s.rebuildSet()
 	return nil
+}
+
+// registerAssetDoneMsg envelopes the result of the Register-as-Asset
+// action. Unlike a generic mutationDoneMsg (which pops the screen on
+// success), success here keeps the user on the plan and triggers a reload
+// so the newly managed files are re-classified.
+type registerAssetDoneMsg struct {
+	name string
+	err  errs.DomainError
+}
+
+// onRegisterAsset opens the Create Asset modal pre-scoped to the selected
+// folder. The folder's absolute path is stored on the screen so the
+// post-confirm handler can pass it to the service; the modal only collects
+// the manifest, with Name pre-filled from the folder's basename.
+func (s *planProjectScreen) onRegisterAsset(dirPath string) tea.Cmd {
+	if s.projectPath == "" || dirPath == "" {
+		return nil
+	}
+	s.registerSourceDir = filepath.Join(s.projectPath, filepath.FromSlash(dirPath))
+	s.openModal(modals.NewCreateAsset(asset.Manifest{Name: path.Base(dirPath)}), planModalRegisterAsset)
+	return s.modal.Init()
+}
+
+func (s *planProjectScreen) openModal(m *modal.Modal, kind planModalKind) {
+	s.modal = m
+	s.modalKind = kind
+	if s.width > 0 && s.height > 0 {
+		mw, mh := modalSize(s.width, s.height)
+		s.modal.SetSize(mw, mh)
+	}
+}
+
+// handleResolved clears the modal up-front then routes the resolution to
+// the matching post-action, mirroring the Edit Profile screen's pattern.
+func (s *planProjectScreen) handleResolved(msg modal.ResolvedMsg) tea.Cmd {
+	s.modal = nil
+	kind := s.modalKind
+	s.modalKind = planModalNone
+	sourceDir := s.registerSourceDir
+	s.registerSourceDir = ""
+	if kind == planModalRegisterAsset {
+		return s.afterRegisterAsset(msg, sourceDir)
+	}
+	return nil
+}
+
+func (s *planProjectScreen) afterRegisterAsset(msg modal.ResolvedMsg, sourceDir string) tea.Cmd {
+	if !msg.Confirmed || sourceDir == "" {
+		return nil
+	}
+	manifest, ok := msg.Value.(asset.Manifest)
+	if !ok {
+		return nil
+	}
+	profileRef := s.profileID
+	projectID := s.projectID
+	return func() tea.Msg {
+		_, err := s.actions.CreateAssetFromFolder(actions.CreateAssetFromFolderInput{
+			ProfileRef: profileRef,
+			ProjectID:  projectID,
+			Manifest:   manifest,
+			SourceDir:  sourceDir,
+		})
+		return registerAssetDoneMsg{name: manifest.Name, err: err}
+	}
+}
+
+// handleRegisterAssetDone reloads the plan on success so the copied files
+// show up as managed create/update rows, and surfaces the typed error
+// otherwise. The screen is never popped — the user stays to inspect the
+// re-classified plan.
+func (s *planProjectScreen) handleRegisterAssetDone(m registerAssetDoneMsg) (Screen, tea.Cmd) {
+	if m.err != nil {
+		return s, notificationCmd(m.err.Severity(), m.err.Error())
+	}
+	return s, tea.Batch(
+		notificationCmd(errs.SeverityInfo, fmt.Sprintf("Asset %q created from folder", m.name)),
+		s.loadCmd(),
+	)
 }
 
 // onApply iterates preview.Changes (not the resolution maps) so the

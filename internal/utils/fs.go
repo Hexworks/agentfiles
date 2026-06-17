@@ -89,6 +89,39 @@ func WriteFile(path string, data []byte, mode fs.FileMode) errs.DomainError {
 	return nil
 }
 
+// CopyDir recursively copies every regular file under src into dst,
+// preserving the relative directory structure and each file's mode.
+// Parent directories under dst are created as needed. Symlinks and other
+// non-regular entries are skipped so the copy never follows a link out of
+// the source tree.
+func CopyDir(src, dst string) errs.DomainError {
+	walkErr := filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.Type().IsRegular() {
+			return nil
+		}
+		info, infoErr := d.Info()
+		if infoErr != nil {
+			return infoErr
+		}
+		data, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		rel := ToRelative(src, path)
+		if writeErr := WriteFile(filepath.Join(dst, filepath.FromSlash(rel)), data, info.Mode().Perm()); writeErr != nil {
+			return writeErr
+		}
+		return nil
+	})
+	if walkErr != nil {
+		return CopyDirError{Src: src, Dst: dst, Err: walkErr}
+	}
+	return nil
+}
+
 // HashBytes returns the hex-encoded SHA-256 digest of data.
 func HashBytes(data []byte) string {
 	sum := sha256.Sum256(data)

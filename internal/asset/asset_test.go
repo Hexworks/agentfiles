@@ -44,6 +44,48 @@ func TestValidate_AcceptsKnownTypes(t *testing.T) {
 	}
 }
 
+func TestInitFromFolder_CopiesContentAndWritesManifest(t *testing.T) {
+	// given a source folder holding the asset's real content
+	root := t.TempDir()
+	source := t.TempDir()
+	if err := os.WriteFile(filepath.Join(source, "SKILL.md"), []byte("real skill\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	manifest := Manifest{ID: "something", Name: "something", Type: TypeSkill}
+
+	// when an asset is created from that folder
+	dir, err := InitFromFolder(root, manifest, source)
+	if err != nil {
+		t.Fatalf("InitFromFolder: %v", err)
+	}
+
+	// then the folder content is copied and the manifest is loadable
+	if want := filepath.Join(root, "assets", "skill", "something"); dir != want {
+		t.Fatalf("dir = %q, want %q", dir, want)
+	}
+	body, readErr := os.ReadFile(filepath.Join(dir, "SKILL.md"))
+	if readErr != nil {
+		t.Fatalf("read copied file: %v", readErr)
+	}
+	if string(body) != "real skill\n" {
+		t.Fatalf("copied content = %q, want %q", string(body), "real skill\n")
+	}
+	loaded, loadErr := Load(dir)
+	if loadErr != nil {
+		t.Fatalf("Load: %v", loadErr)
+	}
+	if loaded.ID != "something" || loaded.Type != TypeSkill {
+		t.Fatalf("manifest = %+v, want id=something type=skill", loaded.Manifest)
+	}
+}
+
+func TestInitFromFolder_RejectsInvalidManifest(t *testing.T) {
+	_, err := InitFromFolder(t.TempDir(), Manifest{Type: TypeSkill}, t.TempDir())
+	if !errors.Is(err, ErrAssetIDNameRequired) {
+		t.Fatalf("expected ErrAssetIDNameRequired, got %v", err)
+	}
+}
+
 func TestDelete_RemovesDirectory(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "skill", "review")

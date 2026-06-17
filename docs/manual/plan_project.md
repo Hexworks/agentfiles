@@ -21,6 +21,23 @@ The cursor row shows a toggle button reflecting the **other** option:
 
 Default for both is **Keep**.
 
+## Directory actions (register as asset)
+
+When the cursor sits on a **directory row whose every descendant file is
+`? unknown`**, a **Register** (`r`) action appears. It opens the Create Asset
+modal pre-filled with the folder's name; pick a type and confirm to:
+
+1. create a new asset under the active profile,
+2. **copy** the folder's files into the profile's `assets/`, and
+3. select that asset for the current project.
+
+The plan reloads in place (the screen does not pop), so the folder's files are
+re-classified from `? unknown` to managed `+ add` / `~ update` rows. The
+original project files are left untouched.
+
+Directories with any managed (`add` / `update` / `drift`) leaf do not offer
+**Register** — they are already partly owned by the profile.
+
 ## Screen actions
 
 - **Apply** (`a`) — write the plan. On success the screen pops back to where
