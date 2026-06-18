@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -90,8 +91,10 @@ func WriteFile(path string, data []byte, mode fs.FileMode) errs.DomainError {
 }
 
 // CopyDir recursively copies every regular file under src into dst,
-// preserving the relative directory structure and each file's mode.
-// Parent directories under dst are created as needed. Symlinks and other
+// preserving the relative directory structure. Copied files are written
+// with a fixed 0o644 mode — the source folder is untrusted, so its
+// permission bits are never reproduced inside the profile. Parent
+// directories under dst are created as needed. Symlinks and other
 // non-regular entries are skipped so the copy never follows a link out of
 // the source tree.
 func CopyDir(src, dst string) errs.DomainError {
@@ -102,24 +105,53 @@ func CopyDir(src, dst string) errs.DomainError {
 		if !d.Type().IsRegular() {
 			return nil
 		}
-		info, infoErr := d.Info()
-		if infoErr != nil {
-			return infoErr
-		}
 		data, readErr := os.ReadFile(path)
 		if readErr != nil {
 			return readErr
 		}
 		rel := ToRelative(src, path)
-		if writeErr := WriteFile(filepath.Join(dst, filepath.FromSlash(rel)), data, info.Mode().Perm()); writeErr != nil {
+		if writeErr := WriteFile(filepath.Join(dst, filepath.FromSlash(rel)), data, 0o644); writeErr != nil {
 			return writeErr
 		}
 		return nil
 	})
-	if walkErr != nil {
-		return CopyDirError{Src: src, Dst: dst, Err: walkErr}
+	if walkErr == nil {
+		return nil
 	}
-	return nil
+	// WriteFile already returns a typed DomainError; surface it directly
+	// instead of nesting it inside CopyDirError. Only raw os failures
+	// (ReadFile, the walk error itself) get the copy-dir wrap.
+	var domainErr errs.DomainError
+	if errors.As(walkErr, &domainErr) {
+		return domainErr
+	}
+	return CopyDirError{Src: src, Dst: dst, Err: walkErr}
+}
+
+// DirStats returns the count and total byte size of the regular files under
+// root, matching CopyDir's traversal (non-regular entries skipped). It is a
+// read-only summary used to show what a folder-register copy will move
+// before the user confirms.
+func DirStats(root string) (count int, size int64, err errs.DomainError) {
+	walkErr := filepath.WalkDir(root, func(_ string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if !d.Type().IsRegular() {
+			return nil
+		}
+		info, infoErr := d.Info()
+		if infoErr != nil {
+			return infoErr
+		}
+		count++
+		size += info.Size()
+		return nil
+	})
+	if walkErr != nil {
+		return 0, 0, DirStatsError{Root: root, Err: walkErr}
+	}
+	return count, size, nil
 }
 
 // HashBytes returns the hex-encoded SHA-256 digest of data.

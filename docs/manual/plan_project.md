@@ -25,7 +25,9 @@ Default for both is **Keep**.
 
 When the cursor sits on a **directory row whose every descendant file is
 `? unknown`**, a **Register** (`r`) action appears. It opens the Create Asset
-modal pre-filled with the folder's name; pick a type and confirm to:
+modal pre-filled with the folder's name and a caption showing the folder's file
+count and size. The type picker is limited to the convention types that own a
+folder (`skill`, `agents_doc`, `settings`); pick a type and confirm to:
 
 1. create a new asset under the active profile,
 2. **copy** the folder's files into the profile's `assets/`, and

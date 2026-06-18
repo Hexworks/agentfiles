@@ -14,6 +14,7 @@ import (
 
 	"github.com/hexworks/agentfiles/internal/config"
 	"github.com/hexworks/agentfiles/internal/errs"
+	"github.com/hexworks/agentfiles/internal/surfaces"
 	"github.com/hexworks/agentfiles/internal/utils"
 )
 
@@ -150,63 +151,123 @@ func Load(dir string) (*Asset, errs.DomainError) {
 // Init scaffolds a new asset directory with a starter file layout that matches
 // the chosen type. Returns the directory path if successful
 func Init(root string, manifest Manifest) (string, errs.DomainError) {
-	if err := manifest.Validate(); err != nil {
-		return "", err
-	}
-	dir := filepath.Join(root, config.AssetsDirName, string(manifest.Type), manifest.ID)
-	if err := utils.EnsureDir(dir); err != nil {
-		return "", err
-	}
-	if err := utils.WriteJSON(filepath.Join(dir, config.AssetManifestFileName), manifest); err != nil {
-		return "", err
-	}
-
-	// Per-type starter content is currently inline; task 0010 tracks
-	// extracting this into a strategy + template package.
-	switch manifest.Type {
-	case TypeSkill:
-		body := []byte("---\nname: " + manifest.Name + "\ndescription: " + manifest.Description + "\n---\n\nDescribe the skill here.\n")
-		if err := utils.WriteFile(filepath.Join(dir, config.SkillStarterFileName), body, 0o644); err != nil {
-			return "", err
-		}
-	case TypeAgentsDoc:
-		if err := utils.WriteFile(filepath.Join(dir, config.AgentsDocStarterFileName), []byte("# "+manifest.Name+"\n"), 0o644); err != nil {
-			return "", err
-		}
-	case TypeSettings:
-		if err := utils.WriteFile(filepath.Join(dir, config.SettingsStarterFileName), []byte("# codex settings\n"), 0o644); err != nil {
-			return "", err
-		}
-	}
-	// TypeMCP, TypeRule, TypeHook intentionally produce no starter file —
-	// their content is user-authored and the directory is left ready for it.
-	// Manifest.Validate above rejects unknown types, so no default branch is
-	// needed.
-
-	return dir, nil
+	return scaffold(root, manifest, func(dir string) errs.DomainError {
+		return writeStarter(dir, manifest)
+	})
 }
 
-// InitFromFolder creates a new asset whose content is copied from an
-// existing folder instead of scaffolded from a starter template. It is
-// the source-from-folder counterpart of Init: the manifest is validated,
-// the asset directory is created, sourceDir's files are copied in, and the
-// asset.json manifest is written last so a stray asset.json in the source
-// cannot clobber the authoritative manifest. Returns the directory path.
+// InitFromFolder is the source-from-folder counterpart of Init: instead of a
+// starter template, the asset's content is copied from sourceDir. The manifest
+// is written last (see scaffold) so a stray asset.json in the source cannot
+// clobber the authoritative one. Returns the directory path.
 func InitFromFolder(root string, manifest Manifest, sourceDir string) (string, errs.DomainError) {
 	if err := manifest.Validate(); err != nil {
 		return "", err
 	}
+	if err := validateFolderSource(manifest, sourceDir); err != nil {
+		return "", err
+	}
+	return scaffold(root, manifest, func(dir string) errs.DomainError {
+		return utils.CopyDir(sourceDir, dir)
+	})
+}
+
+// scaffold owns the on-disk layout rule shared by Init and InitFromFolder:
+// validate the manifest, derive the asset directory (assets/<type>/<id>/),
+// create it, seed its content, and write asset.json last. Writing the
+// manifest after seeding means a seed step that lands its own asset.json
+// (e.g. a folder copy) cannot clobber the authoritative manifest.
+func scaffold(root string, manifest Manifest, seed func(dir string) errs.DomainError) (string, errs.DomainError) {
+	if err := manifest.Validate(); err != nil {
+		return "", err
+	}
 	dir := filepath.Join(root, config.AssetsDirName, string(manifest.Type), manifest.ID)
 	if err := utils.EnsureDir(dir); err != nil {
 		return "", err
 	}
-	if err := utils.CopyDir(sourceDir, dir); err != nil {
-		return "", err
+	if seed != nil {
+		if err := seed(dir); err != nil {
+			return "", err
+		}
 	}
 	if err := utils.WriteJSON(filepath.Join(dir, config.AssetManifestFileName), manifest); err != nil {
 		return "", err
 	}
 	return dir, nil
+}
+
+// writeStarter seeds the per-type starter content for a freshly scaffolded
+// asset. Per-type starter content is currently inline; task 0010 tracks
+// extracting this into a strategy + template package. TypeMCP, TypeRule, and
+// TypeHook intentionally produce no starter file — their content is
+// user-authored. Manifest.Validate rejects unknown types, so no default
+// branch is needed.
+func writeStarter(dir string, manifest Manifest) errs.DomainError {
+	switch manifest.Type {
+	case TypeSkill:
+		body := []byte("---\nname: " + manifest.Name + "\ndescription: " + manifest.Description + "\n---\n\nDescribe the skill here.\n")
+		return utils.WriteFile(filepath.Join(dir, config.SkillStarterFileName), body, 0o644)
+	case TypeAgentsDoc:
+		return utils.WriteFile(filepath.Join(dir, config.AgentsDocStarterFileName), []byte("# "+manifest.Name+"\n"), 0o644)
+	case TypeSettings:
+		return utils.WriteFile(filepath.Join(dir, config.SettingsStarterFileName), []byte("# codex settings\n"), 0o644)
+	}
+	return nil
+}
+
+// RequiredContentFile returns the source file a folder must contain to be
+// registerable as the given type, and whether the type has such a
+// requirement. The convention-based types (skill, agents_doc, settings) map
+// to their starter filename; the generic types (mcp, rule, hook) have none
+// because they render via explicit projections the folder flow does not
+// collect.
+func RequiredContentFile(t Type) (string, bool) {
+	switch t {
+	case TypeSkill:
+		return config.SkillStarterFileName, true
+	case TypeAgentsDoc:
+		return config.AgentsDocStarterFileName, true
+	case TypeSettings:
+		return config.SettingsStarterFileName, true
+	}
+	return "", false
+}
+
+// FolderRegisterableTypes returns the asset types whose content can come
+// straight from a folder — exactly the types that declare a required content
+// file. The generic types are excluded because the folder-register flow does
+// not collect the projections they need to render.
+func FolderRegisterableTypes() []Type {
+	var out []Type
+	for _, t := range AllTypes() {
+		if _, ok := RequiredContentFile(t); ok {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// validateFolderSource checks that sourceDir satisfies the render contract for
+// manifest.Type before the folder becomes a profile-owned asset, so a re-plan
+// can actually reclassify the copied files as managed. Convention-based types
+// must contain their required file; generic types must carry non-empty
+// projections that all stay inside the managed-surface fence.
+func validateFolderSource(manifest Manifest, sourceDir string) errs.DomainError {
+	if required, ok := RequiredContentFile(manifest.Type); ok {
+		if !utils.Exists(filepath.Join(sourceDir, required)) {
+			return MissingContentFileError{Type: manifest.Type, File: required}
+		}
+		return nil
+	}
+	if len(manifest.Projections) == 0 {
+		return MissingProjectionsError{Type: manifest.Type}
+	}
+	for _, p := range manifest.Projections {
+		if !surfaces.IsAllowed(p.Target) {
+			return ProjectionOutsideSurfacesError{Target: p.Target}
+		}
+	}
+	return nil
 }
 
 // Delete removes the asset directory at dir. A pre-missing directory is

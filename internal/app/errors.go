@@ -36,6 +36,22 @@ func (AssetExistsError) Severity() errs.Severity {
 	return errs.SeverityError
 }
 
+// FolderNotRegisterableError reports a CreateAssetFromFolder call whose
+// dirKey is not an all-unknown folder in the freshly computed plan. The
+// service re-asserts eligibility rather than trusting the TUI button gate, so
+// a stale or tampered key cannot register a partly-managed folder.
+type FolderNotRegisterableError struct {
+	DirKey string
+}
+
+func (e FolderNotRegisterableError) Error() string {
+	return fmt.Sprintf("folder is not registerable as an asset: %s", e.DirKey)
+}
+
+func (FolderNotRegisterableError) Severity() errs.Severity {
+	return errs.SeverityError
+}
+
 // ProjectNotFoundError reports a project id that does not exist inside the
 // loaded profile.
 type ProjectNotFoundError struct {

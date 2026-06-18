@@ -23,6 +23,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/tui/editor"
 	"github.com/hexworks/agentfiles/internal/tui/modals"
 	"github.com/hexworks/agentfiles/internal/tui/styles"
+	"github.com/hexworks/agentfiles/internal/utils"
 )
 
 // planProjectActions is the narrow slice of *actions.Actions the Plan
@@ -89,31 +90,6 @@ func planDirNode(n *treetable.Node) (planNode, bool) {
 	return d, true
 }
 
-// dirAllUnknown reports whether every file under n is an unknown/unmanaged
-// change and there is at least one such file. Only then may the directory
-// be registered as an asset: a directory with managed (create/update/drift)
-// leaves is partly owned already, so offering to register the whole folder
-// would be misleading.
-func dirAllUnknown(n *treetable.Node) bool {
-	files := 0
-	allUnknown := true
-	var walk func(*treetable.Node)
-	walk = func(node *treetable.Node) {
-		for _, child := range node.Children {
-			if f, ok := planFileNode(child); ok {
-				files++
-				if f.change.Kind != app.ChangeUnknown {
-					allUnknown = false
-				}
-				continue
-			}
-			walk(child)
-		}
-	}
-	walk(n)
-	return files > 0 && allUnknown
-}
-
 // planProjectLoadedMsg is the envelope the Init command emits after
 // resolving the project, profile, and preview triplet. Either every
 // field is set or err carries the first failure.
@@ -154,16 +130,22 @@ type planProjectScreen struct {
 	backBtn  *mnemonic.Button
 	set      *mnemonic.Set
 
+	// registerableDirs is the set of directory keys whose subtree is all
+	// unknown/unmanaged, derived from the loaded preview via
+	// app.RegisterableDirs. The eligibility rule lives in app; the screen
+	// only renders the [Register] button on rows the set contains.
+	registerableDirs map[string]bool
+
 	// modal hosts the Create Asset dialog opened by the row-level
-	// [Register] action; nil when closed. registerSourceDir is the
-	// absolute folder whose files become the new asset's content, carried
-	// here because asset.Manifest has no source field. width/height track
-	// the last WindowSizeMsg so the modal can be sized when opened.
-	modal             *modal.Modal
-	modalKind         planModalKind
-	registerSourceDir string
-	width             int
-	height            int
+	// [Register] action; nil when closed. registerDirKey is the
+	// project-relative key of the folder being registered, passed to the
+	// service which resolves and re-validates it. width/height track the
+	// last WindowSizeMsg so the modal can be sized when opened.
+	modal          *modal.Modal
+	modalKind      planModalKind
+	registerDirKey string
+	width          int
+	height         int
 }
 
 func newPlanProjectScreen(a planProjectActions, profileID, projectID string) *planProjectScreen {
@@ -348,6 +330,7 @@ func (s *planProjectScreen) handleLoaded(m planProjectLoadedMsg) (Screen, tea.Cm
 	s.projectName = m.proj.Name
 	s.projectPath = m.proj.Path
 	s.preview = m.preview
+	s.registerableDirs = app.RegisterableDirs(m.preview.Changes)
 	s.tree.SetRoot(buildPlanTree(s.projectName, m.preview.Changes))
 	s.rebuildSet()
 	return s, nil
@@ -497,7 +480,7 @@ func (s *planProjectScreen) actionValue(n *treetable.Node) string {
 func (s *planProjectScreen) treeActionsFn() treetable.ActionsFunc {
 	return func(n *treetable.Node) []*mnemonic.Button {
 		if d, ok := planDirNode(n); ok {
-			if dirAllUnknown(n) {
+			if s.registerableDirs[d.path] {
 				return []*mnemonic.Button{s.registerAssetBtn(d.path)}
 			}
 			return nil
@@ -583,16 +566,39 @@ type registerAssetDoneMsg struct {
 }
 
 // onRegisterAsset opens the Create Asset modal pre-scoped to the selected
-// folder. The folder's absolute path is stored on the screen so the
-// post-confirm handler can pass it to the service; the modal only collects
-// the manifest, with Name pre-filled from the folder's basename.
-func (s *planProjectScreen) onRegisterAsset(dirPath string) tea.Cmd {
-	if s.projectPath == "" || dirPath == "" {
+// folder. The project-relative key is stored on the screen so the post-confirm
+// handler can hand it to the service (which resolves and re-validates it); the
+// modal only collects the manifest, with Name pre-filled from the folder's
+// basename and a caption summarizing what the copy will move. The local join
+// here is read-only — only for the file-count/size summary, not the trusted
+// write path.
+func (s *planProjectScreen) onRegisterAsset(dirKey string) tea.Cmd {
+	if s.projectPath == "" || dirKey == "" {
 		return nil
 	}
-	s.registerSourceDir = filepath.Join(s.projectPath, filepath.FromSlash(dirPath))
-	s.openModal(modals.NewCreateAsset(asset.Manifest{Name: path.Base(dirPath)}), planModalRegisterAsset)
+	s.registerDirKey = dirKey
+	abs := filepath.Join(s.projectPath, filepath.FromSlash(dirKey))
+	caption := "Creating Asset"
+	if count, size, statErr := utils.DirStats(abs); statErr == nil {
+		caption = fmt.Sprintf("Register %s · %d files · %s", dirKey, count, formatBytes(size))
+	}
+	s.openModal(modals.NewCreateAssetFromFolder(asset.Manifest{Name: path.Base(dirKey)}, caption), planModalRegisterAsset)
 	return s.modal.Init()
+}
+
+// formatBytes renders a byte count in the largest unit under which it stays
+// below 1024, for the folder-register modal caption.
+func formatBytes(n int64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+	div, exp := int64(unit), 0
+	for v := n / unit; v >= unit; v /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(n)/float64(div), "KMGTPE"[exp])
 }
 
 func (s *planProjectScreen) openModal(m *modal.Modal, kind planModalKind) {
@@ -610,16 +616,16 @@ func (s *planProjectScreen) handleResolved(msg modal.ResolvedMsg) tea.Cmd {
 	s.modal = nil
 	kind := s.modalKind
 	s.modalKind = planModalNone
-	sourceDir := s.registerSourceDir
-	s.registerSourceDir = ""
+	dirKey := s.registerDirKey
+	s.registerDirKey = ""
 	if kind == planModalRegisterAsset {
-		return s.afterRegisterAsset(msg, sourceDir)
+		return s.afterRegisterAsset(msg, dirKey)
 	}
 	return nil
 }
 
-func (s *planProjectScreen) afterRegisterAsset(msg modal.ResolvedMsg, sourceDir string) tea.Cmd {
-	if !msg.Confirmed || sourceDir == "" {
+func (s *planProjectScreen) afterRegisterAsset(msg modal.ResolvedMsg, dirKey string) tea.Cmd {
+	if !msg.Confirmed || dirKey == "" {
 		return nil
 	}
 	manifest, ok := msg.Value.(asset.Manifest)
@@ -633,7 +639,7 @@ func (s *planProjectScreen) afterRegisterAsset(msg modal.ResolvedMsg, sourceDir 
 			ProfileRef: profileRef,
 			ProjectID:  projectID,
 			Manifest:   manifest,
-			SourceDir:  sourceDir,
+			DirKey:     dirKey,
 		})
 		return registerAssetDoneMsg{name: manifest.Name, err: err}
 	}

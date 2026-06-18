@@ -15,7 +15,7 @@ func TestCreateAsset_PrefillSeedsState(t *testing.T) {
 		Tags:             []string{"a", "b"},
 		CompatibleAgents: []string{AgentCodex},
 		ExclusiveGroup:   "g",
-	})
+	}, asset.AllTypes())
 
 	if state.Name != "Existing" || state.Type != asset.TypeAgentsDoc ||
 		state.Description != "desc" || state.Tags != "a, b" ||
@@ -33,7 +33,7 @@ func TestCreateAsset_PumpResolvesAsManifestWithoutID(t *testing.T) {
 		Tags:             []string{"git", "build", "ci"},
 		CompatibleAgents: []string{AgentClaudeCode, AgentCodex},
 		ExclusiveGroup:   "agents_doc",
-	})
+	}, asset.AllTypes())
 	submitForm(t, form)
 
 	msg := runResolvedThroughModal(t, "create-asset", form, extract)
@@ -62,7 +62,7 @@ func TestCreateAsset_PumpResolvesAsManifestWithoutID(t *testing.T) {
 }
 
 func TestCreateAsset_RejectsEmptyRequiredFields(t *testing.T) {
-	form, _, _ := buildCreateAsset(asset.Manifest{})
+	form, _, _ := buildCreateAsset(asset.Manifest{}, asset.AllTypes())
 	expectFormStuck(t, form)
 }
 
@@ -71,7 +71,7 @@ func TestCreateAsset_OmitsEmptyOptionalFieldsFromManifest(t *testing.T) {
 		Name:        "no-extras",
 		Type:        asset.TypeRule,
 		Description: "minimal",
-	})
+	}, asset.AllTypes())
 	submitForm(t, form)
 
 	msg := runResolvedThroughModal(t, "create-asset", form, extract)
@@ -92,7 +92,7 @@ func TestCreateAsset_OmitsEmptyOptionalFieldsFromManifest(t *testing.T) {
 }
 
 func TestCreateAsset_CancelResolvesEmpty(t *testing.T) {
-	form, _, extract := buildCreateAsset(asset.Manifest{Name: "x", Description: "y"})
+	form, _, extract := buildCreateAsset(asset.Manifest{Name: "x", Description: "y"}, asset.AllTypes())
 	abortForm(form)
 
 	msg := runResolvedThroughModal(t, "create-asset", form, extract)
@@ -112,7 +112,7 @@ func TestNewCreateAsset_UsesStableID(t *testing.T) {
 func TestCreateAsset_PrefillRoundtripsTags(t *testing.T) {
 	_, state, _ := buildCreateAsset(asset.Manifest{
 		Tags: []string{"a", "b", "c"},
-	})
+	}, asset.AllTypes())
 	if state.Tags != "a, b, c" {
 		t.Errorf("Tags csv = %q, want %q", state.Tags, "a, b, c")
 	}

@@ -27,6 +27,54 @@ func (AssetIDNameRequiredError) Severity() errs.Severity {
 // fields.
 var ErrAssetIDNameRequired = AssetIDNameRequiredError{}
 
+// MissingContentFileError reports a folder-register attempt whose source
+// folder lacks the file the chosen convention-based type requires (e.g. a
+// skill without SKILL.md). Without it the copied asset would render nothing,
+// so the registration is rejected up front.
+type MissingContentFileError struct {
+	Type Type
+	File string
+}
+
+func (e MissingContentFileError) Error() string {
+	return fmt.Sprintf("a %s asset requires %s in the source folder", e.Type, e.File)
+}
+
+func (MissingContentFileError) Severity() errs.Severity {
+	return errs.SeverityError
+}
+
+// MissingProjectionsError reports a folder-register attempt for a generic
+// type (mcp, rule, hook) whose manifest carries no projections. Generic types
+// render only via explicit projections, so without them the copied content
+// would never reach a managed surface.
+type MissingProjectionsError struct {
+	Type Type
+}
+
+func (e MissingProjectionsError) Error() string {
+	return fmt.Sprintf("a %s asset requires at least one projection", e.Type)
+}
+
+func (MissingProjectionsError) Severity() errs.Severity {
+	return errs.SeverityError
+}
+
+// ProjectionOutsideSurfacesError reports a projection whose target falls
+// outside the managed-surface fence. Render would reject such a plan, so the
+// folder-register flow rejects it before copying any content.
+type ProjectionOutsideSurfacesError struct {
+	Target string
+}
+
+func (e ProjectionOutsideSurfacesError) Error() string {
+	return fmt.Sprintf("projection target outside managed surfaces: %s", e.Target)
+}
+
+func (ProjectionOutsideSurfacesError) Severity() errs.Severity {
+	return errs.SeverityError
+}
+
 // UnsupportedAssetTypeError reports an asset manifest whose Type field is not
 // one of the supported asset.Type constants. The original Type value is
 // preserved so callers can render a precise message.

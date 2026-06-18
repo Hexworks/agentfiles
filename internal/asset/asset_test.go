@@ -86,6 +86,97 @@ func TestInitFromFolder_RejectsInvalidManifest(t *testing.T) {
 	}
 }
 
+func TestInitFromFolder_SourceManifestDoesNotClobberAuthoritative(t *testing.T) {
+	// given a source folder that itself contains a stray asset.json
+	source := t.TempDir()
+	if err := os.WriteFile(filepath.Join(source, "SKILL.md"), []byte("body\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "asset.json"),
+		[]byte(`{"id":"evil","name":"Evil","type":"rule"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// when the folder is registered as a skill asset
+	dir, err := InitFromFolder(t.TempDir(), Manifest{ID: "good", Name: "Good", Type: TypeSkill}, source)
+	if err != nil {
+		t.Fatalf("InitFromFolder: %v", err)
+	}
+
+	// then the authoritative manifest survives the copy (written last)
+	loaded, loadErr := Load(dir)
+	if loadErr != nil {
+		t.Fatalf("Load: %v", loadErr)
+	}
+	if loaded.ID != "good" || loaded.Type != TypeSkill {
+		t.Fatalf("source asset.json clobbered ours: %+v", loaded.Manifest)
+	}
+}
+
+func TestInitFromFolder_CopiesNestedSubtree(t *testing.T) {
+	source := t.TempDir()
+	writeSource(t, source, "SKILL.md", "top\n")
+	writeSource(t, source, filepath.Join("sub", "inner.md"), "deep\n")
+
+	dir, err := InitFromFolder(t.TempDir(), Manifest{ID: "deep", Name: "Deep", Type: TypeSkill}, source)
+	if err != nil {
+		t.Fatalf("InitFromFolder: %v", err)
+	}
+	body, readErr := os.ReadFile(filepath.Join(dir, "sub", "inner.md"))
+	if readErr != nil {
+		t.Fatalf("read nested copied file: %v", readErr)
+	}
+	if string(body) != "deep\n" {
+		t.Fatalf("nested content = %q, want %q", string(body), "deep\n")
+	}
+}
+
+func TestInitFromFolder_RejectsSkillWithoutStarterFile(t *testing.T) {
+	source := t.TempDir()
+	writeSource(t, source, "notes.txt", "no skill md\n")
+
+	_, err := InitFromFolder(t.TempDir(), Manifest{ID: "x", Name: "X", Type: TypeSkill}, source)
+	var typed MissingContentFileError
+	if !errors.As(err, &typed) {
+		t.Fatalf("expected MissingContentFileError, got %T: %v", err, err)
+	}
+}
+
+func TestInitFromFolder_RejectsGenericTypeWithoutProjections(t *testing.T) {
+	source := t.TempDir()
+	writeSource(t, source, "rule.md", "content\n")
+
+	_, err := InitFromFolder(t.TempDir(), Manifest{ID: "r", Name: "R", Type: TypeRule}, source)
+	var typed MissingProjectionsError
+	if !errors.As(err, &typed) {
+		t.Fatalf("expected MissingProjectionsError, got %T: %v", err, err)
+	}
+}
+
+func TestFolderRegisterableTypes_AreConventionTypesOnly(t *testing.T) {
+	got := FolderRegisterableTypes()
+	want := []Type{TypeSkill, TypeAgentsDoc, TypeSettings}
+	if len(got) != len(want) {
+		t.Fatalf("FolderRegisterableTypes = %v, want %v", got, want)
+	}
+	for i, w := range want {
+		if got[i] != w {
+			t.Fatalf("FolderRegisterableTypes = %v, want %v", got, want)
+		}
+	}
+}
+
+func writeSource(t *testing.T, root, rel, body string) {
+	t.Helper()
+	full := filepath.Join(root, rel)
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(full, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestDelete_RemovesDirectory(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "skill", "review")

@@ -80,17 +80,16 @@ func exclusiveGroupInput(value *string, description string) *huh.Input {
 		Value(value)
 }
 
-func assetTypeSelect(value *asset.Type, description string) *huh.Select[asset.Type] {
+func assetTypeSelect(value *asset.Type, description string, types []asset.Type) *huh.Select[asset.Type] {
 	return huh.NewSelect[asset.Type]().
 		Key("type").
 		Title("Type").
 		Description(description).
 		Value(value).
-		Options(assetTypeOptions()...)
+		Options(assetTypeOptions(types)...)
 }
 
-func assetTypeOptions() []huh.Option[asset.Type] {
-	types := asset.AllTypes()
+func assetTypeOptions(types []asset.Type) []huh.Option[asset.Type] {
 	out := make([]huh.Option[asset.Type], 0, len(types))
 	for _, t := range types {
 		out = append(out, huh.NewOption(string(t), t))

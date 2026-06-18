@@ -18,7 +18,7 @@ func (a *Actions) CreateAsset(in CreateAssetInput) (string, errs.DomainError) {
 // CreateAssetFromFolder creates an asset from an unmanaged project folder
 // and selects it for the project. Returns the new asset id.
 func (a *Actions) CreateAssetFromFolder(in CreateAssetFromFolderInput) (string, errs.DomainError) {
-	return a.svc.CreateAssetFromFolder(in.ProfileRef, in.ProjectID, in.Manifest, in.SourceDir)
+	return a.svc.CreateAssetFromFolder(in.ProfileRef, in.ProjectID, in.Manifest, in.DirKey)
 }
 
 func (a *Actions) UpdateAsset(in UpdateAssetInput) (struct{}, errs.DomainError) {

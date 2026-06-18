@@ -45,6 +45,18 @@ func NewDraft(name, path string, agents []string) *Manifest {
 	}
 }
 
+// SelectAsset appends id to SelectedAssetIDs if not already present,
+// reporting whether it was added. It owns the append-if-absent rule on the
+// in-memory manifest so callers (Service.SelectAsset,
+// Service.CreateAssetFromFolder) do not reimplement the dedup and drift apart.
+func (m *Manifest) SelectAsset(id string) bool {
+	if slices.Contains(m.SelectedAssetIDs, id) {
+		return false
+	}
+	m.SelectedAssetIDs = append(m.SelectedAssetIDs, id)
+	return true
+}
+
 // Validate checks only the core project invariants.
 func (m *Manifest) Validate() errs.DomainError {
 	if m.ID == "" || m.Name == "" || m.Path == "" {

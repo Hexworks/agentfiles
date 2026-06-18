@@ -340,61 +340,25 @@ func dirNode(p string, children ...*treetable.Node) *treetable.Node {
 	return &treetable.Node{Data: planNode{kind: planNodeDir, path: p}, Children: children}
 }
 
-func TestDirAllUnknown(t *testing.T) {
-	cases := []struct {
-		name string
-		node *treetable.Node
-		want bool
-	}{
-		{
-			name: "all unknown",
-			node: dirNode("sub", fileNode("sub/a.md", app.ChangeUnknown), fileNode("sub/b.md", app.ChangeUnknown)),
-			want: true,
-		},
-		{
-			name: "nested all unknown",
-			node: dirNode("sub", dirNode("sub/deep", fileNode("sub/deep/a.md", app.ChangeUnknown))),
-			want: true,
-		},
-		{
-			name: "mixed",
-			node: dirNode("sub", fileNode("sub/a.md", app.ChangeUnknown), fileNode("sub/b.md", app.ChangeCreate)),
-			want: false,
-		},
-		{
-			name: "empty",
-			node: dirNode("sub"),
-			want: false,
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := dirAllUnknown(tc.node); got != tc.want {
-				t.Errorf("dirAllUnknown = %v, want %v", got, tc.want)
-			}
-		})
-	}
-}
-
-func TestPlanProjectScreen_TreeActionsFnAllUnknownDirGetsRegisterBtn(t *testing.T) {
+func TestPlanProjectScreen_TreeActionsFnRegisterableDirGetsRegisterBtn(t *testing.T) {
 	f := newPlanActionsFake("Proj", nil)
 	s := newPlanProjectScreen(f, "alpha", "proj-1")
+	s.registerableDirs = map[string]bool{"sub": true}
 	fn := s.treeActionsFn()
-	n := dirNode("sub", fileNode("sub/a.md", app.ChangeUnknown))
-	got := fn(n)
+	got := fn(dirNode("sub", fileNode("sub/a.md", app.ChangeUnknown)))
 	if len(got) != 1 {
 		t.Fatalf("got %d buttons, want 1", len(got))
 	}
 	assertBtn(t, got[0], "Register", 'r')
 }
 
-func TestPlanProjectScreen_TreeActionsFnMixedDirGetsNoBtn(t *testing.T) {
+func TestPlanProjectScreen_TreeActionsFnNonRegisterableDirGetsNoBtn(t *testing.T) {
 	f := newPlanActionsFake("Proj", nil)
 	s := newPlanProjectScreen(f, "alpha", "proj-1")
+	s.registerableDirs = map[string]bool{"other": true}
 	fn := s.treeActionsFn()
-	n := dirNode("sub", fileNode("sub/a.md", app.ChangeUnknown), fileNode("sub/b.md", app.ChangeCreate))
-	if got := fn(n); got != nil {
-		t.Errorf("fn(mixed dir) = %v, want nil", got)
+	if got := fn(dirNode("sub", fileNode("sub/a.md", app.ChangeUnknown))); got != nil {
+		t.Errorf("fn(non-registerable dir) = %v, want nil", got)
 	}
 }
 
@@ -405,7 +369,7 @@ func TestPlanProjectScreen_AfterRegisterAssetForwardsInputAndReloads(t *testing.
 
 	cmd := s.afterRegisterAsset(
 		modal.ResolvedMsg{Confirmed: true, Value: asset.Manifest{Name: "Something", Type: asset.TypeSkill}},
-		"/abs/source",
+		"sub/something",
 	)
 	if cmd == nil {
 		t.Fatal("afterRegisterAsset returned nil cmd")
@@ -421,7 +385,7 @@ func TestPlanProjectScreen_AfterRegisterAssetForwardsInputAndReloads(t *testing.
 		t.Fatalf("CreateAssetFromFolder called %d times, want 1", len(f.createInputs))
 	}
 	in := f.createInputs[0]
-	if in.ProfileRef != "alpha" || in.ProjectID != "proj-1" || in.SourceDir != "/abs/source" || in.Manifest.Name != "Something" {
+	if in.ProfileRef != "alpha" || in.ProjectID != "proj-1" || in.DirKey != "sub/something" || in.Manifest.Name != "Something" {
 		t.Fatalf("unexpected input: %+v", in)
 	}
 
@@ -433,7 +397,7 @@ func TestPlanProjectScreen_AfterRegisterAssetForwardsInputAndReloads(t *testing.
 func TestPlanProjectScreen_AfterRegisterAssetCancelDoesNothing(t *testing.T) {
 	f := newPlanActionsFake("Proj", nil)
 	s := newPlanProjectScreen(f, "alpha", "proj-1")
-	if cmd := s.afterRegisterAsset(modal.ResolvedMsg{Confirmed: false}, "/abs/source"); cmd != nil {
+	if cmd := s.afterRegisterAsset(modal.ResolvedMsg{Confirmed: false}, "sub/something"); cmd != nil {
 		t.Error("cancelled register returned non-nil cmd")
 	}
 	if len(f.createInputs) != 0 {

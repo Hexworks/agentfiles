@@ -133,6 +133,25 @@ func (e CopyDirError) Unwrap() error {
 	return e.Err
 }
 
+// DirStatsError reports a failure while summarizing a directory tree in
+// DirStats. Err preserves the underlying walk error.
+type DirStatsError struct {
+	Root string
+	Err  error
+}
+
+func (e DirStatsError) Error() string {
+	return fmt.Sprintf("stat directory %s: %s", e.Root, e.Err.Error())
+}
+
+func (DirStatsError) Severity() errs.Severity {
+	return errs.SeverityError
+}
+
+func (e DirStatsError) Unwrap() error {
+	return e.Err
+}
+
 // AbsPathError reports a failure to resolve a path to an absolute form.
 type AbsPathError struct {
 	Path string

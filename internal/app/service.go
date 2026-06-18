@@ -156,18 +156,65 @@ func (s *Service) InitAsset(profileRef string, manifest asset.Manifest) (string,
 	return asset.Init(loaded.Root, manifest)
 }
 
-// CreateAssetFromFolder creates a profile-owned asset whose content is
-// copied from sourceDir (an unmanaged folder in the project repo) and
-// selects it for the project in one step. The three effects — create the
-// asset, copy its files into the profile, and add it to the project's
-// selection — form a single consistency boundary so a re-plan reclassifies
-// those files as managed instead of unknown. The selection is appended and
-// persisted inline rather than via SelectAsset because the freshly loaded
-// profile's asset map predates the creation. Returns the new asset id.
-func (s *Service) CreateAssetFromFolder(profileRef, projectID string, manifest asset.Manifest, sourceDir string) (string, errs.DomainError) {
+// RegisterableDirs returns the set of directory keys in changes whose every
+// descendant file is an unknown/unmanaged change (and there is at least one).
+// Only such folders may be registered as an asset: a directory with managed
+// (create/update/drift/delete) leaves is partly owned already, so offering to
+// register the whole folder would be misleading. Ancestor directories of an
+// all-unknown subtree qualify too. This is the domain eligibility rule the TUI
+// renders against and CreateAssetFromFolder re-asserts.
+func RegisterableDirs(changes []FileChange) map[string]bool {
+	total := map[string]int{}
+	unknown := map[string]int{}
+	for _, ch := range changes {
+		parts := strings.Split(ch.Path, "/")
+		acc := ""
+		for i := 0; i < len(parts)-1; i++ {
+			if acc == "" {
+				acc = parts[i]
+			} else {
+				acc = acc + "/" + parts[i]
+			}
+			total[acc]++
+			if ch.Kind == ChangeUnknown {
+				unknown[acc]++
+			}
+		}
+	}
+	out := map[string]bool{}
+	for dir, n := range total {
+		if n > 0 && unknown[dir] == n {
+			out[dir] = true
+		}
+	}
+	return out
+}
+
+// CreateAssetFromFolder creates a profile-owned asset whose content is copied
+// from the project folder identified by dirKey (a project-relative,
+// forward-slash key) and selects it for the project in one step. The three
+// effects — create the asset, copy its files into the profile, and add it to
+// the project's selection — form a single consistency boundary so a re-plan
+// reclassifies those files as managed instead of unknown.
+//
+// The service re-plans and re-asserts the folder is registerable
+// (RegisterableDirs) rather than trusting the caller, then resolves the
+// absolute source by joining dirKey against the project root it loaded — a
+// tampered caller cannot redirect the copy outside the repo. If the project
+// save fails after the asset is written, the half-created asset is rolled back
+// and both failures are accumulated so a re-run converges. Returns the new
+// asset id.
+func (s *Service) CreateAssetFromFolder(profileRef, projectID string, manifest asset.Manifest, dirKey string) (string, errs.DomainError) {
 	loaded, p, err := s.resolveProject(profileRef, projectID)
 	if err != nil {
 		return "", err
+	}
+	syncPreview, planErr := llmsync.Plan(loaded, p)
+	if planErr != nil {
+		return "", planErr
+	}
+	if !RegisterableDirs(previewFromSync(syncPreview).Changes)[dirKey] {
+		return "", FolderNotRegisterableError{DirKey: dirKey}
 	}
 	if manifest.ID == "" {
 		manifest.ID = utils.Slug(manifest.Name, config.DefaultAssetSlug)
@@ -175,12 +222,18 @@ func (s *Service) CreateAssetFromFolder(profileRef, projectID string, manifest a
 	if loaded.Assets[manifest.ID] != nil {
 		return "", AssetExistsError{AssetID: manifest.ID}
 	}
-	if _, initErr := asset.InitFromFolder(loaded.Root, manifest, sourceDir); initErr != nil {
+	sourceDir := filepath.Join(p.Path, filepath.FromSlash(dirKey))
+	dir, initErr := asset.InitFromFolder(loaded.Root, manifest, sourceDir)
+	if initErr != nil {
 		return "", initErr
 	}
-	p.SelectedAssetIDs = append(p.SelectedAssetIDs, manifest.ID)
+	p.SelectAsset(manifest.ID)
 	if saveErr := project.Save(loaded.Root, p); saveErr != nil {
-		return "", saveErr
+		failures := errs.Errors{saveErr}
+		if delErr := asset.Delete(dir); delErr != nil {
+			failures = append(failures, delErr)
+		}
+		return "", failures
 	}
 	return manifest.ID, nil
 }
@@ -623,14 +676,10 @@ func (s *Service) SelectAsset(profileRef, projectID, assetID string) ([]string, 
 	if loaded.Assets[assetID] == nil {
 		return nil, AssetNotFoundError{AssetID: assetID}
 	}
-	for _, existing := range p.SelectedAssetIDs {
-		if existing == assetID {
-			return append([]string(nil), p.SelectedAssetIDs...), nil
+	if p.SelectAsset(assetID) {
+		if saveErr := project.Save(loaded.Root, p); saveErr != nil {
+			return nil, saveErr
 		}
-	}
-	p.SelectedAssetIDs = append(p.SelectedAssetIDs, assetID)
-	if saveErr := project.Save(loaded.Root, p); saveErr != nil {
-		return nil, saveErr
 	}
 	return append([]string(nil), p.SelectedAssetIDs...), nil
 }

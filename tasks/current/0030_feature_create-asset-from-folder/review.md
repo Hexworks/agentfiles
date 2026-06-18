@@ -9,10 +9,11 @@ Tick exactly one checkbox per issue to tell me which fix to apply, then come bac
 ## Business logic (`dirAllUnknown` + source-path resolution) lives in the TUI
 
 > [!WARNING]
+>
 > - [docs/guidelines/clean_architecture.md](../../../docs/guidelines/clean_architecture.md) — "TUI collects input and renders only"; Stable Dependencies
 > - [docs/guidelines/domain_model.md](../../../docs/guidelines/domain_model.md) — "Put Domain Rules In Domain Code"; do not rely on screen-level validation as the only protection
 
-`dirAllUnknown` (`internal/tui/shell/plan_project.go:97`) encodes a genuine domain eligibility rule — "a folder may be registered only if every descendant file is unknown and there is ≥1 such file; a folder with managed leaves is partly owned already." That is policy, not presentation, yet it exists only in the shell and is the *only* thing preventing registration of a partly-managed folder. `CreateAssetFromFolder` (`internal/app/service.go:167`) never re-asserts it, so the safety relies wholly on the TUI never offering the button.
+`dirAllUnknown` (`internal/tui/shell/plan_project.go:97`) encodes a genuine domain eligibility rule — "a folder may be registered only if every descendant file is unknown and there is ≥1 such file; a folder with managed leaves is partly owned already." That is policy, not presentation, yet it exists only in the shell and is the _only_ thing preventing registration of a partly-managed folder. `CreateAssetFromFolder` (`internal/app/service.go:167`) never re-asserts it, so the safety relies wholly on the TUI never offering the button.
 
 The screen also computes the trusted filesystem path: `s.registerSourceDir = filepath.Join(s.projectPath, filepath.FromSlash(dirPath))` (`plan_project.go:593`). Reconstructing an absolute source path from a forward-slash plan key is a domain/IO concern. The service then trusts a fully-resolved `SourceDir` it did not resolve or contain — contrast every other asset write method, whose comments stress "a tampered caller cannot redirect the write outside the profile root."
 
@@ -24,13 +25,14 @@ s.registerSourceDir = filepath.Join(s.projectPath, filepath.FromSlash(dirPath))
 
 Choose one:
 
-- [ ] Move the all-unknown predicate into `app` (e.g. derive registerable directory keys from the `Preview`) **and** pass the project-relative `dirKey` through `CreateAssetFromFolderInput`, letting the service join it against the resolved project root and re-assert eligibility — keeps the TUI rendering-only and the invariant at the consistency boundary.
+- [x] Move the all-unknown predicate into `app` (e.g. derive registerable directory keys from the `Preview`) **and** pass the project-relative `dirKey` through `CreateAssetFromFolderInput`, letting the service join it against the resolved project root and re-assert eligibility — keeps the TUI rendering-only and the invariant at the consistency boundary.
 - [ ] Keep `dirAllUnknown` in the shell for the button gate, but re-assert eligibility and resolve/contain `sourceDir` inside `CreateAssetFromFolder` so the use case is safe regardless of caller.
 - [ ] Leave as-is — accept the TUI as the sole enforcement point (document the assumption on the use case).
 
 ## Register flow can construct an invalid or unrenderable asset
 
 > [!WARNING]
+>
 > - [docs/guidelines/asset_authoring.md](../../../docs/guidelines/asset_authoring.md) — type-specific conventions (SKILL.md for skills); generic types need explicit projections inside managed surfaces
 > - [docs/guidelines/domain_model.md](../../../docs/guidelines/domain_model.md) — invariants enforced in domain code
 
@@ -46,13 +48,14 @@ if err := utils.CopyDir(sourceDir, dir); err != nil { return "", err }
 
 Choose one:
 
-- [ ] Restrict the [Register] entry point to content-only types (e.g. `skill`/`rule` with required content), and have `InitFromFolder` (or the use case) verify type-specific minimums after the copy (skill ⇒ SKILL.md present; generic ⇒ non-empty projections passing `surfaces.IsAllowed`), returning a typed domain error otherwise.
+- [x] Restrict the [Register] entry point to content-only types (e.g. `skill`/`rule` with required content), and have `InitFromFolder` (or the use case) verify type-specific minimums after the copy (skill ⇒ SKILL.md present; generic ⇒ non-empty projections passing `surfaces.IsAllowed`), returning a typed domain error otherwise.
 - [ ] Validate after copy but allow all types — error out (typed) when the source does not satisfy the chosen type's render contract.
 - [ ] Leave as-is — treat an unrenderable asset as user error surfaced on the next plan (document the limitation in the manual).
 
 ## `CreateAssetFromFolder` leaves an orphaned asset if `project.Save` fails
 
 > [!WARNING]
+>
 > - [docs/guidelines/solid.md](../../../docs/guidelines/solid.md) — SRP / the "single consistency boundary" must actually hold
 > - [docs/guidelines/errors.md](../../../docs/guidelines/errors.md) — partial-failure accumulation (`DeleteAsset` precedent)
 
@@ -70,13 +73,14 @@ if saveErr := project.Save(loaded.Root, p); saveErr != nil {
 
 Choose one:
 
-- [ ] On `project.Save` failure, roll back via `asset.Delete(dir)` (the dir `InitFromFolder` returns) and join both errors with `errs.Errors`, matching the `DeleteAsset` convention.
+- [x] On `project.Save` failure, roll back via `asset.Delete(dir)` (the dir `InitFromFolder` returns) and join both errors with `errs.Errors`, matching the `DeleteAsset` convention.
 - [ ] Accept convergence-on-retry instead: document that a re-run reselects, and make the duplicate-id path a no-op-continue (rather than `AssetExistsError`) so the orphan can be re-selected.
 - [ ] Leave as-is — accept the rare orphan and document it.
 
 ## Selection append duplicates `SelectAsset` and is not idempotent
 
 > [!WARNING]
+>
 > - [docs/guidelines/clean_code.md](../../../docs/guidelines/clean_code.md) — Needless repetition (rules that can drift)
 > - [docs/guidelines/domain_model.md](../../../docs/guidelines/domain_model.md) — one owner for a domain rule
 
@@ -88,13 +92,14 @@ p.SelectedAssetIDs = append(p.SelectedAssetIDs, manifest.ID) // SelectAsset de-d
 
 Choose one:
 
-- [ ] Extract an aggregate-level `p.SelectAsset(id)` (operates on the in-memory manifest, no reload) shared by both `Service.SelectAsset` and `CreateAssetFromFolder`, so the append-if-absent rule has one owner.
+- [x] Extract an aggregate-level `p.SelectAsset(id)` (operates on the in-memory manifest, no reload) shared by both `Service.SelectAsset` and `CreateAssetFromFolder`, so the append-if-absent rule has one owner.
 - [ ] Add a `slices.Contains` guard before the inline append to match `SelectAsset`'s idempotence contract.
 - [ ] Leave as-is — rely on the `AssetExistsError` precondition and document that dangling selections are out of scope.
 
 ## `CopyDir` reads whole files into memory with no size/count ceiling
 
 > [!WARNING]
+>
 > - [docs/guidelines/security.md](../../../docs/guidelines/security.md) — treat external input as untrusted; make risky operations visible
 > - [docs/guidelines/go.md](../../../docs/guidelines/go.md) — idiomatic streaming copy
 
@@ -107,12 +112,13 @@ data, readErr := os.ReadFile(path) // fs.go:109 — unbounded read of an arbitra
 Choose one:
 
 - [ ] Switch to streaming `io.Copy` (explicit open/create with `info.Mode().Perm()`), and/or enforce a per-file + total-size cap returning a typed error.
-- [ ] Surface the file count / total size in the Create Asset modal before confirm (visibility) while keeping `os.ReadFile`.
+- [x] Surface the file count / total size in the Create Asset modal before confirm (visibility) while keeping `os.ReadFile`.
 - [ ] Leave as-is — document the assumption that asset folders are small, hand-curated content.
 
 ## `CopyDir` preserves untrusted source file modes into the profile
 
 > [!WARNING]
+>
 > - [docs/guidelines/security.md](../../../docs/guidelines/security.md) — restrictive permissions for user-local files
 
 `CopyDir` reproduces each source file's permission bits via `info.Mode().Perm()` (`internal/utils/fs.go:114`). Every other write path in the repo uses a fixed `0o644` (`WriteJSON`, the `WriteFile` callers in `asset.go`). A world/group-writable file in an unowned source folder would land world-writable inside `~/profiles/.../assets/`. (Downstream render forces `0o644`, so this is confined to the profile folder; `Perm()` does strip setuid/setgid/sticky.)
@@ -123,13 +129,14 @@ WriteFile(filepath.Join(dst, ...), data, info.Mode().Perm()) // fs.go:114 — ex
 
 Choose one:
 
-- [ ] Normalize copied file modes to `0o644` like every other write path in the repo.
+- [x] Normalize copied file modes to `0o644` like every other write path in the repo.
 - [ ] Mask out group/other write bits at minimum: `info.Mode().Perm() &^ 0o022`.
 - [ ] Leave as-is — accept source modes inside the profile folder.
 
 ## `CopyDir` double-wraps an already-typed `DomainError`
 
 > [!WARNING]
+>
 > - [docs/guidelines/errors.md](../../../docs/guidelines/errors.md) — "Propagating Domain Errors": do not re-wrap a `DomainError` in another `DomainError`
 
 In the `WalkDir` callback, `utils.WriteFile` already returns a typed `DomainError` (`WriteFileError`/`EnsureDirError`), but it is returned as a plain `error` and then re-wrapped in `CopyDirError` (`internal/utils/fs.go:114-121`). The leaf stays reachable via `Unwrap`, so this is not a correctness bug, but a write failure is reported as "copy directory …: write file …" and the immediate severity becomes `CopyDirError`'s. Only the genuinely external failures (`os.ReadFile`, `d.Info()`, the walk `err`) need the `CopyDirError` wrap.
@@ -142,12 +149,13 @@ if writeErr := WriteFile(...); writeErr != nil {
 
 Choose one:
 
-- [ ] After `WalkDir`, return a `DomainError` leaf directly (detect via `errors.As`) instead of wrapping it in `CopyDirError`; wrap only raw `os` errors.
+- [x] After `WalkDir`, return a `DomainError` leaf directly (detect via `errors.As`) instead of wrapping it in `CopyDirError`; wrap only raw `os` errors.
 - [ ] Accept the unified failure mode and document on `CopyDirError` that it deliberately presents one error surface (`Unwrap` keeps the leaf inspectable).
 
 ## `asset.InitFromFolder` duplicates `Init`'s scaffold prelude
 
 > [!WARNING]
+>
 > - [docs/guidelines/clean_code.md](../../../docs/guidelines/clean_code.md) — Needless repetition
 > - [docs/guidelines/solid.md](../../../docs/guidelines/solid.md) — OCP: keep the layout rule closed, vary only the body-seeding step
 
@@ -161,13 +169,14 @@ if err := utils.EnsureDir(dir); err != nil { return "", err }
 
 Choose one:
 
-- [ ] Extract a private `scaffold(root, manifest, seed func(dir string) errs.DomainError)` owning validate → derive dir → EnsureDir → seed → write manifest; `Init` passes the starter seed, `InitFromFolder` passes `func(dir){ return utils.CopyDir(sourceDir, dir) }`.
+- [x] Extract a private `scaffold(root, manifest, seed func(dir string) errs.DomainError)` owning validate → derive dir → EnsureDir → seed → write manifest; `Init` passes the starter seed, `InitFromFolder` passes `func(dir){ return utils.CopyDir(sourceDir, dir) }`.
 - [ ] Extract just `assetDir(root, manifest) string` shared by both.
 - [ ] Leave as-is — two short adjacent functions; defer until task 0010 reworks scaffolding.
 
 ## Test coverage gaps
 
 > [!WARNING]
+>
 > - [docs/guidelines/testing.md](../../../docs/guidelines/testing.md) — test the non-obvious behavior; cover error paths
 
 The new code is unit-tested at the right pyramid level, but several load-bearing paths are unverified: (1) the headline "asset.json written last so a stray source manifest can't clobber" guarantee — no test ever puts an `asset.json` in `sourceDir`; (2) `CopyDir` error path (`CopyDirError`), nonexistent source, and empty source; (3) the `onRegisterAsset` → `handleResolved` wiring (the `filepath.Join`/`FromSlash` path-build and the source-dir snapshot/reset) — tests start one step downstream at `afterRegisterAsset`; (4) `CreateAssetFromFolder` copy-failure leaving no partial selection; (5) `handleRegisterAssetDone` error branch; (6) a nested subtree copied through `InitFromFolder`/`CreateAssetFromFolder` (only flat single-file sources are tested).
@@ -185,13 +194,14 @@ func TestInitFromFolder_SourceManifestDoesNotClobberAuthoritative(t *testing.T) 
 
 Choose one:
 
-- [ ] Add all listed tests (clobber-prevention, `CopyDir` error/empty/nonexistent, `onRegisterAsset`+`handleResolved` wiring, copy-failure no-partial-selection, `handleRegisterAssetDone` error branch, nested-subtree copy).
+- [x] Add all listed tests (clobber-prevention, `CopyDir` error/empty/nonexistent, `onRegisterAsset`+`handleResolved` wiring, copy-failure no-partial-selection, `handleRegisterAssetDone` error branch, nested-subtree copy).
 - [ ] Add the high-value subset only: clobber-prevention, `CopyDir` nonexistent-source error, and the `onRegisterAsset` path-join + modal-routing tests.
 - [ ] Leave coverage as-is.
 
 ## Minor: `InitFromFolder` doc comment narrates the steps
 
 > [!WARNING]
+>
 > - [docs/guidelines/clean_code.md](../../../docs/guidelines/clean_code.md) — comments should explain WHY, not restate the next lines
 
 The comment (`internal/asset/asset.go:189`) recaps each step ("validated, created, copied in"), restating the code. Only the WHY clause — manifest written last so a stray `asset.json` can't clobber — is load-bearing.
@@ -203,12 +213,13 @@ The comment (`internal/asset/asset.go:189`) recaps each step ("validated, create
 
 Choose one:
 
-- [ ] Trim to the counterpart-of-`Init` framing plus the write-last invariant; drop the step list.
+- [x] Trim to the counterpart-of-`Init` framing plus the write-last invariant; drop the step list.
 - [ ] Leave as-is.
 
 ## Minor: `dirAllUnknown` closure with two mutable accumulators
 
 > [!WARNING]
+>
 > - [docs/guidelines/clean_code.md](../../../docs/guidelines/clean_code.md) — Opacity; one level of abstraction
 
 `dirAllUnknown` (`internal/tui/shell/plan_project.go:97`) mixes outer mutable state (`files`, `allUnknown`) with a side-effecting recursive closure. A pair of pure helpers (or one returning `(total, unmanaged int)`) reads more clearly. Behavior is covered by `TestDirAllUnknown`. (If the first issue moves this rule into `app`, apply this cleanup there instead.)
@@ -221,5 +232,5 @@ var walk func(*treetable.Node) // mutates both as a side effect
 
 Choose one:
 
-- [ ] Replace with a helper returning `(total, unmanaged int)` and judge `total > 0 && total == unmanaged` at the top level.
+- [x] Replace with a helper returning `(total, unmanaged int)` and judge `total > 0 && total == unmanaged` at the top level.
 - [ ] Leave as-is — small and tested.

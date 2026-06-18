@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -43,6 +44,66 @@ func TestCopyDirSkipsSymlinks(t *testing.T) {
 	assertFileContent(t, filepath.Join(dst, "real.txt"), "real\n")
 	if Exists(filepath.Join(dst, "link.txt")) {
 		t.Fatalf("symlink was copied into destination")
+	}
+}
+
+func TestCopyDirNonexistentSourceReturnsTypedError(t *testing.T) {
+	src := filepath.Join(t.TempDir(), "missing")
+	dst := filepath.Join(t.TempDir(), "out")
+
+	err := CopyDir(src, dst)
+	if err == nil {
+		t.Fatal("expected error for nonexistent source")
+	}
+	var typed CopyDirError
+	if !errors.As(err, &typed) {
+		t.Fatalf("expected CopyDirError, got %T: %v", err, err)
+	}
+}
+
+func TestCopyDirEmptySourceCreatesNothing(t *testing.T) {
+	src := t.TempDir()
+	dst := filepath.Join(t.TempDir(), "out")
+
+	if err := CopyDir(src, dst); err != nil {
+		t.Fatalf("CopyDir empty source: %v", err)
+	}
+	if entries, _ := os.ReadDir(dst); len(entries) != 0 {
+		t.Fatalf("expected empty destination, got %d entries", len(entries))
+	}
+}
+
+func TestCopyDirNormalizesFileMode(t *testing.T) {
+	src := t.TempDir()
+	dst := filepath.Join(t.TempDir(), "out")
+	p := filepath.Join(src, "exec.sh")
+	if err := os.WriteFile(p, []byte("#!/bin/sh\n"), 0o777); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := CopyDir(src, dst); err != nil {
+		t.Fatalf("CopyDir: %v", err)
+	}
+	info, statErr := os.Stat(filepath.Join(dst, "exec.sh"))
+	if statErr != nil {
+		t.Fatalf("stat copied file: %v", statErr)
+	}
+	if got := info.Mode().Perm(); got != 0o644 {
+		t.Fatalf("copied mode = %o, want 0644", got)
+	}
+}
+
+func TestDirStatsCountsRegularFiles(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, filepath.Join(root, "a.txt"), "abc")
+	writeTestFile(t, filepath.Join(root, "sub", "b.txt"), "de")
+
+	count, size, err := DirStats(root)
+	if err != nil {
+		t.Fatalf("DirStats: %v", err)
+	}
+	if count != 2 || size != 5 {
+		t.Fatalf("DirStats = (%d, %d), want (2, 5)", count, size)
 	}
 }
 

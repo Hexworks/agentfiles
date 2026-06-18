@@ -89,13 +89,15 @@ type CreateAssetInput struct {
 
 // CreateAssetFromFolderInput carries the data for the Plan Project
 // "Register as Asset" action: the manifest the user filled in plus the
-// absolute source folder whose files become the asset's content. The
-// service selects the new asset for the project.
+// project-relative, forward-slash directory key whose files become the
+// asset's content. The service resolves the key against the project root,
+// re-asserts the folder is registerable, and selects the new asset for the
+// project — the TUI never hands over a pre-resolved absolute path.
 type CreateAssetFromFolderInput struct {
 	ProfileRef string
 	ProjectID  string
 	Manifest   asset.Manifest
-	SourceDir  string
+	DirKey     string
 }
 
 // UpdateAssetInput carries the profile reference plus the edited

@@ -27,11 +27,22 @@ type createAssetState struct {
 // when the user leaves `ID` blank, `app.Service.InitAsset` derives it from the
 // name via `utils.Slug`, mirroring how `AddProject` slugs project ids.
 func NewCreateAsset(initial asset.Manifest) *modal.Modal {
-	form, _, extract := buildCreateAsset(initial)
+	form, _, extract := buildCreateAsset(initial, asset.AllTypes())
 	return modal.NewForm("create-asset", form, extract, modal.WithCaption("Creating Asset"))
 }
 
-func buildCreateAsset(initial asset.Manifest) (*huh.Form, *createAssetState, func(*huh.Form) any) {
+// NewCreateAssetFromFolder is the Register-as-Asset variant of the Create
+// Asset modal. The type select is restricted to asset.FolderRegisterableTypes
+// — the convention-based types whose content can come straight from a folder;
+// the generic types need explicit projections the folder flow does not
+// collect. caption surfaces the folder's file count and size so the user sees
+// what will be copied before confirming.
+func NewCreateAssetFromFolder(initial asset.Manifest, caption string) *modal.Modal {
+	form, _, extract := buildCreateAsset(initial, asset.FolderRegisterableTypes())
+	return modal.NewForm("create-asset", form, extract, modal.WithCaption(caption))
+}
+
+func buildCreateAsset(initial asset.Manifest, types []asset.Type) (*huh.Form, *createAssetState, func(*huh.Form) any) {
 	state := &createAssetState{
 		ID:               initial.ID,
 		Name:             initial.Name,
@@ -45,7 +56,7 @@ func buildCreateAsset(initial asset.Manifest) (*huh.Form, *createAssetState, fun
 		huh.NewGroup(
 			idInput(&state.ID, "Identifier (leave blank to derive from name)"),
 			nameInput(&state.Name, "The name of the asset (eg: `agents.md`)"),
-			assetTypeSelect(&state.Type, "The type of the asset (eg: `agents_doc`)"),
+			assetTypeSelect(&state.Type, "The type of the asset (eg: `agents_doc`)", types),
 			descriptionText(&state.Description, "Describe the asset"),
 		),
 		huh.NewGroup(
