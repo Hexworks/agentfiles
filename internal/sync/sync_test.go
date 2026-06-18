@@ -71,6 +71,27 @@ func writeState(t *testing.T, projectRoot string, files map[string]string) {
 	}
 }
 
+// writeStateWithIgnored persists a ManagedState snapshot that also carries
+// ignored folder keys, so Plan/Apply can be exercised against a project that
+// already has persisted ignores.
+func writeStateWithIgnored(t *testing.T, projectRoot string, files map[string]string, ignored []string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(projectRoot, config.StateDirName), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	state := ManagedState{
+		ProfileID:        "personal",
+		ProjectID:        "app",
+		GeneratorVersion: GeneratorVersion,
+		LastAppliedAt:    time.Now().UTC(),
+		ManagedFiles:     files,
+		IgnoredPaths:     ignored,
+	}
+	if err := os.WriteFile(filepath.Join(projectRoot, config.StateDirName, config.StateFileName), mustJSON(t, state), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // findChange returns the FileChange entry for path or fails the test.
 func findChange(t *testing.T, changes []FileChange, path string) FileChange {
 	t.Helper()
@@ -245,7 +266,7 @@ func TestApply_DriftKeep_LeavesOnDiskAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Apply(preview, []DriftResolution{{Path: "AGENTS.md", Decision: DriftKeep}}, nil); err != nil {
+	if err := Apply(preview, []DriftResolution{{Path: "AGENTS.md", Decision: DriftKeep}}, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -270,7 +291,7 @@ func TestApply_DriftOverwrite_RewritesDrift(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Apply(preview, []DriftResolution{{Path: "AGENTS.md", Decision: DriftOverwrite}}, nil); err != nil {
+	if err := Apply(preview, []DriftResolution{{Path: "AGENTS.md", Decision: DriftOverwrite}}, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -302,7 +323,7 @@ func TestApply_DefaultUnknown_LeavesAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Apply(preview, nil, nil); err != nil {
+	if err := Apply(preview, nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -330,7 +351,7 @@ func TestApply_UnknownDelete_RemovesUnknown(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Apply(preview, nil, []UnknownResolution{{Path: ".codex/stray.txt", Decision: UnknownDelete}}); err != nil {
+	if err := Apply(preview, nil, []UnknownResolution{{Path: ".codex/stray.txt", Decision: UnknownDelete}}, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -361,7 +382,7 @@ func TestApply_StateDeleteRemovesFileAndDropsEntry(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Apply(preview, nil, nil); err != nil {
+	if err := Apply(preview, nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -406,7 +427,7 @@ func TestApply_StateRewritten(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Apply(preview, nil, nil); err != nil {
+	if err := Apply(preview, nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -437,7 +458,7 @@ func TestApply_DriftKeep_AdoptsCurrentAsBaseline(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Apply(preview, []DriftResolution{{Path: "AGENTS.md", Decision: DriftKeep}}, nil); err != nil {
+	if err := Apply(preview, []DriftResolution{{Path: "AGENTS.md", Decision: DriftKeep}}, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -472,7 +493,7 @@ func TestApply_DefaultDrift_LeavesAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Apply(preview, nil, nil); err != nil {
+	if err := Apply(preview, nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -503,7 +524,7 @@ func TestApply_DuplicateResolutions_LastWins(t *testing.T) {
 	if err := Apply(preview, []DriftResolution{
 		{Path: "AGENTS.md", Decision: DriftKeep},
 		{Path: "AGENTS.md", Decision: DriftOverwrite},
-	}, nil); err != nil {
+	}, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -530,7 +551,7 @@ func TestApply_UnknownResolutionPath_IsIgnored(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Apply(preview, nil, []UnknownResolution{{Path: ".codex/does-not-exist.txt", Decision: UnknownDelete}}); err != nil {
+	if err := Apply(preview, nil, []UnknownResolution{{Path: ".codex/does-not-exist.txt", Decision: UnknownDelete}}, nil); err != nil {
 		t.Fatalf("expected no error for stray resolution path, got %v", err)
 	}
 
@@ -553,7 +574,7 @@ func TestApply_InvalidResolutionPath_ReturnsTypedError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	applyErr := Apply(preview, nil, []UnknownResolution{{Path: "/etc/passwd", Decision: UnknownDelete}})
+	applyErr := Apply(preview, nil, []UnknownResolution{{Path: "/etc/passwd", Decision: UnknownDelete}}, nil)
 	if applyErr == nil {
 		t.Fatalf("expected InvalidPathError for absolute path, got nil")
 	}
@@ -590,6 +611,110 @@ func TestPlan_CorruptStateKey_ReturnsTypedError(t *testing.T) {
 }
 
 // readState reads and decodes the project's managed state file.
+// TestPlan_SuppressesUnknownUnderIgnoredPath pins the core behaviour: a file
+// inside a persisted ignored folder never surfaces as ChangeUnknown, while a
+// stray file outside it still does.
+func TestPlan_SuppressesUnknownUnderIgnoredPath(t *testing.T) {
+	projectRoot := t.TempDir()
+	loaded, proj := setupProfileAndProject(t, projectRoot)
+	if err := os.WriteFile(filepath.Join(projectRoot, "AGENTS.md"), []byte(agentsDocBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(projectRoot, ".codex", "ignored"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectRoot, ".codex", "ignored", "stray.txt"), []byte("under"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectRoot, ".codex", "other.txt"), []byte("sibling"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeStateWithIgnored(t, projectRoot, map[string]string{"AGENTS.md": hashOf(agentsDocBody)}, []string{".codex/ignored"})
+
+	preview, err := Plan(loaded, proj)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, c := range preview.Changes {
+		if c.Path == ".codex/ignored/stray.txt" {
+			t.Fatalf("file under ignored folder must be suppressed, got %+v", c)
+		}
+	}
+	sibling := findChange(t, preview.Changes, ".codex/other.txt")
+	if sibling.Kind != ChangeUnknown {
+		t.Fatalf(".codex/other.txt kind = %q, want unknown", sibling.Kind)
+	}
+}
+
+// TestApply_UnionsAndPersistsIgnoredPaths pins that Apply keeps previously
+// persisted ignores and adds the newly selected ones, deduplicated and sorted.
+func TestApply_UnionsAndPersistsIgnoredPaths(t *testing.T) {
+	projectRoot := t.TempDir()
+	loaded, proj := setupProfileAndProject(t, projectRoot)
+	if err := os.WriteFile(filepath.Join(projectRoot, "AGENTS.md"), []byte(agentsDocBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeStateWithIgnored(t, projectRoot, map[string]string{"AGENTS.md": hashOf(agentsDocBody)}, []string{".cursor/old"})
+	preview, err := Plan(loaded, proj)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Apply(preview, nil, nil, []string{".codex/new", ".cursor/old"}); err != nil {
+		t.Fatal(err)
+	}
+
+	state := readState(t, projectRoot)
+	want := []string{".codex/new", ".cursor/old"}
+	if len(state.IgnoredPaths) != len(want) {
+		t.Fatalf("ignored_paths = %v, want %v", state.IgnoredPaths, want)
+	}
+	for i, w := range want {
+		if state.IgnoredPaths[i] != w {
+			t.Fatalf("ignored_paths = %v, want %v (sorted, deduped)", state.IgnoredPaths, want)
+		}
+	}
+}
+
+// TestApply_InvalidIgnoredPath_ReturnsTypedError ensures ignored keys go
+// through the same path validator as resolutions.
+func TestApply_InvalidIgnoredPath_ReturnsTypedError(t *testing.T) {
+	projectRoot := t.TempDir()
+	loaded, proj := setupProfileAndProject(t, projectRoot)
+	if err := os.WriteFile(filepath.Join(projectRoot, "AGENTS.md"), []byte(agentsDocBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeState(t, projectRoot, map[string]string{"AGENTS.md": hashOf(agentsDocBody)})
+	preview, err := Plan(loaded, proj)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	applyErr := Apply(preview, nil, nil, []string{"/etc/passwd"})
+	var invalid InvalidPathError
+	if !errors.As(applyErr, &invalid) {
+		t.Fatalf("expected InvalidPathError, got %T: %v", applyErr, applyErr)
+	}
+}
+
+// TestPlan_CorruptIgnoredPathInState_ReturnsTypedError ensures a tampered
+// ignored key is rejected on load like a tampered managed-file key.
+func TestPlan_CorruptIgnoredPathInState_ReturnsTypedError(t *testing.T) {
+	projectRoot := t.TempDir()
+	loaded, proj := setupProfileAndProject(t, projectRoot)
+	if err := os.WriteFile(filepath.Join(projectRoot, "AGENTS.md"), []byte(agentsDocBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeStateWithIgnored(t, projectRoot, map[string]string{"AGENTS.md": hashOf(agentsDocBody)}, []string{"../escape"})
+
+	_, planErr := Plan(loaded, proj)
+	var corrupt StateCorruptError
+	if !errors.As(planErr, &corrupt) {
+		t.Fatalf("expected StateCorruptError, got %T: %v", planErr, planErr)
+	}
+}
+
 func readState(t *testing.T, projectRoot string) ManagedState {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join(projectRoot, config.StateDirName, config.StateFileName))

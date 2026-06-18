@@ -348,13 +348,15 @@ type UnknownResolution struct {
 // and then asking the sync package to materialize the desired files. The
 // caller supplies per-file resolutions for drift and unknown entries.
 // Defaults (no resolution for a path): drift kept, unknown kept; create/
-// update/delete always apply.
-func (s *Service) Apply(profileRef, projectID string, driftResolutions []DriftResolution, unknownResolutions []UnknownResolution) (*Preview, errs.DomainError) {
+// update/delete always apply. ignoredPaths carries the folder keys the user
+// chose to ignore this apply; they are unioned with any previously persisted
+// ignored paths and stored so future plans suppress unknowns under them.
+func (s *Service) Apply(profileRef, projectID string, driftResolutions []DriftResolution, unknownResolutions []UnknownResolution, ignoredPaths []string) (*Preview, errs.DomainError) {
 	syncPreview, err := s.planSync(profileRef, projectID)
 	if err != nil {
 		return nil, err
 	}
-	if err := llmsync.Apply(syncPreview, toSyncDriftResolutions(driftResolutions), toSyncUnknownResolutions(unknownResolutions)); err != nil {
+	if err := llmsync.Apply(syncPreview, toSyncDriftResolutions(driftResolutions), toSyncUnknownResolutions(unknownResolutions), ignoredPaths); err != nil {
 		return nil, err
 	}
 	return previewFromSync(syncPreview), nil

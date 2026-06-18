@@ -340,16 +340,30 @@ func dirNode(p string, children ...*treetable.Node) *treetable.Node {
 	return &treetable.Node{Data: planNode{kind: planNodeDir, path: p}, Children: children}
 }
 
-func TestPlanProjectScreen_TreeActionsFnRegisterableDirGetsRegisterBtn(t *testing.T) {
+func TestPlanProjectScreen_TreeActionsFnRegisterableDirGetsRegisterAndIgnoreBtns(t *testing.T) {
 	f := newPlanActionsFake("Proj", nil)
 	s := newPlanProjectScreen(f, "alpha", "proj-1")
 	s.registerableDirs = map[string]bool{"sub": true}
 	fn := s.treeActionsFn()
 	got := fn(dirNode("sub", fileNode("sub/a.md", app.ChangeUnknown)))
+	if len(got) != 2 {
+		t.Fatalf("got %d buttons, want 2", len(got))
+	}
+	assertBtn(t, got[0], "Register", 'r')
+	assertBtn(t, got[1], "Ignore", 'i')
+}
+
+func TestPlanProjectScreen_TreeActionsFnIgnoredDirGetsShowBtnOnly(t *testing.T) {
+	f := newPlanActionsFake("Proj", nil)
+	s := newPlanProjectScreen(f, "alpha", "proj-1")
+	s.registerableDirs = map[string]bool{"sub": true}
+	s.ignoredDirs = map[string]bool{"sub": true}
+	fn := s.treeActionsFn()
+	got := fn(dirNode("sub", fileNode("sub/a.md", app.ChangeUnknown)))
 	if len(got) != 1 {
 		t.Fatalf("got %d buttons, want 1", len(got))
 	}
-	assertBtn(t, got[0], "Register", 'r')
+	assertBtn(t, got[0], "Show", 's')
 }
 
 func TestPlanProjectScreen_TreeActionsFnNonRegisterableDirGetsNoBtn(t *testing.T) {
@@ -531,6 +545,102 @@ func TestPlanProjectScreen_OnApplyWithSelectionsBuildsCorrectSlices(t *testing.T
 	}
 }
 
+// findPlanNode walks the tree for the dir/file node whose payload path
+// matches, so collapse tests can assert structure without parsing rendered
+// rows.
+func findPlanNode(n *treetable.Node, path string) *treetable.Node {
+	if d, ok := n.Data.(planNode); ok && d.path == path {
+		return n
+	}
+	for _, c := range n.Children {
+		if got := findPlanNode(c, path); got != nil {
+			return got
+		}
+	}
+	return nil
+}
+
+func TestBuildPlanTree_IgnoredFolderCollapsesAndDropsSlash(t *testing.T) {
+	changes := []app.FileChange{
+		{Path: "sub/a.md", Kind: app.ChangeUnknown},
+		{Path: "sub/b.md", Kind: app.ChangeUnknown},
+	}
+
+	open := buildPlanTree("Proj", changes, map[string]bool{})
+	sub := findPlanNode(open, "sub")
+	if sub == nil {
+		t.Fatal("expected a node for sub")
+	}
+	if sub.Label != "sub/" {
+		t.Errorf("open folder label = %q, want %q", sub.Label, "sub/")
+	}
+	if len(sub.Children) != 2 {
+		t.Errorf("open folder children = %d, want 2", len(sub.Children))
+	}
+
+	collapsed := buildPlanTree("Proj", changes, map[string]bool{"sub": true})
+	sub2 := findPlanNode(collapsed, "sub")
+	if sub2 == nil {
+		t.Fatal("expected a node for ignored sub")
+	}
+	if sub2.Label != "sub" {
+		t.Errorf("ignored folder label = %q, want %q (no trailing slash)", sub2.Label, "sub")
+	}
+	if len(sub2.Children) != 0 {
+		t.Errorf("ignored folder children = %d, want 0", len(sub2.Children))
+	}
+}
+
+func TestPlanProjectScreen_ToggleIgnoreCollapsesAndRestores(t *testing.T) {
+	changes := []app.FileChange{{Path: "sub/a.md", Kind: app.ChangeUnknown}}
+	f := newPlanActionsFake("Proj", changes)
+	s := newPlanProjectScreen(f, "alpha", "proj-1")
+	planLoadInto(t, s, f)
+
+	before := len(s.tree.Rows())
+	s.toggleIgnore("sub", true)
+	if !s.ignoredDirs["sub"] {
+		t.Fatal("ignoredDirs[sub] = false, want true after ignore")
+	}
+	if got := len(s.tree.Rows()); got >= before {
+		t.Errorf("rows after ignore = %d, want fewer than %d", got, before)
+	}
+
+	s.toggleIgnore("sub", false)
+	if s.ignoredDirs["sub"] {
+		t.Fatal("ignoredDirs[sub] = true, want false after show")
+	}
+	if got := len(s.tree.Rows()); got != before {
+		t.Errorf("rows after show = %d, want %d (restored)", got, before)
+	}
+}
+
+func TestPlanProjectScreen_OnApplyForwardsIgnoredDirsSorted(t *testing.T) {
+	changes := []app.FileChange{
+		{Path: "b/x.md", Kind: app.ChangeUnknown},
+		{Path: "a/y.md", Kind: app.ChangeUnknown},
+	}
+	f := newPlanActionsFake("Proj", changes)
+	s := newPlanProjectScreen(f, "alpha", "proj-1")
+	planLoadInto(t, s, f)
+	s.ignoredDirs = map[string]bool{"b": true, "a": true}
+
+	_ = s.onApply()()
+	if len(f.syncInputs) != 1 {
+		t.Fatalf("syncInputs len = %d, want 1", len(f.syncInputs))
+	}
+	want := []string{"a", "b"}
+	got := f.syncInputs[0].Ignored
+	if len(got) != len(want) {
+		t.Fatalf("Ignored = %v, want %v", got, want)
+	}
+	for i, w := range want {
+		if got[i] != w {
+			t.Fatalf("Ignored = %v, want %v (sorted)", got, want)
+		}
+	}
+}
+
 func TestPlanProjectScreen_OnApplySuccessEmitsNotificationAndPop(t *testing.T) {
 	f := newPlanActionsFake("Proj", nil)
 	s := newPlanProjectScreen(f, "alpha", "proj-1")
@@ -627,7 +737,7 @@ func TestPlanProjectScreen_MnemonicUniquenessExhaustive(t *testing.T) {
 		for k, v := range ov.unknown {
 			s.unknownResolutions[k] = v
 		}
-		s.tree.SetRoot(buildPlanTree(s.projectName, s.preview.Changes))
+		s.tree.SetRoot(buildPlanTree(s.projectName, s.preview.Changes, s.ignoredDirs))
 		rowMax := len(changes) + 5
 		for row := 0; row < rowMax; row++ {
 			if row > 0 {

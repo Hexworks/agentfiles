@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/hexworks/agentfiles/internal/actions"
@@ -215,5 +216,34 @@ func TestActions_SyncProject_PassesDriftAndUnknownResolutions(t *testing.T) {
 
 	if _, planErr := f.A.PlanProject(actions.PlanProjectInput{ProfileRef: "personal", ProjectID: "repo"}); planErr != nil {
 		t.Fatalf("re-plan: %v", planErr)
+	}
+}
+
+func TestActions_SyncProject_PersistsIgnoredPaths(t *testing.T) {
+	f := newFixture(t, withProfile())
+	repo := filepath.Join(f.Root, "repo")
+	if _, addErr := f.A.AddProject(actions.AddProjectInput{
+		ProfileRef:    "personal",
+		Name:          "Repo",
+		Path:          repo,
+		EnabledAgents: []string{"codex"},
+	}); addErr != nil {
+		t.Fatalf("seed: %v", addErr)
+	}
+
+	if _, err := f.A.SyncProject(actions.SyncProjectInput{
+		ProfileRef: "personal",
+		ProjectID:  "repo",
+		Ignored:    []string{".codex/legacy"},
+	}); err != nil {
+		t.Fatalf("SyncProject: %v", err)
+	}
+
+	data, readErr := os.ReadFile(filepath.Join(repo, config.StateDirName, config.StateFileName))
+	if readErr != nil {
+		t.Fatalf("read state: %v", readErr)
+	}
+	if !strings.Contains(string(data), `".codex/legacy"`) {
+		t.Fatalf("state.json missing ignored path, got: %s", data)
 	}
 }

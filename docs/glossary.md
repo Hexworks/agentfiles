@@ -137,6 +137,15 @@ The limited set of output locations that `agentfiles` is allowed to manage:
 The `.agentfiles/state.json` file written into a target repository. It stores
 managed-file hashes and generation metadata for the last successful apply.
 
+## Ignored Path
+
+A repo-relative directory key recorded in the `ignored_paths` list of the
+managed state. It marks an all-unknown folder the user chose to suppress on
+the Plan Project screen. Each `sync.Plan` drops any `ChangeUnknown` whose
+path sits under an ignored path, so the folder no longer appears. On apply
+the list is unioned with the previously-persisted paths, never dropped. See
+ADR 0010.
+
 ## Drift
 
 A condition where a previously managed file was changed locally after apply and

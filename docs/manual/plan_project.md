@@ -40,6 +40,18 @@ original project files are left untouched.
 Directories with any managed (`add` / `update` / `drift`) leaf do not offer
 **Register** — they are already partly owned by the profile.
 
+## Directory actions (ignore folder)
+
+The same all-unknown directory rows also offer **Ignore** (`i`) alongside
+**Register**. Ignoring is an in-memory toggle: the folder row collapses (its
+subtree disappears and the trailing `/` drops from the label), **Register**
+hides, and the button flips to **Show** (`s`) to restore it. No modal appears.
+
+On **Apply**, ignored folders persist into the `ignored_paths` list in
+`<repo>/.agentfiles/state.json` (unioned with any already-persisted paths, never
+dropped). Every later **Plan** suppresses any `? unknown` whose path sits under
+an ignored folder, so the folder no longer appears at all.
+
 ## Screen actions
 
 - **Apply** (`a`) — write the plan. On success the screen pops back to where

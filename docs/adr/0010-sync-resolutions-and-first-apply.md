@@ -120,3 +120,19 @@ apply.
 The Plan Project Screen (task 0029) consumes this model and presents the
 toggle buttons described in task 0015. Until that ships, the engine is
 already correct and the existing TUI keeps applying with the new defaults.
+
+## Addendum: ignored paths (task 0031)
+
+`ManagedState` gains an `ignored_paths []string` list — repo-relative,
+forward-slash directory keys validated like `managed_files`. It records
+all-unknown folders the user chose to suppress on the Plan Project screen
+(the inverse of the Register action from task 0030).
+
+Unlike a `Resolution`, ignoring is purely additive, so it carries no Decision
+enum — a plain `[]string` flows through `Apply`. On apply the persisted list is
+the **union** of the prior state's `ignored_paths` and this session's ignores
+(deduplicated and sorted), so already-persisted ignores survive even after
+their folders vanish from the preview. Each subsequent `sync.Plan` suppresses
+any `ChangeUnknown` whose path sits under an ignored path, so the folder no
+longer appears at all. No new typed error is introduced beyond reusing
+`StateCorruptError` for an invalid persisted key.
