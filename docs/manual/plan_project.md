@@ -45,7 +45,7 @@ Directories with any managed (`add` / `update` / `drift`) leaf do not offer
 The same all-unknown directory rows also offer **Ignore** (`i`) alongside
 **Register**. Ignoring is an in-memory toggle: the folder row collapses (its
 subtree disappears and the trailing `/` drops from the label), **Register**
-hides, and the button flips to **Show** (`s`) to restore it. No modal appears.
+hides, and the button flips to **Show** (`w`) to restore it. No modal appears.
 
 On **Apply**, ignored folders persist into the `ignored_paths` list in
 `<repo>/.agentfiles/state.json` (unioned with any already-persisted paths, never

@@ -4,7 +4,7 @@ Added an **Ignore** escape hatch to the Plan Project screen, the inverse of
 the **Register** action from task 0030. When the cursor sits on a directory
 whose every descendant is `? unknown`, pressing `i` collapses the folder
 (subtree removed, trailing `/` dropped from the label), hides **Register**, and
-flips the button to **Show** (`s`) which restores it. Ignoring is an in-memory
+flips the button to **Show** (`w`) which restores it. Ignoring is an in-memory
 toggle with no modal, mirroring the drift/unknown resolution UX.
 
 On **Apply** the ignored folders persist into a new `ignored_paths` list in

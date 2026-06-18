@@ -363,7 +363,7 @@ func TestPlanProjectScreen_TreeActionsFnIgnoredDirGetsShowBtnOnly(t *testing.T) 
 	if len(got) != 1 {
 		t.Fatalf("got %d buttons, want 1", len(got))
 	}
-	assertBtn(t, got[0], "Show", 's')
+	assertBtn(t, got[0], "Show", 'w')
 }
 
 func TestPlanProjectScreen_TreeActionsFnNonRegisterableDirGetsNoBtn(t *testing.T) {

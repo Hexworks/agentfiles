@@ -521,7 +521,7 @@ func (s *planProjectScreen) ignoreFolderBtn(dirPath string) *mnemonic.Button {
 }
 
 func (s *planProjectScreen) showFolderBtn(dirPath string) *mnemonic.Button {
-	return mnemonic.New("Show", 's', func() tea.Cmd { return s.toggleIgnore(dirPath, false) })
+	return mnemonic.New("Show", 'w', func() tea.Cmd { return s.toggleIgnore(dirPath, false) })
 }
 
 func (s *planProjectScreen) openFileBtn(path string) *mnemonic.Button {
