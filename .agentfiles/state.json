@@ -2,7 +2,7 @@
   "profile_id": "addamsson",
   "project_id": "agentfiles",
   "generator_version": "1.0.0",
-  "last_applied_at": "2026-06-18T18:57:46.175492875Z",
+  "last_applied_at": "2026-06-18T20:32:35.329681485Z",
   "managed_files": {
     ".claude/skills/af.cleanup-tasks/SKILL.md": "2dbe3a8d3aa5b5f747142977b955eb9f06947c3c94e02d0dfb07a43c4affe207",
     ".claude/skills/af.cleanup-tasks/cleanup-tasks.sh": "833ede0e3e070fcf7811ca5dd962357cfe5ac127335f09e3711dc494b6386482",
@@ -72,5 +72,28 @@
     ".codex/skills/af.task.implement/changelog-template.md": "5f103bf4b49285ce0ec53ab82c72cc095105095ffbfd878fd9261417addf8e7a",
     ".codex/skills/af.task.review/SKILL.md": "bbb5642879692d06e38564267f47b8348d19dc37c08bf5ee80cfce00f6eb5e77",
     ".codex/skills/af.task.review/review-template.md": "3a93c69852cfe9449186a1db444acc7e6eb596d7dad92d500f55b6053c47fe22"
-  }
+  },
+  "ignored_paths": [
+    ".claude/skills/ask-matt",
+    ".claude/skills/codebase-design",
+    ".claude/skills/decision-mapping",
+    ".claude/skills/design-an-interface",
+    ".claude/skills/diagnosing-bugs",
+    ".claude/skills/domain-modeling",
+    ".claude/skills/grill-me",
+    ".claude/skills/grill-with-docs",
+    ".claude/skills/grilling",
+    ".claude/skills/handoff",
+    ".claude/skills/implement",
+    ".claude/skills/improve-codebase-architecture",
+    ".claude/skills/prototype",
+    ".claude/skills/request-refactor-plan",
+    ".claude/skills/setup-matt-pocock-skills",
+    ".claude/skills/tdd",
+    ".claude/skills/teach",
+    ".claude/skills/to-issues",
+    ".claude/skills/to-prd",
+    ".claude/skills/triage",
+    ".claude/skills/writing-great-skills"
+  ]
 }
