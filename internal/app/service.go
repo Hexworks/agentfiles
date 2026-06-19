@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -344,22 +345,74 @@ type UnknownResolution struct {
 	Decision UnknownDecision
 }
 
+// Resolutions is the app-layer mirror of llmsync.Resolutions: the drift
+// and unknown per-file choices plus the folder keys to ignore, bundled so
+// Apply's signature stays stable as resolution kinds grow.
+type Resolutions struct {
+	Drift        []DriftResolution
+	Unknown      []UnknownResolution
+	IgnoredPaths []string
+}
+
 // Apply executes the write half of the pipeline by first building a preview
 // and then asking the sync package to materialize the desired files. The
 // caller supplies per-file resolutions for drift and unknown entries.
 // Defaults (no resolution for a path): drift kept, unknown kept; create/
-// update/delete always apply. ignoredPaths carries the folder keys the user
+// update/delete always apply. r.IgnoredPaths carries the folder keys the user
 // chose to ignore this apply; they are unioned with any previously persisted
 // ignored paths and stored so future plans suppress unknowns under them.
-func (s *Service) Apply(profileRef, projectID string, driftResolutions []DriftResolution, unknownResolutions []UnknownResolution, ignoredPaths []string) (*Preview, errs.DomainError) {
+//
+// Newly selected ignored keys are re-asserted as registerable against the
+// freshly computed plan (the same all-unknown rule the TUI button gate uses),
+// so a stale or hand-built key cannot persist an ancestor of managed files
+// into ignored_paths. Already-persisted keys are exempt: their folders have
+// legitimately vanished from the plan and must survive the union.
+func (s *Service) Apply(profileRef, projectID string, r Resolutions) (*Preview, errs.DomainError) {
 	syncPreview, err := s.planSync(profileRef, projectID)
 	if err != nil {
 		return nil, err
 	}
-	if err := llmsync.Apply(syncPreview, toSyncDriftResolutions(driftResolutions), toSyncUnknownResolutions(unknownResolutions), ignoredPaths); err != nil {
+	if eligErr := s.assertIgnoredRegisterable(syncPreview, r.IgnoredPaths); eligErr != nil {
+		return nil, eligErr
+	}
+	syncResolutions := llmsync.Resolutions{
+		Drift:        toSyncDriftResolutions(r.Drift),
+		Unknown:      toSyncUnknownResolutions(r.Unknown),
+		IgnoredPaths: r.IgnoredPaths,
+	}
+	if err := llmsync.Apply(syncPreview, syncResolutions); err != nil {
 		return nil, err
 	}
 	return previewFromSync(syncPreview), nil
+}
+
+// assertIgnoredRegisterable verifies every newly selected ignored key is an
+// all-unknown folder in the freshly computed plan. Keys already persisted in
+// the prior managed state are skipped because their folders no longer appear
+// as unknown (they are already suppressed). Bad keys accumulate so the caller
+// learns about every offending folder at once.
+func (s *Service) assertIgnoredRegisterable(syncPreview *llmsync.Preview, ignoredPaths []string) errs.DomainError {
+	if len(ignoredPaths) == 0 {
+		return nil
+	}
+	var prior []string
+	if syncPreview.ManagedState != nil {
+		prior = syncPreview.ManagedState.IgnoredPaths
+	}
+	registerable := RegisterableDirs(previewFromSync(syncPreview).Changes)
+	var failures errs.Errors
+	for _, p := range ignoredPaths {
+		if slices.Contains(prior, p) {
+			continue
+		}
+		if !registerable[p] {
+			failures = append(failures, FolderNotRegisterableError{DirKey: p})
+		}
+	}
+	if len(failures) == 0 {
+		return nil
+	}
+	return failures
 }
 
 func toSyncDriftResolutions(in []DriftResolution) []llmsync.DriftResolution {

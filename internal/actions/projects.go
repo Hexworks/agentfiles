@@ -30,8 +30,12 @@ func (a *Actions) PlanProject(in PlanProjectInput) (*app.Preview, errs.DomainErr
 }
 
 // SyncProject applies the desired files to the project repository,
-// honoring the per-file Drift and Unknown resolutions plus the Ignored
+// honoring the per-file Drift and Unknown resolutions plus the ignored
 // folder keys in the input.
 func (a *Actions) SyncProject(in SyncProjectInput) (*app.Preview, errs.DomainError) {
-	return a.svc.Apply(in.ProfileRef, in.ProjectID, in.Drift, in.Unknown, in.Ignored)
+	return a.svc.Apply(in.ProfileRef, in.ProjectID, app.Resolutions{
+		Drift:        in.Drift,
+		Unknown:      in.Unknown,
+		IgnoredPaths: in.IgnoredPaths,
+	})
 }

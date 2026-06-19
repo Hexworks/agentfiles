@@ -69,7 +69,15 @@ type ManagedState struct {
     // ...
 }
 
-func Apply(preview *Preview, driftResolutions []DriftResolution, unknownResolutions []UnknownResolution, ignoredPaths []string) errs.DomainError
+// Resolutions bundles drift, unknown, and ignored choices so Apply's
+// signature stays stable as resolution kinds grow.
+type Resolutions struct {
+    Drift        []DriftResolution
+    Unknown      []UnknownResolution
+    IgnoredPaths []string
+}
+
+func Apply(preview *Preview, r Resolutions) errs.DomainError
 
 func isUnderIgnored(rel string, ignored []string) bool {
     for _, ig := range ignored {
@@ -84,22 +92,24 @@ func isUnderIgnored(rel string, ignored []string) bool {
 ## App / Actions layers
 
 `Service.Apply` and `actions.SyncProject` forward the ignored set through to
-the engine.
+the engine. `Service.Apply` re-asserts each newly selected ignored key is
+registerable against the freshly computed plan (already-persisted keys are
+exempt) so a stale or hand-built key cannot suppress managed files.
 
 ```go
 // after
-func (s *Service) Apply(profileRef, projectID string, driftResolutions []DriftResolution, unknownResolutions []UnknownResolution, ignoredPaths []string) (*Preview, errs.DomainError)
+func (s *Service) Apply(profileRef, projectID string, r Resolutions) (*Preview, errs.DomainError)
 
 type SyncProjectInput struct {
     // ...
-    Ignored []string
+    IgnoredPaths []string
 }
 ```
 
 ## TUI — `internal/tui/shell/plan_project.go`
 
-Added an `ignoredDirs map[string]bool` toggle map, `Ignore`/`Show` buttons, a
+Added an `ignoredPaths map[string]bool` toggle map, `Ignore`/`Show` buttons, a
 `toggleIgnore` command that rebuilds the tree, and `onApply` collects the sorted
-ignored keys into `SyncProjectInput.Ignored`. `buildPlanTree` breaks out of the
-subtree for any dir in `ignoredDirs`, rendering the label without a trailing
+ignored keys into `SyncProjectInput.IgnoredPaths`. `buildPlanTree` breaks out of
+the subtree for any dir in `ignoredPaths`, rendering the label without a trailing
 slash.

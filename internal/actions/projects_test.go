@@ -231,10 +231,25 @@ func TestActions_SyncProject_PersistsIgnoredPaths(t *testing.T) {
 		t.Fatalf("seed: %v", addErr)
 	}
 
+	// First sync writes state.json so the next plan runs unknown detection
+	// (skipped on first apply). Only then is an all-unknown folder eligible
+	// to be ignored — Service.Apply re-asserts that eligibility before
+	// persisting, so the path must actually exist as an unknown folder.
+	if _, err := f.A.SyncProject(actions.SyncProjectInput{ProfileRef: "personal", ProjectID: "repo"}); err != nil {
+		t.Fatalf("initial sync: %v", err)
+	}
+	legacy := filepath.Join(repo, ".codex", "legacy")
+	if err := os.MkdirAll(legacy, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(legacy, "old.md"), []byte("stale"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
 	if _, err := f.A.SyncProject(actions.SyncProjectInput{
-		ProfileRef: "personal",
-		ProjectID:  "repo",
-		Ignored:    []string{".codex/legacy"},
+		ProfileRef:   "personal",
+		ProjectID:    "repo",
+		IgnoredPaths: []string{".codex/legacy"},
 	}); err != nil {
 		t.Fatalf("SyncProject: %v", err)
 	}

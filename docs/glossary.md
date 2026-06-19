@@ -179,7 +179,10 @@ managed surface but was never tracked in `ManagedState`. Unlike
 `ChangeDelete`, removal is **not** automatic: the file is kept unless the
 user supplies a `UnknownDelete` resolution for its path. The first-apply
 clean slate suppresses `ChangeUnknown` entirely so adopting `agentfiles`
-in an existing repo does not flood the preview with noise. See ADR 0010.
+in an existing repo does not flood the preview with noise. An all-unknown
+folder can also be permanently suppressed by adding it to the [Ignored
+Path](#ignored-path) list, a third outcome distinct from the transient
+keep/delete resolution. See ADR 0010.
 
 ## Orphaned File
 
@@ -199,7 +202,9 @@ entry. The sync engine models the two cases as separate types because
 their valid choices do not overlap: `DriftDecision` is `DriftOverwrite`
 or `DriftKeep`; `UnknownDecision` is `UnknownDelete` or `UnknownKeep`.
 Paths absent from the resolution slices fall back to the safe default
-(drift → keep, unknown → keep). See ADR 0010.
+(drift → keep, unknown → keep). A `ChangeUnknown` has a third, persisted
+outcome beyond this transient decision: ignoring the folder (see [Ignored
+Path](#ignored-path)). See ADR 0010.
 
 ## File Resolution
 

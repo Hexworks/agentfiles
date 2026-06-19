@@ -29,7 +29,8 @@ into a new `ignored_paths` list in the target repo's `.agentfiles/state.json`
   (`Keep`/`Overwrite`) and unknown (`Keep`/`Delete`) toggles. Nothing is
   destructive until Apply, which already previews.
 - While a folder is selected for ignoring:
-  - Its action button flips to its counterpart **Show** (un-ignore).
+  - Its action button flips to its counterpart **Show** (un-ignore),
+    mnemonic `w` (`s` is reserved for the global Settings action).
   - **Register** is hidden — we cannot register a folder we are ignoring.
   - The folder's children are **collapsed**: the row renders without its
     subtree and drops the trailing `/` on the label. The child file rows (and

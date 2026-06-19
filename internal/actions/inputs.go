@@ -75,9 +75,9 @@ type SyncProjectInput struct {
 	ProjectID  string
 	Drift      []app.DriftResolution
 	Unknown    []app.UnknownResolution
-	// Ignored carries repo-relative folder keys the user chose to ignore;
+	// IgnoredPaths carries repo-relative folder keys the user chose to ignore;
 	// they are persisted so future plans suppress unknowns under them.
-	Ignored []string
+	IgnoredPaths []string
 }
 
 type LoadAssetInput struct {

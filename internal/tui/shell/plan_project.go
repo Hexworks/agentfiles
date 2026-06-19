@@ -2,9 +2,10 @@ package shell
 
 import (
 	"fmt"
+	"maps"
 	"path"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
@@ -137,11 +138,11 @@ type planProjectScreen struct {
 	// renders the [Register] and [Ignore] buttons on rows the set contains.
 	registerableDirs map[string]bool
 
-	// ignoredDirs holds the directory keys the user toggled [Ignore] on this
+	// ignoredPaths holds the directory keys the user toggled [Ignore] on this
 	// session. It collapses those folders in the tree and, on Apply, is sent
 	// to the service to persist into the project's ignored_paths. Reset on
 	// every (re)load because a fresh preview re-derives the plan.
-	ignoredDirs map[string]bool
+	ignoredPaths map[string]bool
 
 	// modal hosts the Create Asset dialog opened by the row-level
 	// [Register] action; nil when closed. registerDirKey is the
@@ -171,7 +172,7 @@ func newPlanProjectScreen(a planProjectActions, profileID, projectID string) *pl
 		projectID:          projectID,
 		driftResolutions:   map[string]app.DriftDecision{},
 		unknownResolutions: map[string]app.UnknownDecision{},
-		ignoredDirs:        map[string]bool{},
+		ignoredPaths:       map[string]bool{},
 	}
 	s.buildButtons()
 	s.buildTree()
@@ -339,8 +340,8 @@ func (s *planProjectScreen) handleLoaded(m planProjectLoadedMsg) (Screen, tea.Cm
 	s.projectPath = m.proj.Path
 	s.preview = m.preview
 	s.registerableDirs = app.RegisterableDirs(m.preview.Changes)
-	s.ignoredDirs = map[string]bool{}
-	s.tree.SetRoot(buildPlanTree(s.projectName, m.preview.Changes, s.ignoredDirs))
+	s.ignoredPaths = map[string]bool{}
+	s.tree.SetRoot(buildPlanTree(s.projectName, m.preview.Changes, s.ignoredPaths))
 	s.rebuildSet()
 	return s, nil
 }
@@ -489,7 +490,7 @@ func (s *planProjectScreen) actionValue(n *treetable.Node) string {
 func (s *planProjectScreen) treeActionsFn() treetable.ActionsFunc {
 	return func(n *treetable.Node) []*mnemonic.Button {
 		if d, ok := planDirNode(n); ok {
-			if s.ignoredDirs[d.path] {
+			if s.ignoredPaths[d.path] {
 				return []*mnemonic.Button{s.showFolderBtn(d.path)}
 			}
 			if s.registerableDirs[d.path] {
@@ -520,6 +521,9 @@ func (s *planProjectScreen) ignoreFolderBtn(dirPath string) *mnemonic.Button {
 	return mnemonic.New("Ignore", 'i', func() tea.Cmd { return s.toggleIgnore(dirPath, true) })
 }
 
+// showFolderBtn un-ignores a collapsed folder. The mnemonic is 'w' rather
+// than the natural 's' because 's' is already taken by the global Settings
+// action on the status bar.
 func (s *planProjectScreen) showFolderBtn(dirPath string) *mnemonic.Button {
 	return mnemonic.New("Show", 'w', func() tea.Cmd { return s.toggleIgnore(dirPath, false) })
 }
@@ -582,11 +586,11 @@ func (s *planProjectScreen) toggleUnknown(path string, next app.UnknownDecision)
 // The cursor stays on the folder row, which keeps its position.
 func (s *planProjectScreen) toggleIgnore(path string, ignore bool) tea.Cmd {
 	if ignore {
-		s.ignoredDirs[path] = true
+		s.ignoredPaths[path] = true
 	} else {
-		delete(s.ignoredDirs, path)
+		delete(s.ignoredPaths, path)
 	}
-	s.tree.SetRoot(buildPlanTree(s.projectName, s.preview.Changes, s.ignoredDirs))
+	s.tree.SetRoot(buildPlanTree(s.projectName, s.preview.Changes, s.ignoredPaths))
 	s.rebuildSet()
 	return nil
 }
@@ -721,21 +725,17 @@ func (s *planProjectScreen) onApply() tea.Cmd {
 			unknown = append(unknown, app.UnknownResolution{Path: ch.Path, Decision: decision})
 		}
 	}
-	ignored := make([]string, 0, len(s.ignoredDirs))
-	for dir := range s.ignoredDirs {
-		ignored = append(ignored, dir)
-	}
-	sort.Strings(ignored)
+	ignored := slices.Sorted(maps.Keys(s.ignoredPaths))
 	profileRef := s.profileID
 	projectID := s.projectID
 	return mutationCmd(
 		func() errs.DomainError {
 			_, err := s.actions.SyncProject(actions.SyncProjectInput{
-				ProfileRef: profileRef,
-				ProjectID:  projectID,
-				Drift:      drift,
-				Unknown:    unknown,
-				Ignored:    ignored,
+				ProfileRef:   profileRef,
+				ProjectID:    projectID,
+				Drift:        drift,
+				Unknown:      unknown,
+				IgnoredPaths: ignored,
 			})
 			return err
 		},
@@ -748,12 +748,10 @@ func (s *planProjectScreen) onApply() tea.Cmd {
 // app.FileChange.Path is forward-slash relative per the domain's
 // validatePathKey rule.
 //
-// A directory key present in ignoredDirs renders as a collapsed leaf: its
-// node is created without the trailing "/" and without any children, and the
-// walk stops descending past it so its files (and their per-row buttons) never
-// appear. Later changes under the same folder find the node already built and
-// stop as well.
-func buildPlanTree(projectName string, changes []app.FileChange, ignoredDirs map[string]bool) *treetable.Node {
+// A directory key present in ignoredPaths renders as a collapsed leaf (no
+// trailing "/", no children) so an ignored folder's files disappear from the
+// plan until the user un-ignores it.
+func buildPlanTree(projectName string, changes []app.FileChange, ignoredPaths map[string]bool) *treetable.Node {
 	label := "(plan)"
 	if projectName != "" {
 		label = projectName + "/"
@@ -780,7 +778,7 @@ func buildPlanTree(projectName string, changes []app.FileChange, ignoredDirs map
 			} else {
 				acc = acc + "/" + part
 			}
-			ignored := ignoredDirs[acc]
+			ignored := ignoredPaths[acc]
 			node, exists := dirs[acc]
 			if !exists {
 				dirLabel := part + "/"

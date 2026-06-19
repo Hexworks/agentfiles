@@ -357,7 +357,7 @@ func TestPlanProjectScreen_TreeActionsFnIgnoredDirGetsShowBtnOnly(t *testing.T) 
 	f := newPlanActionsFake("Proj", nil)
 	s := newPlanProjectScreen(f, "alpha", "proj-1")
 	s.registerableDirs = map[string]bool{"sub": true}
-	s.ignoredDirs = map[string]bool{"sub": true}
+	s.ignoredPaths = map[string]bool{"sub": true}
 	fn := s.treeActionsFn()
 	got := fn(dirNode("sub", fileNode("sub/a.md", app.ChangeUnknown)))
 	if len(got) != 1 {
@@ -599,16 +599,16 @@ func TestPlanProjectScreen_ToggleIgnoreCollapsesAndRestores(t *testing.T) {
 
 	before := len(s.tree.Rows())
 	s.toggleIgnore("sub", true)
-	if !s.ignoredDirs["sub"] {
-		t.Fatal("ignoredDirs[sub] = false, want true after ignore")
+	if !s.ignoredPaths["sub"] {
+		t.Fatal("ignoredPaths[sub] = false, want true after ignore")
 	}
 	if got := len(s.tree.Rows()); got >= before {
 		t.Errorf("rows after ignore = %d, want fewer than %d", got, before)
 	}
 
 	s.toggleIgnore("sub", false)
-	if s.ignoredDirs["sub"] {
-		t.Fatal("ignoredDirs[sub] = true, want false after show")
+	if s.ignoredPaths["sub"] {
+		t.Fatal("ignoredPaths[sub] = true, want false after show")
 	}
 	if got := len(s.tree.Rows()); got != before {
 		t.Errorf("rows after show = %d, want %d (restored)", got, before)
@@ -623,14 +623,14 @@ func TestPlanProjectScreen_OnApplyForwardsIgnoredDirsSorted(t *testing.T) {
 	f := newPlanActionsFake("Proj", changes)
 	s := newPlanProjectScreen(f, "alpha", "proj-1")
 	planLoadInto(t, s, f)
-	s.ignoredDirs = map[string]bool{"b": true, "a": true}
+	s.ignoredPaths = map[string]bool{"b": true, "a": true}
 
 	_ = s.onApply()()
 	if len(f.syncInputs) != 1 {
 		t.Fatalf("syncInputs len = %d, want 1", len(f.syncInputs))
 	}
 	want := []string{"a", "b"}
-	got := f.syncInputs[0].Ignored
+	got := f.syncInputs[0].IgnoredPaths
 	if len(got) != len(want) {
 		t.Fatalf("Ignored = %v, want %v", got, want)
 	}
@@ -737,7 +737,7 @@ func TestPlanProjectScreen_MnemonicUniquenessExhaustive(t *testing.T) {
 		for k, v := range ov.unknown {
 			s.unknownResolutions[k] = v
 		}
-		s.tree.SetRoot(buildPlanTree(s.projectName, s.preview.Changes, s.ignoredDirs))
+		s.tree.SetRoot(buildPlanTree(s.projectName, s.preview.Changes, s.ignoredPaths))
 		rowMax := len(changes) + 5
 		for row := 0; row < rowMax; row++ {
 			if row > 0 {

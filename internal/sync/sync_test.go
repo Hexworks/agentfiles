@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -266,7 +267,7 @@ func TestApply_DriftKeep_LeavesOnDiskAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Apply(preview, []DriftResolution{{Path: "AGENTS.md", Decision: DriftKeep}}, nil, nil); err != nil {
+	if err := Apply(preview, Resolutions{Drift: []DriftResolution{{Path: "AGENTS.md", Decision: DriftKeep}}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -291,7 +292,7 @@ func TestApply_DriftOverwrite_RewritesDrift(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Apply(preview, []DriftResolution{{Path: "AGENTS.md", Decision: DriftOverwrite}}, nil, nil); err != nil {
+	if err := Apply(preview, Resolutions{Drift: []DriftResolution{{Path: "AGENTS.md", Decision: DriftOverwrite}}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -323,7 +324,7 @@ func TestApply_DefaultUnknown_LeavesAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Apply(preview, nil, nil, nil); err != nil {
+	if err := Apply(preview, Resolutions{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -351,7 +352,7 @@ func TestApply_UnknownDelete_RemovesUnknown(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Apply(preview, nil, []UnknownResolution{{Path: ".codex/stray.txt", Decision: UnknownDelete}}, nil); err != nil {
+	if err := Apply(preview, Resolutions{Unknown: []UnknownResolution{{Path: ".codex/stray.txt", Decision: UnknownDelete}}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -382,7 +383,7 @@ func TestApply_StateDeleteRemovesFileAndDropsEntry(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Apply(preview, nil, nil, nil); err != nil {
+	if err := Apply(preview, Resolutions{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -427,7 +428,7 @@ func TestApply_StateRewritten(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Apply(preview, nil, nil, nil); err != nil {
+	if err := Apply(preview, Resolutions{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -458,7 +459,7 @@ func TestApply_DriftKeep_AdoptsCurrentAsBaseline(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Apply(preview, []DriftResolution{{Path: "AGENTS.md", Decision: DriftKeep}}, nil, nil); err != nil {
+	if err := Apply(preview, Resolutions{Drift: []DriftResolution{{Path: "AGENTS.md", Decision: DriftKeep}}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -493,7 +494,7 @@ func TestApply_DefaultDrift_LeavesAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Apply(preview, nil, nil, nil); err != nil {
+	if err := Apply(preview, Resolutions{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -521,10 +522,10 @@ func TestApply_DuplicateResolutions_LastWins(t *testing.T) {
 	}
 
 	// First entry says Keep, second says Overwrite — Overwrite wins.
-	if err := Apply(preview, []DriftResolution{
+	if err := Apply(preview, Resolutions{Drift: []DriftResolution{
 		{Path: "AGENTS.md", Decision: DriftKeep},
 		{Path: "AGENTS.md", Decision: DriftOverwrite},
-	}, nil, nil); err != nil {
+	}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -551,7 +552,7 @@ func TestApply_UnknownResolutionPath_IsIgnored(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Apply(preview, nil, []UnknownResolution{{Path: ".codex/does-not-exist.txt", Decision: UnknownDelete}}, nil); err != nil {
+	if err := Apply(preview, Resolutions{Unknown: []UnknownResolution{{Path: ".codex/does-not-exist.txt", Decision: UnknownDelete}}}); err != nil {
 		t.Fatalf("expected no error for stray resolution path, got %v", err)
 	}
 
@@ -574,7 +575,7 @@ func TestApply_InvalidResolutionPath_ReturnsTypedError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	applyErr := Apply(preview, nil, []UnknownResolution{{Path: "/etc/passwd", Decision: UnknownDelete}}, nil)
+	applyErr := Apply(preview, Resolutions{Unknown: []UnknownResolution{{Path: "/etc/passwd", Decision: UnknownDelete}}})
 	if applyErr == nil {
 		t.Fatalf("expected InvalidPathError for absolute path, got nil")
 	}
@@ -661,7 +662,7 @@ func TestApply_UnionsAndPersistsIgnoredPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Apply(preview, nil, nil, []string{".codex/new", ".cursor/old"}); err != nil {
+	if err := Apply(preview, Resolutions{IgnoredPaths: []string{".codex/new", ".cursor/old"}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -691,7 +692,7 @@ func TestApply_InvalidIgnoredPath_ReturnsTypedError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	applyErr := Apply(preview, nil, nil, []string{"/etc/passwd"})
+	applyErr := Apply(preview, Resolutions{IgnoredPaths: []string{"/etc/passwd"}})
 	var invalid InvalidPathError
 	if !errors.As(applyErr, &invalid) {
 		t.Fatalf("expected InvalidPathError, got %T: %v", applyErr, applyErr)
@@ -741,4 +742,49 @@ func mustJSON(t *testing.T, v any) []byte {
 		t.Fatal(err)
 	}
 	return data
+}
+
+// TestIsUnderIgnored_PrefixBoundary pins the ig+"/" boundary: an ignored key
+// must match itself and true descendants but never a sibling whose name it is
+// merely a string prefix of. Dropping the "/" would silently over-suppress.
+func TestIsUnderIgnored_PrefixBoundary(t *testing.T) {
+	ignored := []string{".codex/ig"}
+	cases := []struct {
+		rel  string
+		want bool
+	}{
+		{".codex/ig", true},         // exact match
+		{".codex/ig/x.md", true},    // true descendant
+		{".codex/ignore-me", false}, // prefix sibling, must not match
+		{".cursor/other", false},    // unrelated
+	}
+	for _, c := range cases {
+		if got := isUnderIgnored(c.rel, ignored); got != c.want {
+			t.Errorf("isUnderIgnored(%q, %v) = %v, want %v", c.rel, ignored, got, c.want)
+		}
+	}
+}
+
+// TestApply_FirstApply_SerializesIgnoredPathsNull pins the empty-set form:
+// with no managed ignores and no omitempty tag the key serializes as null
+// (present, not omitted), matching managed_files' treatment of an empty map.
+func TestApply_FirstApply_SerializesIgnoredPathsNull(t *testing.T) {
+	projectRoot := t.TempDir()
+	loaded, proj := setupProfileAndProject(t, projectRoot)
+	preview, err := Plan(loaded, proj)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Apply(preview, Resolutions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	data, readErr := os.ReadFile(filepath.Join(projectRoot, config.StateDirName, config.StateFileName))
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if !strings.Contains(string(data), `"ignored_paths": null`) {
+		t.Fatalf("expected ignored_paths to serialize as null, got: %s", data)
+	}
 }

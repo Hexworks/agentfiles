@@ -141,6 +141,16 @@ type UnknownResolution struct {
 	Decision UnknownDecision
 }
 
+// Resolutions bundles everything the user decided for one Apply: the
+// per-file drift and unknown choices plus the folder keys to ignore.
+// Bundling keeps Apply's signature stable as new resolution kinds are
+// added — each becomes a field instead of another positional parameter.
+type Resolutions struct {
+	Drift        []DriftResolution
+	Unknown      []UnknownResolution
+	IgnoredPaths []string
+}
+
 // FileChange is one human-facing diff entry shown in previews.
 type FileChange struct {
 	Path   string
@@ -275,11 +285,11 @@ func classifyDesired(file render.RenderedFile, desiredHash, projectPath string, 
 // surfaces.IsAllowed produce OutsideSurfaceError. Errors accumulate;
 // state is still rewritten so the recorded baseline reflects whatever
 // the apply loop actually wrote.
-func Apply(preview *Preview, driftResolutions []DriftResolution, unknownResolutions []UnknownResolution, ignoredPaths []string) errs.DomainError {
-	driftByPath, validationErrs := indexDriftResolutions(driftResolutions)
-	unknownByPath, unknownErrs := indexUnknownResolutions(unknownResolutions)
+func Apply(preview *Preview, r Resolutions) errs.DomainError {
+	driftByPath, validationErrs := indexDriftResolutions(r.Drift)
+	unknownByPath, unknownErrs := indexUnknownResolutions(r.Unknown)
 	validationErrs = append(validationErrs, unknownErrs...)
-	for _, p := range ignoredPaths {
+	for _, p := range r.IgnoredPaths {
 		if err := validatePathKey(p); err != nil {
 			validationErrs = append(validationErrs, err)
 		}
@@ -351,7 +361,7 @@ func Apply(preview *Preview, driftResolutions []DriftResolution, unknownResoluti
 		GeneratorVersion: GeneratorVersion,
 		LastAppliedAt:    time.Now().UTC(),
 		ManagedFiles:     recordedHashes,
-		IgnoredPaths:     mergeIgnoredPaths(preview.ManagedState, ignoredPaths),
+		IgnoredPaths:     mergeIgnoredPaths(preview.ManagedState, r.IgnoredPaths),
 	}
 	if err := utils.WriteJSON(filepath.Join(preview.ProjectPath, config.StateDirName, config.StateFileName), state); err != nil {
 		domainErrs = append(domainErrs, err)
@@ -370,7 +380,8 @@ func Apply(preview *Preview, driftResolutions []DriftResolution, unknownResoluti
 // set must survive because Apply rewrites state from scratch and an
 // already-ignored folder no longer appears in the preview to be re-selected.
 // The result is deduplicated and sorted for a stable on-disk form. Returns
-// nil when both inputs are empty so the state file omits the key cleanly.
+// nil when both inputs are empty; with no omitempty tag that serializes as
+// "ignored_paths": null, matching managed_files' treatment of an empty map.
 func mergeIgnoredPaths(prior *ManagedState, selected []string) []string {
 	var combined []string
 	if prior != nil {
@@ -596,9 +607,10 @@ func classifyDeleteOrUnknown(rel string, desired map[string]string, state *Manag
 	unknowns[rel] = true
 }
 
-// isUnderIgnored reports whether rel sits inside one of the ignored folder
-// keys: either an exact match or a descendant path. Used to suppress
-// ChangeUnknown entries for folders the user has chosen to ignore.
+// isUnderIgnored suppresses ChangeUnknown entries for folders the user
+// chose to ignore. The ig+"/" boundary stops an ignored key from matching
+// a sibling whose name it is merely a string prefix of (".codex/ig" must
+// not swallow ".codex/ignore-me").
 func isUnderIgnored(rel string, ignored []string) bool {
 	for _, ig := range ignored {
 		if rel == ig || strings.HasPrefix(rel, ig+"/") {
