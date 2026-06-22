@@ -1,11 +1,15 @@
 ---
 id: 0032
 type: feature
-status: active
+status: in-review
 topics: tui, charm, go
 ---
 
 # Toggle Ignored Paths visibility on the Plan Project screen
+
+## Plan
+
+[plan.md](./plan.md)
 
 Follow-up to task 0031 (`ignore-unknown-asset-folder`). 0031 lets the user
 **Ignore** an unknown folder in-session and persists it to the target repo's

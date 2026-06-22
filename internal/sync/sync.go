@@ -361,7 +361,7 @@ func Apply(preview *Preview, r Resolutions) errs.DomainError {
 		GeneratorVersion: GeneratorVersion,
 		LastAppliedAt:    time.Now().UTC(),
 		ManagedFiles:     recordedHashes,
-		IgnoredPaths:     mergeIgnoredPaths(preview.ManagedState, r.IgnoredPaths),
+		IgnoredPaths:     normalizeIgnoredPaths(r.IgnoredPaths),
 	}
 	if err := utils.WriteJSON(filepath.Join(preview.ProjectPath, config.StateDirName, config.StateFileName), state); err != nil {
 		domainErrs = append(domainErrs, err)
@@ -375,23 +375,17 @@ func Apply(preview *Preview, r Resolutions) errs.DomainError {
 	return errs.Errors(domainErrs)
 }
 
-// mergeIgnoredPaths unions the ignored folder keys carried in the prior
-// managed state with the ones the user just selected this apply. The prior
-// set must survive because Apply rewrites state from scratch and an
-// already-ignored folder no longer appears in the preview to be re-selected.
-// The result is deduplicated and sorted for a stable on-disk form. Returns
-// nil when both inputs are empty; with no omitempty tag that serializes as
+// normalizeIgnoredPaths writes the incoming ignored set verbatim (replace, not
+// merge): the TUI now sees the full persisted set and sends the complete
+// desired set on every Apply, so un-ignoring a folder must be able to drop it.
+// The result is deduplicated and sorted for a stable on-disk form. Returns nil
+// when the input is empty; with no omitempty tag that serializes as
 // "ignored_paths": null, matching managed_files' treatment of an empty map.
-func mergeIgnoredPaths(prior *ManagedState, selected []string) []string {
-	var combined []string
-	if prior != nil {
-		combined = append(combined, prior.IgnoredPaths...)
-	}
-	combined = append(combined, selected...)
-	if len(combined) == 0 {
+func normalizeIgnoredPaths(selected []string) []string {
+	if len(selected) == 0 {
 		return nil
 	}
-	return utils.DeduplicateAndSort(combined)
+	return utils.DeduplicateAndSort(selected)
 }
 
 // indexDriftResolutions validates each entry's path and folds the

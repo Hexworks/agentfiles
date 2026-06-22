@@ -70,6 +70,11 @@ type planNode struct {
 	kind   planNodeKind
 	path   string
 	change app.FileChange
+	// persistedIgnored marks a dir row injected from the project's persisted
+	// ignored_paths (not from a FileChange). Such a row is always a collapsed
+	// leaf — Plan suppressed its subtree so no children data exists — and
+	// renders as "! ignored" with a [Show]/[Ignore] toggle.
+	persistedIgnored bool
 }
 
 // planFileNode unpacks n's payload and reports ok only for file rows so
@@ -127,10 +132,11 @@ type planProjectScreen struct {
 	// two-enum decision space (see docs/architecture/12-glossary.md).
 	unknownResolutions map[string]app.UnknownDecision
 
-	tree     *treetable.Model
-	applyBtn *mnemonic.Button
-	backBtn  *mnemonic.Button
-	set      *mnemonic.Set
+	tree           *treetable.Model
+	applyBtn       *mnemonic.Button
+	showIgnoredBtn *mnemonic.Button
+	backBtn        *mnemonic.Button
+	set            *mnemonic.Set
 
 	// registerableDirs is the set of directory keys whose subtree is all
 	// unknown/unmanaged, derived from the loaded preview via
@@ -143,6 +149,23 @@ type planProjectScreen struct {
 	// to the service to persist into the project's ignored_paths. Reset on
 	// every (re)load because a fresh preview re-derives the plan.
 	ignoredPaths map[string]bool
+
+	// persistedIgnored is the sorted set of folder keys already persisted in the
+	// project's ignored_paths (seeded from app.Preview.IgnoredPaths each load).
+	// Plan suppressed their subtrees, so they carry no FileChange; they are
+	// injected into the tree as collapsed "! ignored" leaves when visible.
+	persistedIgnored []string
+	// unignored marks persisted folders the user pressed [Show] on this session:
+	// they are dropped from the desired ignored set on Apply and their row's
+	// button flips to [Ignore].
+	unignored map[string]bool
+	// pinned marks persisted folders touched this session (via [Show]); they
+	// stay visible regardless of the showIgnored toggle. Monotonic — re-ignoring
+	// keeps the pin so the row does not vanish mid-session.
+	pinned map[string]bool
+	// showIgnored is the screen-level toggle; when false persisted-ignored rows
+	// are hidden unless individually pinned. Default false (hidden).
+	showIgnored bool
 
 	// modal hosts the Create Asset dialog opened by the row-level
 	// [Register] action; nil when closed. registerDirKey is the
@@ -173,6 +196,8 @@ func newPlanProjectScreen(a planProjectActions, profileID, projectID string) *pl
 		driftResolutions:   map[string]app.DriftDecision{},
 		unknownResolutions: map[string]app.UnknownDecision{},
 		ignoredPaths:       map[string]bool{},
+		unignored:          map[string]bool{},
+		pinned:             map[string]bool{},
 	}
 	s.buildButtons()
 	s.buildTree()
@@ -182,12 +207,26 @@ func newPlanProjectScreen(a planProjectActions, profileID, projectID string) *pl
 
 func (s *planProjectScreen) buildButtons() {
 	s.applyBtn = mnemonic.New("Apply", 'a', func() tea.Cmd { return s.onApply() })
+	s.refreshShowIgnoredBtn()
 	s.backBtn = mnemonic.New(
 		"Back",
 		'b',
 		func() tea.Cmd { return popCmd() },
 		mnemonic.WithExtraBindingKeys("esc"),
 	)
+}
+
+// refreshShowIgnoredBtn rebuilds the screen-level visibility toggle so its
+// label and mnemonic track showIgnored: "Show Ignored"/'g' when hidden,
+// "Hide Ignored"/'h' when shown. 'g' is used instead of 'i' because the
+// row-level [Ignore] already binds 'i' and the mnemonic.Set enforces
+// uniqueness across cursor-row and screen-level buttons together.
+func (s *planProjectScreen) refreshShowIgnoredBtn() {
+	if s.showIgnored {
+		s.showIgnoredBtn = mnemonic.New("Hide Ignored", 'h', func() tea.Cmd { return s.toggleShowIgnored() })
+		return
+	}
+	s.showIgnoredBtn = mnemonic.New("Show Ignored", 'g', func() tea.Cmd { return s.toggleShowIgnored() })
 }
 
 func (s *planProjectScreen) buildTree() {
@@ -341,7 +380,13 @@ func (s *planProjectScreen) handleLoaded(m planProjectLoadedMsg) (Screen, tea.Cm
 	s.preview = m.preview
 	s.registerableDirs = app.RegisterableDirs(m.preview.Changes)
 	s.ignoredPaths = map[string]bool{}
-	s.tree.SetRoot(buildPlanTree(s.projectName, m.preview.Changes, s.ignoredPaths))
+	s.persistedIgnored = append([]string(nil), m.preview.IgnoredPaths...)
+	slices.Sort(s.persistedIgnored)
+	s.unignored = map[string]bool{}
+	s.pinned = map[string]bool{}
+	s.showIgnored = false
+	s.refreshShowIgnoredBtn()
+	s.rebuildTree()
 	s.rebuildSet()
 	return s, nil
 }
@@ -393,7 +438,7 @@ func (s *planProjectScreen) Body(width int) string {
 	if s.preview == nil {
 		return styles.TextStyle.Render(" Loading…")
 	}
-	buttonRow := " " + s.applyBtn.View() + "  " + s.backBtn.View()
+	buttonRow := " " + s.applyBtn.View() + "  " + s.showIgnoredBtn.View() + "  " + s.backBtn.View()
 	background := lipgloss.JoinVertical(
 		lipgloss.Left,
 		s.tree.View(),
@@ -416,11 +461,36 @@ func (s *planProjectScreen) rebuildSet() {
 		set.Add(b)
 	}
 	set.Add(s.applyBtn)
+	set.Add(s.showIgnoredBtn)
 	set.Add(s.backBtn)
 	s.set = set
 }
 
+// rebuildTree recomputes the treetable root from the current preview, the
+// live-ignored collapse set, and the visible persisted-ignored leaves.
+func (s *planProjectScreen) rebuildTree() {
+	s.tree.SetRoot(buildPlanTree(s.projectName, s.preview.Changes, s.ignoredPaths, s.visiblePersistedIgnored()))
+}
+
+// visiblePersistedIgnored returns the persisted-ignored keys to inject into the
+// tree: all of them when showIgnored is on, otherwise only the pinned ones.
+func (s *planProjectScreen) visiblePersistedIgnored() []string {
+	var out []string
+	for _, p := range s.persistedIgnored {
+		if s.showIgnored || s.pinned[p] {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 func (s *planProjectScreen) statusValue(n *treetable.Node) string {
+	if d, ok := planDirNode(n); ok {
+		if d.persistedIgnored {
+			return "! ignored"
+		}
+		return ""
+	}
 	d, ok := planFileNode(n)
 	if !ok {
 		return ""
@@ -441,6 +511,12 @@ func (s *planProjectScreen) statusValue(n *treetable.Node) string {
 }
 
 func (s *planProjectScreen) statusStyle(n *treetable.Node) lipgloss.Style {
+	if d, ok := planDirNode(n); ok {
+		if d.persistedIgnored {
+			return styles.MutedStyle
+		}
+		return lipgloss.NewStyle()
+	}
 	d, ok := planFileNode(n)
 	if !ok {
 		return lipgloss.NewStyle()
@@ -490,6 +566,12 @@ func (s *planProjectScreen) actionValue(n *treetable.Node) string {
 func (s *planProjectScreen) treeActionsFn() treetable.ActionsFunc {
 	return func(n *treetable.Node) []*mnemonic.Button {
 		if d, ok := planDirNode(n); ok {
+			if d.persistedIgnored {
+				if s.unignored[d.path] {
+					return []*mnemonic.Button{s.reignorePersistedBtn(d.path)}
+				}
+				return []*mnemonic.Button{s.unignorePersistedBtn(d.path)}
+			}
 			if s.ignoredPaths[d.path] {
 				return []*mnemonic.Button{s.showFolderBtn(d.path)}
 			}
@@ -526,6 +608,19 @@ func (s *planProjectScreen) ignoreFolderBtn(dirPath string) *mnemonic.Button {
 // action on the status bar.
 func (s *planProjectScreen) showFolderBtn(dirPath string) *mnemonic.Button {
 	return mnemonic.New("Show", 'w', func() tea.Cmd { return s.toggleIgnore(dirPath, false) })
+}
+
+// unignorePersistedBtn un-ignores a persisted-ignored folder. Mirrors
+// showFolderBtn's 'w' (see its note); the distinct handler tracks the persisted
+// set rather than the live-ignored set.
+func (s *planProjectScreen) unignorePersistedBtn(dirPath string) *mnemonic.Button {
+	return mnemonic.New("Show", 'w', func() tea.Cmd { return s.unignorePersisted(dirPath) })
+}
+
+// reignorePersistedBtn re-ignores a persisted folder the user un-ignored this
+// session, flipping the row back before Apply.
+func (s *planProjectScreen) reignorePersistedBtn(dirPath string) *mnemonic.Button {
+	return mnemonic.New("Ignore", 'i', func() tea.Cmd { return s.reignorePersisted(dirPath) })
 }
 
 func (s *planProjectScreen) openFileBtn(path string) *mnemonic.Button {
@@ -590,7 +685,39 @@ func (s *planProjectScreen) toggleIgnore(path string, ignore bool) tea.Cmd {
 	} else {
 		delete(s.ignoredPaths, path)
 	}
-	s.tree.SetRoot(buildPlanTree(s.projectName, s.preview.Changes, s.ignoredPaths))
+	s.rebuildTree()
+	s.rebuildSet()
+	return nil
+}
+
+// unignorePersisted drops a persisted folder from the desired ignored set and
+// pins its row visible. The row stays a collapsed leaf (no children data exists
+// until the un-ignore is Applied and the project re-Planned), so this only
+// re-renders the action column rather than rebuilding the tree.
+func (s *planProjectScreen) unignorePersisted(path string) tea.Cmd {
+	s.unignored[path] = true
+	s.pinned[path] = true
+	s.tree.RefreshActions()
+	s.rebuildSet()
+	return nil
+}
+
+// reignorePersisted restores a persisted folder to the desired ignored set. The
+// pin survives so the row stays visible for the rest of the session.
+func (s *planProjectScreen) reignorePersisted(path string) tea.Cmd {
+	delete(s.unignored, path)
+	s.tree.RefreshActions()
+	s.rebuildSet()
+	return nil
+}
+
+// toggleShowIgnored flips the screen-level visibility of persisted-ignored
+// rows. Because it changes which rows exist in the tree it rebuilds the root,
+// then refreshes the toggle button label and the mnemonic set.
+func (s *planProjectScreen) toggleShowIgnored() tea.Cmd {
+	s.showIgnored = !s.showIgnored
+	s.refreshShowIgnoredBtn()
+	s.rebuildTree()
 	s.rebuildSet()
 	return nil
 }
@@ -704,7 +831,14 @@ func (s *planProjectScreen) handleRegisterAssetDone(m registerAssetDoneMsg) (Scr
 // — DriftKeep / UnknownKeep — so a future change to that default needs
 // no follow-up here.
 func (s *planProjectScreen) onApply() tea.Cmd {
-	if s.preview == nil || len(s.preview.Changes) == 0 {
+	if s.preview == nil {
+		return nil
+	}
+	// A pure ignore-set change (un-ignoring a persisted folder, or ignoring a
+	// live unknown one) is a valid Apply even with no file changes: it rewrites
+	// ignored_paths without touching files.
+	hasIgnoreChange := len(s.unignored) > 0 || len(s.ignoredPaths) > 0
+	if len(s.preview.Changes) == 0 && !hasIgnoreChange {
 		return nil
 	}
 	var drift []app.DriftResolution
@@ -725,7 +859,19 @@ func (s *planProjectScreen) onApply() tea.Cmd {
 			unknown = append(unknown, app.UnknownResolution{Path: ch.Path, Decision: decision})
 		}
 	}
-	ignored := slices.Sorted(maps.Keys(s.ignoredPaths))
+	// Desired ignored set = (persisted − unignored) ∪ live-ignored. sync writes
+	// it verbatim (replace semantics), so dropping a persisted key here removes
+	// it from ignored_paths on the next Apply.
+	desired := map[string]bool{}
+	for _, p := range s.persistedIgnored {
+		if !s.unignored[p] {
+			desired[p] = true
+		}
+	}
+	for p := range s.ignoredPaths {
+		desired[p] = true
+	}
+	ignored := slices.Sorted(maps.Keys(desired))
 	profileRef := s.profileID
 	projectID := s.projectID
 	return mutationCmd(
@@ -743,15 +889,20 @@ func (s *planProjectScreen) onApply() tea.Cmd {
 	)
 }
 
-// buildPlanTree turns the preview's FileChange list into a directory
-// tree rooted at the project name. Paths are split on "/" because
-// app.FileChange.Path is forward-slash relative per the domain's
-// validatePathKey rule.
+// buildPlanTree turns the preview's FileChange list into a directory tree
+// rooted at the project name, with the persisted-ignored folders in
+// injectedIgnored interleaved at their natural nested/sorted positions. Paths
+// are split on "/" because app.FileChange.Path is forward-slash relative per
+// the domain's validatePathKey rule.
 //
-// A directory key present in ignoredPaths renders as a collapsed leaf (no
-// trailing "/", no children) so an ignored folder's files disappear from the
-// plan until the user un-ignores it.
-func buildPlanTree(projectName string, changes []app.FileChange, ignoredPaths map[string]bool) *treetable.Node {
+// A directory key present in collapsed renders as a collapsed leaf (no trailing
+// "/", no children) so a live-ignored folder's files disappear until the user
+// un-ignores it. Each key in injectedIgnored renders as a terminal collapsed
+// "! ignored" leaf (planNode.persistedIgnored) — Plan suppressed its subtree so
+// there are no children to show. Changes and injected keys are merged into one
+// path-sorted pass over a shared dirs map so the two kinds of rows interleave
+// under common parents.
+func buildPlanTree(projectName string, changes []app.FileChange, collapsed map[string]bool, injectedIgnored []string) *treetable.Node {
 	label := "(plan)"
 	if projectName != "" {
 		label = projectName + "/"
@@ -761,28 +912,44 @@ func buildPlanTree(projectName string, changes []app.FileChange, ignoredPaths ma
 		Data:  planNode{kind: planNodeRoot},
 	}
 	dirs := map[string]*treetable.Node{"": root}
+
+	type planItem struct {
+		path    string
+		change  app.FileChange
+		ignored bool
+	}
+	items := make([]planItem, 0, len(changes)+len(injectedIgnored))
 	for _, ch := range changes {
-		parts := strings.Split(ch.Path, "/")
+		items = append(items, planItem{path: ch.Path, change: ch})
+	}
+	for _, p := range injectedIgnored {
+		items = append(items, planItem{path: p, ignored: true})
+	}
+	slices.SortFunc(items, func(a, b planItem) int { return strings.Compare(a.path, b.path) })
+
+	for _, it := range items {
+		parts := strings.Split(it.path, "/")
 		parent := root
 		acc := ""
 		for i, part := range parts {
 			if i == len(parts)-1 {
-				parent.Children = append(parent.Children, &treetable.Node{
-					Label: part,
-					Data:  planNode{kind: planNodeFile, path: ch.Path, change: ch},
-				})
-				continue
+				leaf := planNode{kind: planNodeFile, path: it.path, change: it.change}
+				if it.ignored {
+					leaf = planNode{kind: planNodeDir, path: it.path, persistedIgnored: true}
+				}
+				parent.Children = append(parent.Children, &treetable.Node{Label: part, Data: leaf})
+				break
 			}
 			if acc == "" {
 				acc = part
 			} else {
 				acc = acc + "/" + part
 			}
-			ignored := ignoredPaths[acc]
+			isCollapsed := collapsed[acc]
 			node, exists := dirs[acc]
 			if !exists {
 				dirLabel := part + "/"
-				if ignored {
+				if isCollapsed {
 					dirLabel = part
 				}
 				node = &treetable.Node{
@@ -792,7 +959,7 @@ func buildPlanTree(projectName string, changes []app.FileChange, ignoredPaths ma
 				dirs[acc] = node
 				parent.Children = append(parent.Children, node)
 			}
-			if ignored {
+			if isCollapsed {
 				break
 			}
 			parent = node

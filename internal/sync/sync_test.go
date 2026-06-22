@@ -648,9 +648,11 @@ func TestPlan_SuppressesUnknownUnderIgnoredPath(t *testing.T) {
 	}
 }
 
-// TestApply_UnionsAndPersistsIgnoredPaths pins that Apply keeps previously
-// persisted ignores and adds the newly selected ones, deduplicated and sorted.
-func TestApply_UnionsAndPersistsIgnoredPaths(t *testing.T) {
+// TestApply_ReplacesIgnoredPaths pins replace (not union) semantics: the TUI
+// owns the full desired set, so Apply writes the incoming keys verbatim and a
+// prior key the caller omits is dropped. Here prior .cursor/old is not in the
+// incoming set, so it must disappear; .codex/new is the only survivor.
+func TestApply_ReplacesIgnoredPaths(t *testing.T) {
 	projectRoot := t.TempDir()
 	loaded, proj := setupProfileAndProject(t, projectRoot)
 	if err := os.WriteFile(filepath.Join(projectRoot, "AGENTS.md"), []byte(agentsDocBody), 0o644); err != nil {
@@ -662,18 +664,18 @@ func TestApply_UnionsAndPersistsIgnoredPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Apply(preview, Resolutions{IgnoredPaths: []string{".codex/new", ".cursor/old"}}); err != nil {
+	if err := Apply(preview, Resolutions{IgnoredPaths: []string{".codex/new"}}); err != nil {
 		t.Fatal(err)
 	}
 
 	state := readState(t, projectRoot)
-	want := []string{".codex/new", ".cursor/old"}
+	want := []string{".codex/new"}
 	if len(state.IgnoredPaths) != len(want) {
-		t.Fatalf("ignored_paths = %v, want %v", state.IgnoredPaths, want)
+		t.Fatalf("ignored_paths = %v, want %v (replace, prior dropped)", state.IgnoredPaths, want)
 	}
 	for i, w := range want {
 		if state.IgnoredPaths[i] != w {
-			t.Fatalf("ignored_paths = %v, want %v (sorted, deduped)", state.IgnoredPaths, want)
+			t.Fatalf("ignored_paths = %v, want %v (replace, sorted, deduped)", state.IgnoredPaths, want)
 		}
 	}
 }

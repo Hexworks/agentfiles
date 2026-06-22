@@ -128,11 +128,22 @@ forward-slash directory keys validated like `managed_files`. It records
 all-unknown folders the user chose to suppress on the Plan Project screen
 (the inverse of the Register action from task 0030).
 
-Unlike a `Resolution`, ignoring is purely additive, so it carries no Decision
-enum — a plain `[]string` flows through `Apply`. On apply the persisted list is
-the **union** of the prior state's `ignored_paths` and this session's ignores
-(deduplicated and sorted), so already-persisted ignores survive even after
-their folders vanish from the preview. Each subsequent `sync.Plan` suppresses
-any `ChangeUnknown` whose path sits under an ignored path, so the folder no
-longer appears at all. No new typed error is introduced beyond reusing
-`StateCorruptError` for an invalid persisted key.
+Ignoring carries no Decision enum — a plain `[]string` flows through `Apply`.
+Each subsequent `sync.Plan` suppresses any `ChangeUnknown` whose path sits under
+an ignored path, so the folder no longer appears at all. No new typed error is
+introduced beyond reusing `StateCorruptError` for an invalid persisted key.
+
+### Addendum: replace semantics (task 0032)
+
+Task 0031 persisted `ignored_paths` as the **union** of prior state and this
+session's ignores, because the TUI could not see already-persisted ignores and
+so could never resend (let alone remove) them. Task 0032 surfaces the full
+persisted set on the Plan Project screen (via `app.Preview.IgnoredPaths`, plumbed
+from `ManagedState.IgnoredPaths`) and lets the user un-ignore folders. The TUI now
+owns and sends the **complete desired set** on every Apply
+(`(persisted − unignored) ∪ newly-ignored`), so `sync.Apply` writes the incoming
+list **verbatim** — replace, not union (`normalizeIgnoredPaths`). Dropping a key
+from the incoming set removes it from `ignored_paths`, and its files reappear as
+`ChangeUnknown` on the next plan. The registerable re-assertion still validates
+only the **newly added** keys (`incoming − prior`); already-persisted keys remain
+exempt.

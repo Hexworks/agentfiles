@@ -566,7 +566,7 @@ func TestBuildPlanTree_IgnoredFolderCollapsesAndDropsSlash(t *testing.T) {
 		{Path: "sub/b.md", Kind: app.ChangeUnknown},
 	}
 
-	open := buildPlanTree("Proj", changes, map[string]bool{})
+	open := buildPlanTree("Proj", changes, map[string]bool{}, nil)
 	sub := findPlanNode(open, "sub")
 	if sub == nil {
 		t.Fatal("expected a node for sub")
@@ -578,7 +578,7 @@ func TestBuildPlanTree_IgnoredFolderCollapsesAndDropsSlash(t *testing.T) {
 		t.Errorf("open folder children = %d, want 2", len(sub.Children))
 	}
 
-	collapsed := buildPlanTree("Proj", changes, map[string]bool{"sub": true})
+	collapsed := buildPlanTree("Proj", changes, map[string]bool{"sub": true}, nil)
 	sub2 := findPlanNode(collapsed, "sub")
 	if sub2 == nil {
 		t.Fatal("expected a node for ignored sub")
@@ -737,7 +737,7 @@ func TestPlanProjectScreen_MnemonicUniquenessExhaustive(t *testing.T) {
 		for k, v := range ov.unknown {
 			s.unknownResolutions[k] = v
 		}
-		s.tree.SetRoot(buildPlanTree(s.projectName, s.preview.Changes, s.ignoredPaths))
+		s.tree.SetRoot(buildPlanTree(s.projectName, s.preview.Changes, s.ignoredPaths, s.visiblePersistedIgnored()))
 		rowMax := len(changes) + 5
 		for row := 0; row < rowMax; row++ {
 			if row > 0 {
@@ -775,6 +775,201 @@ func assertUniquePlanMnemonics(t *testing.T, set *mnemonic.Set, override, row in
 			continue
 		}
 		seen[r] = b.Label()
+	}
+}
+
+func TestBuildPlanTree_InjectsPersistedIgnoredLeafAtSortedPosition(t *testing.T) {
+	changes := []app.FileChange{{Path: "a/file.md", Kind: app.ChangeCreate}}
+
+	root := buildPlanTree("Proj", changes, map[string]bool{}, []string{"a/ignored"})
+
+	leaf := findPlanNode(root, "a/ignored")
+	if leaf == nil {
+		t.Fatal("expected injected node for a/ignored")
+	}
+	d, ok := leaf.Data.(planNode)
+	if !ok || !d.persistedIgnored || d.kind != planNodeDir {
+		t.Fatalf("injected node data = %+v, want persistedIgnored dir", leaf.Data)
+	}
+	if leaf.Label != "ignored" {
+		t.Errorf("label = %q, want %q (no trailing slash)", leaf.Label, "ignored")
+	}
+	if len(leaf.Children) != 0 {
+		t.Errorf("children = %d, want 0 (collapsed leaf)", len(leaf.Children))
+	}
+	// The injected leaf shares parent "a/" with the change row rather than
+	// creating a duplicate parent dir.
+	parent := findPlanNode(root, "a")
+	if parent == nil || len(parent.Children) != 2 {
+		t.Fatalf("parent a children = %+v, want file + injected leaf under one parent", parent)
+	}
+}
+
+func TestPlanProjectScreen_ShowIgnoredTogglesVisibility(t *testing.T) {
+	f := newPlanActionsFake("Proj", []app.FileChange{{Path: "x.md", Kind: app.ChangeCreate}})
+	f.preview.IgnoredPaths = []string{"sub"}
+	s := newPlanProjectScreen(f, "alpha", "proj-1")
+	planLoadInto(t, s, f)
+
+	if got := s.visiblePersistedIgnored(); len(got) != 0 {
+		t.Fatalf("default visible = %v, want none (hidden)", got)
+	}
+	_ = s.toggleShowIgnored()
+	if got := s.visiblePersistedIgnored(); len(got) != 1 || got[0] != "sub" {
+		t.Fatalf("after Show Ignored visible = %v, want [sub]", got)
+	}
+	_ = s.toggleShowIgnored()
+	if got := s.visiblePersistedIgnored(); len(got) != 0 {
+		t.Fatalf("after Hide Ignored visible = %v, want none", got)
+	}
+}
+
+func TestPlanProjectScreen_ShownRowStaysPinnedAfterHide(t *testing.T) {
+	f := newPlanActionsFake("Proj", []app.FileChange{{Path: "x.md", Kind: app.ChangeCreate}})
+	f.preview.IgnoredPaths = []string{"sub"}
+	s := newPlanProjectScreen(f, "alpha", "proj-1")
+	planLoadInto(t, s, f)
+
+	_ = s.toggleShowIgnored()      // reveal
+	_ = s.unignorePersisted("sub") // press [Show] → pin
+	_ = s.toggleShowIgnored()      // hide
+
+	got := s.visiblePersistedIgnored()
+	if len(got) != 1 || got[0] != "sub" {
+		t.Fatalf("pinned row visible = %v, want [sub] after Hide Ignored", got)
+	}
+}
+
+func TestPlanProjectScreen_PersistedIgnoredRowButtonFlips(t *testing.T) {
+	f := newPlanActionsFake("Proj", nil)
+	f.preview.IgnoredPaths = []string{"sub"}
+	s := newPlanProjectScreen(f, "alpha", "proj-1")
+	planLoadInto(t, s, f)
+
+	fn := s.treeActionsFn()
+	n := &treetable.Node{Data: planNode{kind: planNodeDir, path: "sub", persistedIgnored: true}}
+
+	got := fn(n)
+	if len(got) != 1 {
+		t.Fatalf("got %d buttons, want 1", len(got))
+	}
+	assertBtn(t, got[0], "Show", 'w')
+
+	_ = s.unignorePersisted("sub")
+	if got := fn(n); len(got) != 1 {
+		t.Fatalf("after Show got %d buttons, want 1", len(got))
+	} else {
+		assertBtn(t, got[0], "Ignore", 'i')
+	}
+
+	_ = s.reignorePersisted("sub")
+	if got := fn(n); len(got) != 1 {
+		t.Fatalf("after re-Ignore got %d buttons, want 1", len(got))
+	} else {
+		assertBtn(t, got[0], "Show", 'w')
+	}
+}
+
+func TestPlanProjectScreen_StatusForPersistedIgnoredDir(t *testing.T) {
+	f := newPlanActionsFake("Proj", nil)
+	s := newPlanProjectScreen(f, "alpha", "proj-1")
+
+	ignored := &treetable.Node{Data: planNode{kind: planNodeDir, path: "sub", persistedIgnored: true}}
+	if got := s.statusValue(ignored); got != "! ignored" {
+		t.Errorf("statusValue(persisted) = %q, want %q", got, "! ignored")
+	}
+	plain := &treetable.Node{Data: planNode{kind: planNodeDir, path: "sub"}}
+	if got := s.statusValue(plain); got != "" {
+		t.Errorf("statusValue(plain dir) = %q, want empty", got)
+	}
+}
+
+func TestPlanProjectScreen_OnApplyBuildsDesiredIgnoredSet(t *testing.T) {
+	changes := []app.FileChange{{Path: "live/u.md", Kind: app.ChangeUnknown}}
+	f := newPlanActionsFake("Proj", changes)
+	f.preview.IgnoredPaths = []string{"keep", "drop"}
+	s := newPlanProjectScreen(f, "alpha", "proj-1")
+	planLoadInto(t, s, f)
+
+	_ = s.unignorePersisted("drop")                // remove persisted "drop"
+	s.ignoredPaths = map[string]bool{"live": true} // newly ignore a live folder
+
+	_ = s.onApply()()
+	if len(f.syncInputs) != 1 {
+		t.Fatalf("syncInputs len = %d, want 1", len(f.syncInputs))
+	}
+	want := []string{"keep", "live"}
+	got := f.syncInputs[0].IgnoredPaths
+	if len(got) != len(want) {
+		t.Fatalf("IgnoredPaths = %v, want %v ((persisted−unignored)∪live)", got, want)
+	}
+	for i, w := range want {
+		if got[i] != w {
+			t.Fatalf("IgnoredPaths = %v, want %v (sorted)", got, want)
+		}
+	}
+}
+
+// TestPlanProjectScreen_OnApplyPureIgnoreChangeApplies pins that un-ignoring a
+// persisted folder is a valid Apply even when there are no file changes — it
+// rewrites ignored_paths without touching files.
+func TestPlanProjectScreen_OnApplyPureIgnoreChangeApplies(t *testing.T) {
+	f := newPlanActionsFake("Proj", nil)
+	f.preview.IgnoredPaths = []string{"sub"}
+	s := newPlanProjectScreen(f, "alpha", "proj-1")
+	planLoadInto(t, s, f)
+
+	_ = s.unignorePersisted("sub")
+
+	cmd := s.onApply()
+	if cmd == nil {
+		t.Fatal("onApply nil for pure ignore-set change, want apply")
+	}
+	_ = cmd()
+	if len(f.syncInputs) != 1 {
+		t.Fatalf("syncInputs len = %d, want 1", len(f.syncInputs))
+	}
+	if got := f.syncInputs[0].IgnoredPaths; len(got) != 0 {
+		t.Fatalf("IgnoredPaths = %v, want empty (sub un-ignored)", got)
+	}
+}
+
+// TestPlanProjectScreen_MnemonicUniquenessOnPersistedIgnoredRow lands the
+// cursor on a shown persisted-ignored row in both its [Show] and [Ignore]
+// states and asserts the registered mnemonics stay unique, covering the new
+// 'g'/'h' (screen toggle) and 'w'/'i' (row) candidates.
+func TestPlanProjectScreen_MnemonicUniquenessOnPersistedIgnoredRow(t *testing.T) {
+	changes := []app.FileChange{
+		{Path: "d/drift.md", Kind: app.ChangeDrift},
+		{Path: "e/unknown.md", Kind: app.ChangeUnknown},
+	}
+	for state, unignore := range []bool{false, true} {
+		f := newPlanActionsFake("Proj", changes)
+		f.preview.IgnoredPaths = []string{"zsub"}
+		s := newPlanProjectScreen(f, "alpha", "proj-1")
+		planLoadInto(t, s, f)
+		_ = s.toggleShowIgnored() // reveal zsub
+		if unignore {
+			_ = s.unignorePersisted("zsub")
+		}
+
+		found := false
+		rowMax := len(s.tree.Rows())
+		for row := 0; row < rowMax; row++ {
+			if row > 0 {
+				_, _ = s.tree.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+			}
+			s.rebuildSet()
+			assertUniquePlanMnemonics(t, s.set, state, row)
+			if n := s.tree.SelectedNode(); n != nil {
+				if d, ok := n.Data.(planNode); ok && d.persistedIgnored {
+					found = true
+				}
+			}
+		}
+		if !found {
+			t.Fatalf("never landed cursor on persisted-ignored row (unignore=%v)", unignore)
+		}
 	}
 }
 

@@ -293,6 +293,11 @@ type Preview struct {
 	ProfileID string
 	ProjectID string
 	Changes   []FileChange
+	// IgnoredPaths mirrors the persisted ManagedState.IgnoredPaths: the folder
+	// keys whose unknown subtree the plan suppressed. The Plan Project screen
+	// surfaces these so the user can view and un-ignore them; nil when the
+	// project has no managed state yet.
+	IgnoredPaths []string
 }
 
 func previewFromSync(p *llmsync.Preview) *Preview {
@@ -303,10 +308,15 @@ func previewFromSync(p *llmsync.Preview) *Preview {
 	for i, ch := range p.Changes {
 		changes[i] = FileChange{Path: ch.Path, Kind: ChangeKind(ch.Kind)}
 	}
+	var ignored []string
+	if p.ManagedState != nil {
+		ignored = p.ManagedState.IgnoredPaths
+	}
 	return &Preview{
-		ProfileID: p.ProfileID,
-		ProjectID: p.ProjectID,
-		Changes:   changes,
+		ProfileID:    p.ProfileID,
+		ProjectID:    p.ProjectID,
+		Changes:      changes,
+		IgnoredPaths: ignored,
 	}
 }
 
@@ -358,15 +368,15 @@ type Resolutions struct {
 // and then asking the sync package to materialize the desired files. The
 // caller supplies per-file resolutions for drift and unknown entries.
 // Defaults (no resolution for a path): drift kept, unknown kept; create/
-// update/delete always apply. r.IgnoredPaths carries the folder keys the user
-// chose to ignore this apply; they are unioned with any previously persisted
-// ignored paths and stored so future plans suppress unknowns under them.
+// update/delete always apply. r.IgnoredPaths carries the complete desired
+// ignored set the TUI computed this apply; sync writes it verbatim (replace,
+// not merge) so un-ignoring a folder drops it from ignored_paths.
 //
-// Newly selected ignored keys are re-asserted as registerable against the
-// freshly computed plan (the same all-unknown rule the TUI button gate uses),
-// so a stale or hand-built key cannot persist an ancestor of managed files
-// into ignored_paths. Already-persisted keys are exempt: their folders have
-// legitimately vanished from the plan and must survive the union.
+// Newly added ignored keys (incoming − prior) are re-asserted as registerable
+// against the freshly computed plan (the same all-unknown rule the TUI button
+// gate uses), so a stale or hand-built key cannot persist an ancestor of
+// managed files into ignored_paths. Already-persisted keys are exempt: their
+// folders have legitimately vanished from the plan.
 func (s *Service) Apply(profileRef, projectID string, r Resolutions) (*Preview, errs.DomainError) {
 	syncPreview, err := s.planSync(profileRef, projectID)
 	if err != nil {

@@ -48,14 +48,36 @@ subtree disappears and the trailing `/` drops from the label), **Register**
 hides, and the button flips to **Show** (`w`) to restore it. No modal appears.
 
 On **Apply**, ignored folders persist into the `ignored_paths` list in
-`<repo>/.agentfiles/state.json` (unioned with any already-persisted paths, never
-dropped). Every later **Plan** suppresses any `? unknown` whose path sits under
-an ignored folder, so the folder no longer appears at all.
+`<repo>/.agentfiles/state.json`. Every later **Plan** suppresses any `? unknown`
+whose path sits under an ignored folder, so the folder no longer appears at all.
+
+## Viewing and un-ignoring persisted folders
+
+Once persisted, an ignored folder vanishes from the plan entirely — no row, no
+toggle. The screen-level **Show Ignored** (`g`) button reveals them: each
+persisted-ignored folder appears at its natural nested position as a collapsed
+**`! ignored`** leaf (no subtree — the plan suppressed it). The button flips to
+**Hide Ignored** (`h`) to hide them again. The toggle defaults to hidden and is
+always present, even when the project has no persisted ignored paths.
+
+On a revealed `! ignored` row the cursor offers **Show** (`w`) to un-ignore the
+folder. The row then stays pinned visible (even after **Hide Ignored**) and its
+button flips to **Ignore** (`i`) so you can toggle back within the session.
+`Register` is not offered — the plan suppressed the subtree, so the file list
+needed to register it does not exist until the un-ignore is applied and re-planned.
+
+On **Apply** the screen sends the **complete desired** ignored set —
+`(persisted − un-ignored) ∪ newly-ignored` — and it is written verbatim (replace,
+not merge). Un-ignoring a folder therefore drops it from `ignored_paths`; on the
+next **Plan** its files reappear as `? unknown` rows. An Apply whose only change
+is the ignore set is valid: it rewrites state without touching files.
 
 ## Screen actions
 
 - **Apply** (`a`) — write the plan. On success the screen pops back to where
   you came from with a toast.
+- **Show Ignored** (`g`) / **Hide Ignored** (`h`) — toggle visibility of
+  persisted-ignored folders.
 - **Back** (`b` / `esc`) — return without applying.
 
 ## Notes
