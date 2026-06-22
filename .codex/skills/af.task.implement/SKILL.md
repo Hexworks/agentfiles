@@ -58,7 +58,7 @@ Validate each field:
 | -------- | ------------------------------------------------------------------------------- | ------------------ |
 | `id`     | Equals `{task-number}` from directory name                                      | Signal error, stop |
 | `type`   | One of `feature`, `bug`, `task`, `spike` AND equals `{task-type}` from dir name | Signal error, stop |
-| `status` | One of `pending`, `in-progress`, `blocked`, `in-review`, `done`                 | Signal error, stop |
+| `status` | One of `pending`, `active`, `blocked`, `in-review`, `done`                      | Signal error, stop |
 | `topics` | Non-empty                                                                       | Signal error, stop |
 
 ## Step 3 — Enter Plan Mode

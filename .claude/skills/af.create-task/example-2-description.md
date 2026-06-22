@@ -95,6 +95,20 @@ Plus:
 - An `[Apply]` on a project with no drift/unknown rows produces an empty
   resolutions slice (auto behavior only).
 
+## Acceptance Criteria
+
+- [ ] Treetable shows four columns: Name, Status, Current Action, Actions; the
+      two value columns sit between Name and Actions.
+- [ ] Status renders `+ add` / `~ update` / `- delete` / `* drift` / `? unknown`
+      per `FileChange.Kind`; value columns blank on directory rows.
+- [ ] Toggle button appears only on the cursor+focused drift/unknown row and
+      shows the **other** option (drift→`[Overwrite]`/`[Keep]`,
+      unknown→`[Delete]`/`[Keep]`); pressing it swaps Current Action.
+- [ ] `[Apply]` builds `[]sync.FileResolution` from off-default entries only;
+      empty when no row toggled off-default. `[Back]` pops the screen.
+- [ ] Mnemonics `{o,k,d,a,b}` unique across every cursor/row state (test asserts).
+- [ ] `make build && make test && make lint` pass; manual smoke per Verification.
+
 ## Out of scope
 
 - Apply behavior itself — covered in task 0017 (`sync.Apply` semantics).

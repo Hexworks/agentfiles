@@ -112,6 +112,29 @@ For each touched file:
 - Map every change back to an item in description / plan / changelog. Anything in the diff that is **not** justified by the task is itself a finding.
 - Note coding patterns, naming conventions, and existing abstractions in the package; deviations are findings.
 
+## Step 6.5 — Definition-of-Done Gate (Mandatory, runs BEFORE any subagent)
+
+This gate uses only `description.md` + the `git diff` already read in Step 6 — no
+subagents. It runs **first** on purpose: a failed gate means the Step 7 agent
+burst would be wasted tokens reviewing work that does not yet meet intent.
+
+1. Read `## Acceptance Criteria` from `description.md`.
+   - Missing or empty → **STOP**. Tell the user the task predates the
+     acceptance-criteria convention (see `af.create-task`) and must add a
+     verifiable `## Acceptance Criteria` checklist before review can run.
+2. For **each** criterion, judge **met / unmet from the diff**, citing concrete
+   evidence (`file:line`). A criterion you cannot verify from the diff is itself
+   a finding (either unmet, or the criterion is unverifiable and must be rewritten).
+3. **Scope creep:** every diff hunk must trace to a criterion, or to a refactor
+   that respects `## Out of scope`. A hunk that maps to no criterion and is not
+   justified by the changelog is a finding.
+4. Decision:
+
+   | Result                                    | Action                                                                 |
+   | ----------------------------------------- | ---------------------------------------------------------------------- |
+   | All criteria met AND no scope creep       | Continue to Step 7.                                                     |
+   | Any criterion unmet OR scope creep found  | **STOP.** Report the gap list (unmet criteria + unjustified hunks) to the user. Do **not** dispatch the Step 7 subagents. |
+
 ## Step 7 — Dispatch Parallel Review Subagents
 
 Spawn **one subagent per topic in parallel** (single message, multiple Agent tool uses). Required topics:
@@ -226,6 +249,8 @@ Do **not** push, and do **not** change the task's `status` — leaving it in `in
 | Task not found                        | Inform user, stop                       |
 | Missing frontmatter                   | Tell user to fix, stop                  |
 | Status not `in-review`                | Signal specific error, stop             |
+| `## Acceptance Criteria` missing/empty | Tell user task predates convention, stop before dispatch |
+| Acceptance criterion unmet, or scope creep | Report gap list, stop before dispatch |
 | Plan or changelog missing             | Record as a finding; continue           |
 | Review file has block with zero `[x]` | Ask user to choose, stop                |
 | Quality gate fails                    | Report failure, stop — do not commit    |
