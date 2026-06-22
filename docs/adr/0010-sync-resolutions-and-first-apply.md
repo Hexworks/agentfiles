@@ -72,7 +72,9 @@ Defaults when a path is absent from `resolutions`:
   the "auto" kinds; the user's opt-in is the act of looking at the preview
   and approving the apply.
 - `ChangeDrift` — kept (no write). Overwriting requires explicit
-  `ResolveOverwrite`.
+  `ResolveOverwrite`. **Superseded by ADR 0015:** Keep originally also adopted
+  the on-disk hash as the new baseline; that behaviour caused bug 0033 and was
+  removed. Keep now preserves the prior baseline, so a kept drift stays drift.
 - `ChangeUnknown` — kept (no removal). Deleting requires explicit
   `ResolveDelete`.
 

@@ -150,10 +150,12 @@ ADR 0010.
 
 A condition where a previously managed file was changed locally after apply and
 now differs from the managed-state hash. Drift defaults to *keep* during
-apply; the user must explicitly resolve a drift entry to `DriftOverwrite`
-to let apply replace the local edits. Choosing `DriftKeep` adopts the
-on-disk content as the new managed baseline so future plans do not flag
-the same path as drift again. See ADR 0010.
+apply. `DriftKeep` leaves the file alone **and preserves the prior managed
+baseline**, so a kept drift stays classified as drift on every subsequent plan
+until the user resolves it. `DriftOverwrite` replaces the local edits with the
+rendered body. Keep never adopts the on-disk hash as the new baseline (doing so
+would silently flip drift to update — see bug 0033). Promoting local edits into
+the profile is a separate, future operation (*Adopt*), not Keep. See ADR 0010.
 
 ## First-Apply Clean Slate
 

@@ -43,4 +43,5 @@ Each ADR uses a small Michael Nygard style structure:
 - 0012 — Palette-driven theming with external configuration
 - 0013 — Help and notifications as shell-owned modals
 - 0014 — Project scripting with single-file Go via gorun
+- 0015 — Drift Keep preserves the baseline; Adopt is the explicit promote
 

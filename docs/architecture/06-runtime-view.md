@@ -88,3 +88,39 @@ sequenceDiagram
 7. `.agentfiles/state.json` is updated with new managed-file hashes.
 8. The bridge command emits a `NotificationMsg`; success or failure
    shows as a toast and is appended to the in-memory log.
+
+## Drift Lifecycle
+
+Classification of a single managed path is a pure function of three hashes:
+`B` = baseline in `state.json`, `D` = desired (render output), `F` = on-disk
+file (`classifyDesired` in `internal/sync`):
+
+- `F==D` → **Clean** (no change row)
+- `F!=D` and `F==B` → **Update** (profile moved ahead, local untouched)
+- `F!=D` and `F!=B` → **Drift** (local edited away from the baseline)
+
+`Apply[Keep]` (the drift default) leaves the file untouched **and preserves the
+prior baseline `B`**, so a kept drift stays drift until the user overwrites it
+or the profile/file converge. `Apply` never adopts the on-disk hash as the new
+baseline — doing so silently flipped drift to update (bug 0033).
+
+```mermaid
+stateDiagram-v2
+    [*] --> Clean: first Apply (F=D=B)
+
+    Clean --> Drift: local edit (F≠B)
+    Clean --> Update: profile/render change (D≠F)
+
+    Update --> Clean: Apply (write D → F=B=D)
+    Update --> Drift: local edit (F≠B)
+
+    Drift --> Drift: Apply[Keep] (B,F,D unchanged)
+    Drift --> Clean: Apply[Overwrite] (F:=D, B:=D)
+    Drift --> Clean: local edit back to D
+    Drift --> Update: local edit back to B (B≠D)
+    Drift --> Clean: profile converges (D:=F)
+```
+
+Promoting a local edit back into the profile (*Adopt*) is a planned future
+resolution, not yet implemented; it would add a `Drift --> Clean` edge that
+also rewrites the profile and re-renders to sibling agents.
