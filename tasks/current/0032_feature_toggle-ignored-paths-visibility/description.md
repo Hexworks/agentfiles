@@ -105,6 +105,22 @@ with that key removed. On the **next** Plan, `sync.Plan` no longer suppresses it
 → its files reappear as real `? unknown` rows (with subtree). An Apply whose
 only change is the ignore-set is valid — no file writes, just a state rewrite.
 
+## Acceptance Criteria
+
+- [ ] Plan Project body button row renders `[Apply]  [<Show/Hide> Ignored]  [Back]`, toggle button always present (even with zero persisted ignored paths).
+- [ ] Toggle button label/mnemonic flips with state: hidden → `Show Ignored`/`g`, shown → `Hide Ignored`/`h`. Default hidden.
+- [ ] Toggle button excluded from the status bar (same rule as `[Apply]`).
+- [ ] With **Show Ignored** on, each persisted-ignored folder renders as a collapsed leaf injected at its natural nested/sorted path position in the unified tree: Name = path segment, Status = `! ignored` (muted), Resolution blank, Action `[Show]` (`w`).
+- [ ] Pressing `[Show]` (`w`) un-ignores the folder: row pins visible regardless of toggle, action flips to `[Ignore]` (`i`); `[Ignore]` flips back and updates the desired set.
+- [ ] `[Register]` is never offered on persisted-ignored rows.
+- [ ] Mnemonic uniqueness holds across every selection state, including cursor on a shown-ignored row in both `[Show]`/`[Ignore]` states with `g`/`h`, `a`, `b` present.
+- [ ] `app.Preview` exposes `IgnoredPaths []string`, populated from `llmsync.Preview.ManagedState.IgnoredPaths` in `previewFromSync`.
+- [ ] On Apply the screen sends the complete desired set `final = (persisted − unignored) ∪ newlyIgnored` via `SyncProjectInput.IgnoredPaths`.
+- [ ] `sync.SyncProject` writes the incoming ignored set verbatim into `state.json` `ignored_paths` (replace, not union/merge).
+- [ ] `assertIgnoredRegisterable` validates only `incoming − prior`; already-persisted keys exempt.
+- [ ] An Apply whose only change is the ignore-set succeeds with no file writes (state rewrite only); on next Plan an un-ignored folder's files reappear as `? unknown`.
+- [ ] `make build`, `make test`, `make lint` pass.
+
 ## Out of scope
 
 - Rendering the contents / children of a persisted-ignored folder. There is no
