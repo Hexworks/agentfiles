@@ -1,14 +1,17 @@
 ---
-name: af.task.review
-description: Use when the user invokes /review-task <task-number> (e.g. /review-task 0001) to review the implementation of a task that is currently in `in-review` state. Reads the task directory (description, plan, review notes), the changelog, and guidelines, dispatches parallel subagents for security/clean-code/clean-architecture/SOLID/DDD/testing/Go reviews, writes a consolidated review file inside the task directory, awaits user choice from solution checklists, applies the chosen fixes, runs the build/test/lint quality gate, and commits the changes.
+name: Review Task [Agentfiles]
+description: Use when the user invokes /review-task <task-number> (e.g. /review-task 0001) to review the implementation of a task that is currently in `in-review` state. Reads the task directory (description, plan, review notes), the changelog, and guidelines, dispatches parallel subagents for security/clean-code/clean-architecture/SOLID/DDD/testing/Go reviews, and writes a consolidated review file inside the task directory with solution checklists for the user to pick from. Stops after writing the review. Applying the chosen fixes is a separate skill (`af.task.review-apply`).
 ---
 
 # Review Task
 
-End-to-end workflow that reviews a task implementation. Takes a task id (e.g. `0001`), validates it is in `in-review`, gathers context (task directory, changelog, guidelines, ADRs, architecture, code), dispatches parallel review subagents, consolidates findings into `review.md` inside the task directory, lets the user pick fixes, applies them, gates on build/test/lint, and commits.
+Review-document workflow. Takes a task id (e.g. `0001`), validates it is in `in-review`, gathers context (task directory, changelog, guidelines, ADRs, architecture, code), dispatches parallel review subagents, consolidates findings into `review.md` inside the task directory, then **stops**. The user ticks the solution checkboxes; applying the fixes is done by the separate `af.task.review-apply` skill (run in its own clean context).
 
 > [!IMPORTANT]
 > This skill **must be run with a clean context**. Do not chain it after other long-running work in the same session.
+
+> [!IMPORTANT]
+> This skill only **produces** the review file. It does **not** apply any fixes. Stop after Step 9.
 
 > [!IMPORTANT]
 > Follow the steps **in order**. Do not skip a step.
@@ -156,76 +159,18 @@ Rules:
 - Always include at least two solution checkboxes when sensible alternatives exist; otherwise a single checkbox is fine.
 - Do **not** apply any fix yet.
 
-After writing, **tell the user**: _"Review written to `tasks/current/{task-id}_{task-type}_{short-description}/review.md`. Read it and tick the checkbox for the solution you want me to apply, then come back."_
+After writing, **tell the user**: _"Review written to `tasks/current/{task-id}_{task-type}_{short-description}/review.md`. Read it and tick exactly one checkbox per issue for the solution you want applied. When ready, run `af.task.review-apply {task-number}` in a fresh session to apply the chosen fixes."_
 
-## Step 10 — Wait for User Selection
-
-Do nothing until the user signals they have made their choices.
-
-When they return, re-read `review.md` and verify: **every** `## {issue}` block has **exactly one** `[x]` checkbox in its solution checklist.
-
-| Condition                          | Action                                                                |
-| ---------------------------------- | --------------------------------------------------------------------- |
-| All blocks have ≥1 `[x]`           | Continue to Step 11.                                                  |
-| One or more blocks have zero `[x]` | List the offending issues by title, ask the user to choose, **stop**. |
-
-## Step 11 — Implement Fixes (Iterate)
-
-For each issue, implement the chosen solution. While implementing:
-
-- If the chosen solution is ambiguous or you discover a conflict with another fix, **ask the user** before proceeding. Do not guess.
-- Group related edits per file to keep the diff readable.
-- Update tests alongside production code; add new tests where a fix changes observable behavior.
-
-After each round of edits, summarize what changed and ask the user to confirm. Loop:
-
-1. User asks for adjustments → revise → ask again.
-2. Repeat until the user **approves**.
-
-Do not continue to the quality gate without explicit approval.
-
-## Step 12 — Quality Gate (Mandatory)
-
-This gate is **mandatory**. If any check fails or produces a new warning, **stop** and report the failure to the user — do not commit.
-
-Run, in order:
-
-```bash
-make fmt
-make lint
-make build
-make test
-```
-
-The gate validates four checklist items at once:
-
-- _My changes generate no new warnings_
-- _I have added/updated tests where necessary_
-- _New and existing tests pass locally_
-- _Static analysis / linters pass_
-
-Only after **all four** items pass may you proceed.
-
-## Step 13 — Commit the Changes
-
-Follow `docs/guidelines/git.md` for commit message style. Stage only the files touched during the review fix-up — do not bulk-add unrelated work.
-
-After committing:
-
-- Run `git log -1 --stat` and display the commit hash, subject, and changed-file summary to the user.
-- Tell the user the review is complete and the fixes are committed.
-
-Do **not** push, and do **not** change the task's `status` — leaving it in `in-review` is intentional so the user can decide when to mark it `done`.
+This skill ends here. **Do not apply any fix** — that is the job of `af.task.review-apply`.
 
 ## Stopping Conditions Summary
 
-| Condition                             | Response                                |
-| ------------------------------------- | --------------------------------------- |
-| Task in `done/`                       | Inform user, stop                       |
-| Task in `backlog/`                    | Inform user (not implemented yet), stop |
-| Task not found                        | Inform user, stop                       |
-| Missing frontmatter                   | Tell user to fix, stop                  |
-| Status not `in-review`                | Signal specific error, stop             |
-| Plan or changelog missing             | Record as a finding; continue           |
-| Review file has block with zero `[x]` | Ask user to choose, stop                |
-| Quality gate fails                    | Report failure, stop — do not commit    |
+| Condition                 | Response                                        |
+| ------------------------- | ----------------------------------------------- |
+| Task in `done/`           | Inform user, stop                               |
+| Task in `backlog/`        | Inform user (not implemented yet), stop         |
+| Task not found            | Inform user, stop                               |
+| Missing frontmatter       | Tell user to fix, stop                          |
+| Status not `in-review`    | Signal specific error, stop                     |
+| Plan or changelog missing | Record as a finding; continue                   |
+| Review file written       | Tell user to pick fixes + run apply skill, stop |
