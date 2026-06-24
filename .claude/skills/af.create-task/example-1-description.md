@@ -102,18 +102,6 @@ Per package, unit tests for every new method:
 - `UpdateAsset`: hashes refresh when file contents change without any
   metadata change.
 
-## Acceptance Criteria
-
-- [ ] `app.Service` exposes all eight new methods with the exact signatures above.
-- [ ] `LoadProfiles` aggregates per-profile load errors via `errors.Join`.
-- [ ] `DeleteProfile(KeepFolders)` leaves the on-disk folder; `DeleteFolders`
-      removes it; both succeed when the folder is already gone.
-- [ ] `DeleteAsset` clears the asset id from every project's `SelectedAssetIDs`.
-- [ ] `UpdateAsset` re-walks the dir so a content-only edit surfaces as
-      `ChangeUpdate`, not `ChangeDrift`.
-- [ ] Each method has a unit test for happy path + ≥1 error path.
-- [ ] `make build && make test && make lint` pass.
-
 ## Out of scope
 
 - Actions / Notifications wiring (task 0019).

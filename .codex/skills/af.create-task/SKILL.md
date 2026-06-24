@@ -88,5 +88,3 @@ After the file exists:
   out the task details in `description.md`. The example tasks can be used for inspiration.
 - Otherwise, tell the user the task was created (give the path) and open
   `description.md` for editing if the environment supports it.
-
-Lofasz
