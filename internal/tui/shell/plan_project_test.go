@@ -598,7 +598,7 @@ func TestPlanProjectScreen_ToggleIgnoreCollapsesAndRestores(t *testing.T) {
 	planLoadInto(t, s, f)
 
 	before := len(s.tree.Rows())
-	s.toggleIgnore("sub", true)
+	s.setIgnored("sub", true, false)
 	if !s.ignoredPaths["sub"] {
 		t.Fatal("ignoredPaths[sub] = false, want true after ignore")
 	}
@@ -606,7 +606,7 @@ func TestPlanProjectScreen_ToggleIgnoreCollapsesAndRestores(t *testing.T) {
 		t.Errorf("rows after ignore = %d, want fewer than %d", got, before)
 	}
 
-	s.toggleIgnore("sub", false)
+	s.setIgnored("sub", false, false)
 	if s.ignoredPaths["sub"] {
 		t.Fatal("ignoredPaths[sub] = true, want false after show")
 	}
@@ -830,9 +830,9 @@ func TestPlanProjectScreen_ShownRowStaysPinnedAfterHide(t *testing.T) {
 	s := newPlanProjectScreen(f, "alpha", "proj-1")
 	planLoadInto(t, s, f)
 
-	_ = s.toggleShowIgnored()      // reveal
-	_ = s.unignorePersisted("sub") // press [Show] → pin
-	_ = s.toggleShowIgnored()      // hide
+	_ = s.toggleShowIgnored()            // reveal
+	_ = s.setIgnored("sub", false, true) // press [Show] → pin
+	_ = s.toggleShowIgnored()            // hide
 
 	got := s.visiblePersistedIgnored()
 	if len(got) != 1 || got[0] != "sub" {
@@ -855,14 +855,14 @@ func TestPlanProjectScreen_PersistedIgnoredRowButtonFlips(t *testing.T) {
 	}
 	assertBtn(t, got[0], "Show", 'w')
 
-	_ = s.unignorePersisted("sub")
+	_ = s.setIgnored("sub", false, true)
 	if got := fn(n); len(got) != 1 {
 		t.Fatalf("after Show got %d buttons, want 1", len(got))
 	} else {
 		assertBtn(t, got[0], "Ignore", 'i')
 	}
 
-	_ = s.reignorePersisted("sub")
+	_ = s.setIgnored("sub", true, true)
 	if got := fn(n); len(got) != 1 {
 		t.Fatalf("after re-Ignore got %d buttons, want 1", len(got))
 	} else {
@@ -884,6 +884,34 @@ func TestPlanProjectScreen_StatusForPersistedIgnoredDir(t *testing.T) {
 	}
 }
 
+// TestPlanProjectScreen_ResolutionBlankForPersistedIgnoredDir pins that a
+// persisted-ignored row leaves the Resolution column empty (the dir node has
+// no per-file decision), distinct from its "! ignored" Status.
+func TestPlanProjectScreen_ResolutionBlankForPersistedIgnoredDir(t *testing.T) {
+	f := newPlanActionsFake("Proj", nil)
+	s := newPlanProjectScreen(f, "alpha", "proj-1")
+
+	ignored := &treetable.Node{Data: planNode{kind: planNodeDir, path: "sub", persistedIgnored: true}}
+	if got := s.actionValue(ignored); got != "" {
+		t.Errorf("actionValue(persisted-ignored dir) = %q, want empty", got)
+	}
+}
+
+// TestPlanProjectScreen_ShowIgnoredButtonFlipsLabelAndMnemonic pins the
+// screen-level toggle's label/mnemonic across states: Show Ignored/'g' when
+// hidden (default), Hide Ignored/'h' when shown.
+func TestPlanProjectScreen_ShowIgnoredButtonFlipsLabelAndMnemonic(t *testing.T) {
+	f := newPlanActionsFake("Proj", nil)
+	s := newPlanProjectScreen(f, "alpha", "proj-1")
+	planLoadInto(t, s, f)
+
+	assertBtn(t, s.showIgnoredBtn, "Show Ignored", 'g') // default hidden
+	_ = s.toggleShowIgnored()
+	assertBtn(t, s.showIgnoredBtn, "Hide Ignored", 'h') // shown
+	_ = s.toggleShowIgnored()
+	assertBtn(t, s.showIgnoredBtn, "Show Ignored", 'g') // hidden again
+}
+
 func TestPlanProjectScreen_OnApplyBuildsDesiredIgnoredSet(t *testing.T) {
 	changes := []app.FileChange{{Path: "live/u.md", Kind: app.ChangeUnknown}}
 	f := newPlanActionsFake("Proj", changes)
@@ -891,7 +919,7 @@ func TestPlanProjectScreen_OnApplyBuildsDesiredIgnoredSet(t *testing.T) {
 	s := newPlanProjectScreen(f, "alpha", "proj-1")
 	planLoadInto(t, s, f)
 
-	_ = s.unignorePersisted("drop")                // remove persisted "drop"
+	_ = s.setIgnored("drop", false, true)          // remove persisted "drop"
 	s.ignoredPaths = map[string]bool{"live": true} // newly ignore a live folder
 
 	_ = s.onApply()()
@@ -919,7 +947,7 @@ func TestPlanProjectScreen_OnApplyPureIgnoreChangeApplies(t *testing.T) {
 	s := newPlanProjectScreen(f, "alpha", "proj-1")
 	planLoadInto(t, s, f)
 
-	_ = s.unignorePersisted("sub")
+	_ = s.setIgnored("sub", false, true)
 
 	cmd := s.onApply()
 	if cmd == nil {
@@ -950,7 +978,7 @@ func TestPlanProjectScreen_MnemonicUniquenessOnPersistedIgnoredRow(t *testing.T)
 		planLoadInto(t, s, f)
 		_ = s.toggleShowIgnored() // reveal zsub
 		if unignore {
-			_ = s.unignorePersisted("zsub")
+			_ = s.setIgnored("zsub", false, true)
 		}
 
 		found := false
@@ -969,6 +997,53 @@ func TestPlanProjectScreen_MnemonicUniquenessOnPersistedIgnoredRow(t *testing.T)
 		}
 		if !found {
 			t.Fatalf("never landed cursor on persisted-ignored row (unignore=%v)", unignore)
+		}
+	}
+}
+
+// TestPlanProjectScreen_MnemonicUniquenessOnPinnedRowWhileHidden walks the
+// state the sibling test above never reaches: a persisted-ignored row pinned
+// visible while the screen toggle is back in its Show Ignored ('g') state.
+// Production reaches it by pressing [Show] (pins the row) then [Hide Ignored]
+// (flips the toggle to 'g' while the pinned row stays). The walk lands the
+// cursor on the pinned row in both its [Show] ('w') and [Ignore] ('i') button
+// states and asserts 'g' coexists uniquely with the row rune plus 'a'/'b'.
+func TestPlanProjectScreen_MnemonicUniquenessOnPinnedRowWhileHidden(t *testing.T) {
+	changes := []app.FileChange{
+		{Path: "d/drift.md", Kind: app.ChangeDrift},
+		{Path: "e/unknown.md", Kind: app.ChangeUnknown},
+	}
+	for state, reignore := range []bool{false, true} {
+		f := newPlanActionsFake("Proj", changes)
+		f.preview.IgnoredPaths = []string{"zsub"}
+		s := newPlanProjectScreen(f, "alpha", "proj-1")
+		planLoadInto(t, s, f)
+		_ = s.toggleShowIgnored()             // reveal zsub
+		_ = s.setIgnored("zsub", false, true) // press [Show] → pin, button is now [Ignore]/'i'
+		if reignore {
+			_ = s.setIgnored("zsub", true, true) // press [Ignore] → pin stays, button back to [Show]/'w'
+		}
+		_ = s.toggleShowIgnored() // [Hide Ignored] → screen toggle flips to [Show Ignored]/'g'
+
+		if s.showIgnoredBtn.Mnemonic() != 'g' {
+			t.Fatalf("screen toggle mnemonic = %q, want 'g' (hidden)", s.showIgnoredBtn.Mnemonic())
+		}
+		found := false
+		rowMax := len(s.tree.Rows())
+		for row := 0; row < rowMax; row++ {
+			if row > 0 {
+				_, _ = s.tree.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+			}
+			s.rebuildSet()
+			assertUniquePlanMnemonics(t, s.set, state, row)
+			if n := s.tree.SelectedNode(); n != nil {
+				if d, ok := n.Data.(planNode); ok && d.persistedIgnored {
+					found = true
+				}
+			}
+		}
+		if !found {
+			t.Fatalf("never landed cursor on pinned persisted-ignored row (reignore=%v)", reignore)
 		}
 	}
 }

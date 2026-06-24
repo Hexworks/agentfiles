@@ -310,7 +310,7 @@ func previewFromSync(p *llmsync.Preview) *Preview {
 	}
 	var ignored []string
 	if p.ManagedState != nil {
-		ignored = p.ManagedState.IgnoredPaths
+		ignored = slices.Clone(p.ManagedState.IgnoredPaths)
 	}
 	return &Preview{
 		ProfileID:    p.ProfileID,
@@ -423,6 +423,39 @@ func (s *Service) assertIgnoredRegisterable(syncPreview *llmsync.Preview, ignore
 		return nil
 	}
 	return failures
+}
+
+// DesiredIgnored computes the complete persisted ignored set a project should
+// have after the user's in-session edits on the Plan Project screen:
+// (persisted − unignored) ∪ newlyIgnored, deduplicated and sorted. The TUI
+// sends the result on Apply and sync writes it verbatim (replace semantics), so
+// dropping a key here un-ignores that folder on the next plan. The rule lives
+// here, in the stable layer, rather than inside a Bubble Tea screen so it is
+// testable without the TUI and sits next to assertIgnoredRegisterable, which
+// guards the same set. Returns nil when the desired set is empty.
+func DesiredIgnored(persisted, unignored, newlyIgnored []string) []string {
+	drop := make(map[string]bool, len(unignored))
+	for _, p := range unignored {
+		drop[p] = true
+	}
+	desired := make(map[string]bool, len(persisted)+len(newlyIgnored))
+	for _, p := range persisted {
+		if !drop[p] {
+			desired[p] = true
+		}
+	}
+	for _, p := range newlyIgnored {
+		desired[p] = true
+	}
+	if len(desired) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(desired))
+	for p := range desired {
+		out = append(out, p)
+	}
+	slices.Sort(out)
+	return out
 }
 
 func toSyncDriftResolutions(in []DriftResolution) []llmsync.DriftResolution {

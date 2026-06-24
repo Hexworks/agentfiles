@@ -141,10 +141,24 @@ managed-file hashes and generation metadata for the last successful apply.
 
 A repo-relative directory key recorded in the `ignored_paths` list of the
 managed state. It marks an all-unknown folder the user chose to suppress on
-the Plan Project screen. Each `sync.Plan` drops any `ChangeUnknown` whose
-path sits under an ignored path, so the folder no longer appears. On apply
-the list is unioned with the previously-persisted paths, never dropped. See
-ADR 0010.
+the Plan Project screen. Each `sync.Plan` drops any `ChangeUnknown` whose path
+sits under an ignored path, so the folder no longer appears. The Plan Project
+screen sees the full persisted set (via `app.Preview.IgnoredPaths`) and sends
+the **complete desired set** on apply; `sync.Apply` writes it **verbatim**
+(replace, not union — `normalizeIgnoredPaths`). Dropping a key from the desired
+set therefore un-ignores that folder. See ADR 0010 (task-0032 addendum).
+
+## Un-ignore
+
+Removing a folder from the project's *Ignored Paths* so its contents are no
+longer suppressed. On the Plan Project screen the **Show Ignored** toggle
+reveals already-persisted ignored folders as collapsed `! ignored` leaves;
+pressing **Show** on one un-ignores it (drops it from the desired set sent on
+apply) and **pins** the row visible — *pinned* meaning kept on screen for the
+rest of the session regardless of the Show/Hide toggle. Such a revealed folder
+is termed *persisted-ignored* (it came from `ignored_paths`, not from a live
+`ChangeUnknown`). After apply, an un-ignored folder's files reappear as
+`? unknown` on the next plan. See ADR 0010 (task-0032 addendum).
 
 ## Drift
 
