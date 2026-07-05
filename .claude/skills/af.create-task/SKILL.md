@@ -16,7 +16,8 @@ Two example task descriptions live next to this file
 
 - Tasks live under `tasks/` in three folders:
     - `tasks/backlog/` — not started yet. Frontmatter `status: pending`.
-    - `tasks/current/` — being worked on now. Frontmatter `status: active`.
+    - `tasks/current/` — being worked on now. Frontmatter `status: pending`
+      until `af.task.implement` starts and flips it to `in-progress`.
     - `tasks/done/` — finished (out of scope here).
 - Folder name pattern: `NNNN_<type>_<slug>` (e.g. `0029_feature_plan-project-screen`).
     - `NNNN` is a zero-padded 4-digit id.
@@ -61,23 +62,49 @@ Default is backlog + `pending`. Ask the user (selector, yes/no) whether this tas
 should be **active right away**:
 
 - **No (default)** → write to `tasks/backlog/<folder>/`, frontmatter `status: pending`.
-- **Yes** → write to `tasks/current/<folder>/`, frontmatter `status: active`.
+- **Yes** → write to `tasks/current/<folder>/`, frontmatter `status: pending`.
+  (`af.task.implement` flips it to `in-progress` when it starts; `active` is
+  **not** a valid status — `af.task.implement` / `af.task.review` only accept
+  `pending|in-progress|blocked|in-review|done`.)
 
 ## Step 7 — create the files
 
-Create the task folder in the chosen parent and write `description.md`:
+Create the task folder in the chosen parent and write `description.md`. The body
+**must** carry three required sections after the title: `## Acceptance Criteria`,
+`## Out of scope`, `## Verification`. They start as placeholders — Step 8
+(grilling) fills them.
+
+The acceptance-criteria checklist **is** the Definition of Done: a task is done
+when every box is `[x]` and `## Verification` passes. Keep criteria terse and
+**verifiable** — behavioral ones name a concrete `input → output` or a one-line
+smoke step. No separate DoD section (that would just restate the criteria).
 
 ```markdown
 ---
 id: NNNN
 type: <type>
-status: <pending|active>
+status: <pending|in-progress>
 topics: <comma-separated topics>
 depends_on: <comma-separated ids> # omit line if none
 notes: <freeform text> # omit line if none
 ---
 
 # <Title>
+
+## Acceptance Criteria
+
+- [ ] <verifiable statement; behavioral → concrete input → output or smoke step>
+
+## Out of scope
+
+- <thing explicitly NOT being done>   # write "- none" if truly nothing
+
+## Verification
+
+```
+make build && make test && make lint
+# + any manual smoke line, e.g.  ./bin/af → <screen> → <action>
+```
 ```
 
 ## Step 8 — hand off
@@ -85,6 +112,14 @@ notes: <freeform text> # omit line if none
 After the file exists:
 
 - If the `grilling` skill is available, invoke it to interview the user and flesh
-  out the task details in `description.md`. The example tasks can be used for inspiration.
-- Otherwise, tell the user the task was created (give the path) and open
+  out the task details in `description.md`. The example tasks can be used for
+  inspiration. The interview **must not finish** until:
+    - `## Acceptance Criteria` has **≥1** checkbox, every criterion verifiable
+      (if you cannot state how you'd check it, rewrite it until you can), and
+    - `## Out of scope` is filled (`- none` is allowed only when nothing is
+      genuinely excluded).
+  These two sections are the task's Definition of Done — `af.task.review` gates
+  on them, so a vague or empty checklist will block review later.
+- Otherwise, tell the user the task was created (give the path), remind them the
+  three required sections must be filled before `af.task.implement`, and open
   `description.md` for editing if the environment supports it.
