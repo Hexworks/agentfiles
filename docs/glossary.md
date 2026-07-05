@@ -275,6 +275,36 @@ about the kind of failure, not its rendering. Every typed domain error
 implements `Severity() errs.Severity`; the TUI consumes the result to
 pick icon and color.
 
+## Acceptance Criteria
+
+The hybrid checklist that lives under `## Acceptance Criteria` in a task's
+`description.md`. Each item is a verifiable statement — either a named test
++ expected assertion, an observable input→output pair, or a reproducible
+CLI/TUI smoke step. The checklist **is** the [Definition of Done](#definition-of-done)
+for that task; a task is done when every `[ ]` becomes `[x]` and
+`## Verification` passes. Authored during `af.create-task` Step 8 (grilling
+gate) and consumed by `af.task.review` Step 6.5b (DoD evidence table).
+
+## Definition of Done
+
+The condition under which a task is considered complete. In `agentfiles`
+this is defined by the task's own [Acceptance Criteria](#acceptance-criteria)
+checklist plus its `## Verification` bullets — there is no separate DoD
+section restating them. `af.task.review` Step 6.5b enforces the DoD by
+producing a per-criterion table (met / unmet / unverifiable) against the
+diff before dispatching the review subagents.
+
+## Legacy Task
+
+A task in `in-review` whose `description.md` is missing one or more of the
+three required body sections (`## Acceptance Criteria`, `## Out of scope`,
+`## Verification`) mandated by the task-workflow contract (see
+`af.create-task` Step 7). `af.task.review` Step 6.5a and `af.task.implement`
+Step 2.5 both stop with this outcome and instruct the author to add the
+missing section before the pipeline can continue. The name refers to the
+task itself, not to a producer skill, so tasks authored by hand or by a
+future import skill fall under the same label.
+
 ## Typed Domain Error
 
 A struct value (e.g. `render.AssetNotFoundError`,

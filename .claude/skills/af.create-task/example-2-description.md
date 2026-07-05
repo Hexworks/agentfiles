@@ -97,17 +97,24 @@ Plus:
 
 ## Acceptance Criteria
 
-- [ ] Treetable shows four columns: Name, Status, Current Action, Actions; the
-      two value columns sit between Name and Actions.
-- [ ] Status renders `+ add` / `~ update` / `- delete` / `* drift` / `? unknown`
-      per `FileChange.Kind`; value columns blank on directory rows.
-- [ ] Toggle button appears only on the cursor+focused drift/unknown row and
-      shows the **other** option (drift→`[Overwrite]`/`[Keep]`,
-      unknown→`[Delete]`/`[Keep]`); pressing it swaps Current Action.
-- [ ] `[Apply]` builds `[]sync.FileResolution` from off-default entries only;
-      empty when no row toggled off-default. `[Back]` pops the screen.
-- [ ] Mnemonics `{o,k,d,a,b}` unique across every cursor/row state (test asserts).
-- [ ] `make build && make test && make lint` pass; manual smoke per Verification.
+- [ ] Given a preview with rows of every `ChangeKind` plus one directory row,
+      rendering the treetable yields four columns (Name, Status, Current
+      Action, Actions) in that order; the directory row's Status and Current
+      Action cells are blank — `TestPlanProjectRendersColumns`.
+- [ ] For each row state in the button table, the rendered cell equals the
+      expected `label`+mnemonic pair (drift→`[Overwrite o]`/`[Keep k]`,
+      unknown→`[Delete d]`/`[Keep k]`, non-drift/unknown rows→empty) —
+      `TestPlanProjectActionButtonMatrix`.
+- [ ] Pressing the toggle mnemonic on a drift/unknown row flips its
+      `Current Action` in the state map; pressing again reverts it —
+      `TestPlanProjectToggleRoundTrip`.
+- [ ] `[Apply]` on a preview with two off-default rows emits a resolution
+      slice containing exactly those two paths; `[Apply]` on an all-default
+      preview emits an empty slice —
+      `TestPlanProjectApplyBuildsFileResolutions`.
+- [ ] Walking every cursor position across every row kind, no two labelled
+      buttons share a mnemonic from `{o,k,d,a,b}` —
+      `TestPlanProjectMnemonicUniqueness`.
 
 ## Out of scope
 
@@ -115,10 +122,12 @@ Plus:
 
 ## Verification
 
-```
-make build && make test && make lint
-./bin/af   # Select Project Assets → Plan → toggle drift/unknown rows → Apply
-```
+- Baseline: `make build && make test && make lint` pass.
+- `go test ./internal/tui/... -run 'TestPlanProjectRendersColumns|TestPlanProjectActionButtonMatrix|TestPlanProjectToggleRoundTrip|TestPlanProjectApplyBuildsFileResolutions|TestPlanProjectMnemonicUniqueness'`
+  green.
+- Smoke: `./bin/af` → Select Project Assets → Plan → toggle a drift row with
+  `o`, an unknown row with `d`, press `[Apply]` → screen pops back and a
+  `Project synced` toast appears.
 
 ## Plan
 

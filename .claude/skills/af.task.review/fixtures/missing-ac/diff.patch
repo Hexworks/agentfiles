@@ -1,0 +1,18 @@
+diff --git a/internal/oops/oops.go b/internal/oops/oops.go
+new file mode 100644
+--- /dev/null
++++ b/internal/oops/oops.go
+@@ -0,0 +1,3 @@
++package oops
++
++// intentionally empty
+diff --git a/internal/oops/oops_test.go b/internal/oops/oops_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/oops/oops_test.go
+@@ -0,0 +1,5 @@
++package oops
++
++import "testing"
++
++func TestOopsNoop(t *testing.T) {}

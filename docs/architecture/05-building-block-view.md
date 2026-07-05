@@ -214,3 +214,20 @@ standard-library `flag` package, builds the `app.Service`, wraps it with
 `shell.New` before running `tea.NewProgram(...).Run()`. There is no
 Cobra command tree and no intermediate routing package — `af` always
 opens the alt-screen shell.
+
+## Task-workflow Skill Contract
+
+Alongside the Go packages above, the repository ships a three-stage task
+workflow implemented entirely in Claude Code skills — `af.create-task` →
+`af.task.implement` → `af.task.review` — with `af.task.review-apply` as
+the follow-up that applies chosen review fixes. These skills are not Go
+packages, but they share an inter-skill contract that behaves like a
+package boundary: every `description.md` produced by `af.create-task`
+must carry the three required body sections (`## Acceptance Criteria`,
+`## Out of scope`, `## Verification`), and both downstream skills refuse
+to run when any section is missing (`LegacyTask` outcome). The Definition
+of Done is the [Acceptance Criteria](../glossary.md#acceptance-criteria)
+checklist plus a passing [`## Verification`](../glossary.md#definition-of-done);
+`af.task.review` Step 6.5 enforces it via three substeps (contract
+presence, DoD evidence table, scope-creep audit) before dispatching its
+review subagents. Rationale and alternatives considered: ADR 0016.

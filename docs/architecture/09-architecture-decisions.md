@@ -16,6 +16,8 @@ durable rationale is recorded as ADRs in [`../adr/`](../adr/README.md).
 - `0012`: palette-driven theming with external configuration
 - `0013`: help and notifications as shell-owned modals
 - `0014`: project scripting with single-file Go via gorun
+- `0015`: drift-keep preserves the baseline; Adopt is the explicit promote
+- `0016`: Definition-of-Done gate for the task workflow
 
 ## Usage
 

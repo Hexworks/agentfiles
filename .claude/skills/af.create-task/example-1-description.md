@@ -104,15 +104,20 @@ Per package, unit tests for every new method:
 
 ## Acceptance Criteria
 
-- [ ] `app.Service` exposes all eight new methods with the exact signatures above.
-- [ ] `LoadProfiles` aggregates per-profile load errors via `errors.Join`.
-- [ ] `DeleteProfile(KeepFolders)` leaves the on-disk folder; `DeleteFolders`
-      removes it; both succeed when the folder is already gone.
-- [ ] `DeleteAsset` clears the asset id from every project's `SelectedAssetIDs`.
-- [ ] `UpdateAsset` re-walks the dir so a content-only edit surfaces as
-      `ChangeUpdate`, not `ChangeDrift`.
-- [ ] Each method has a unit test for happy path + ≥1 error path.
-- [ ] `make build && make test && make lint` pass.
+- [ ] Given two profile dirs load fine and one is malformed, `LoadProfiles`
+      returns three entries plus a joined error naming the malformed profile —
+      `TestLoadProfilesJoinsPerProfileErrors`.
+- [ ] `DeleteProfile(ref, KeepFolders)` on a registered profile removes the
+      registry row and leaves the on-disk folder in place; `DeleteFolders`
+      removes both; both variants succeed when the folder is already missing —
+      `TestDeleteProfile_KeepFolders`, `TestDeleteProfile_DeleteFolders`,
+      `TestDeleteProfile_FolderAlreadyGone`.
+- [ ] Given project P selected asset A, `DeleteAsset(profile, A)` removes A
+      from every project's `SelectedAssetIDs` — `TestDeleteAssetUnselects`.
+- [ ] Editing an asset file's bytes without any manifest change, then
+      `UpdateAsset(profile, a)`, yields a next `Plan` classifying the file as
+      `ChangeUpdate` (not `ChangeDrift`) —
+      `TestUpdateAssetRewalkSurfacesContentEdit`.
 
 ## Out of scope
 
@@ -122,9 +127,9 @@ Per package, unit tests for every new method:
 
 ## Verification
 
-```
-make build && make test && make lint
-```
+- Baseline: `make build && make test && make lint` pass.
+- `go test ./internal/app -run 'TestLoadProfilesJoinsPerProfileErrors|TestDeleteProfile_.*|TestDeleteAssetUnselects|TestUpdateAssetRewalkSurfacesContentEdit'`
+  green.
 
 ## Plan
 

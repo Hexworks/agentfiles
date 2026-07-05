@@ -45,15 +45,26 @@ Fix in two parts (token-minimal, no new spec tooling, no extra review subagent):
 
 ## Verification
 
-```
-# Inspection-based (process change, not buildable):
-git -C . diff --stat   # 4 files: af.create-task SKILL + 2 examples, af.task.review SKILL
-```
-
-- Dry-run `af.create-task`: generated `description.md` has the 3 sections + valid status.
-- `af.task.review` happy path: AC met → Step 6.5 passes → subagents dispatch.
-- `af.task.review` fail path: unmet AC or stray hunk → stops at 6.5, no dispatch.
-- Back-compat: in-review task lacking `## Acceptance Criteria` → "predates convention" stop.
+- Baseline: `make build && make test && make lint` pass.
+- Inspection: `git diff --stat` covers the SKILL files, both examples, the
+  glossary, the ADR, the changelog, the arc42 building-block view, task
+  0036's frontmatter, and the three fixture directories under
+  `.claude/skills/af.task.review/fixtures/`.
+- Fixture `passes/`: reviewer walks `description.md` + `diff.patch`, Step
+  6.5a passes, 6.5b table rows all `met`, 6.5c every hunk resolves via
+  (1) — expected message: _"6.5 gate passed → dispatching Step 7
+  subagents."_ (or equivalent; the point is Step 7 fires).
+- Fixture `missing-ac/`: reviewer reads `description.md`, Step 6.5a fails
+  fast — expected stop message: _"LegacyTask — task is missing the required
+  '## Acceptance Criteria' section per the task-workflow contract. Add a
+  verifiable checklist before review can run."_ No diff read, no 6.5b/c,
+  no Step 7 dispatch.
+- Fixture `scope-creep/`: reviewer reads `description.md` + `diff.patch`,
+  6.5a passes, 6.5b's single row is `met`, 6.5c flags
+  `internal/log/verbose.go:1` as unresolved — expected stop message:
+  _"6.5c: 1 unresolved hunk — internal/log/verbose.go:1 (no criterion,
+  no refactor-allowed bullet, no changelog mechanical-follow-up). Not
+  dispatching Step 7 subagents."_
 
 ## Plan
 

@@ -57,9 +57,26 @@ Validate each field:
 | Field    | Rule                                                                            | On failure         |
 | -------- | ------------------------------------------------------------------------------- | ------------------ |
 | `id`     | Equals `{task-number}` from directory name                                      | Signal error, stop |
-| `type`   | One of `feature`, `bug`, `task`, `spike` AND equals `{task-type}` from dir name | Signal error, stop |
-| `status` | One of `pending`, `active`, `blocked`, `in-review`, `done`                      | Signal error, stop |
+| `type`   | One of `feature`, `bug`, `task`, `docs` AND equals `{task-type}` from dir name  | Signal error, stop |
+| `status` | One of `pending`, `in-progress`, `blocked`, `in-review`, `done`                 | Signal error, stop |
 | `topics` | Non-empty                                                                       | Signal error, stop |
+
+## Step 2.5 — Body-sections Gate (Mandatory)
+
+Before entering plan mode, verify the description body carries the three
+required sections that `af.create-task` mandates. This mirrors
+`af.task.review` Step 6.5a so the pipeline enforces the same contract at
+every stage — a task whose sections were removed by hand never reaches
+implementation.
+
+Read `description.md` body (post-frontmatter) and check:
+
+| Check                              | On failure                                                                                                                                        |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `## Acceptance Criteria` present   | Signal `LegacyTask` — task is missing the required `## Acceptance Criteria` section (see task-workflow contract in `af.create-task` Step 7). Stop. |
+| `## Acceptance Criteria` non-empty | Same message. Stop.                                                                                                                               |
+| `## Out of scope` present          | Signal `LegacyTask` — task is missing `## Out of scope`. Stop.                                                                                    |
+| `## Verification` present          | Signal `LegacyTask` — task is missing `## Verification`. Stop.                                                                                    |
 
 ## Step 3 — Enter Plan Mode
 

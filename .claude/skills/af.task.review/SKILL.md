@@ -117,26 +117,75 @@ For each touched file:
 
 ## Step 6.5 — Definition-of-Done Gate (Mandatory, runs BEFORE any subagent)
 
-This gate uses only `description.md` + the `git diff` already read in Step 6 — no
+The gate uses only `description.md` + the `git diff` already read in Step 6 — no
 subagents. It runs **first** on purpose: a failed gate means the Step 7 agent
 burst would be wasted tokens reviewing work that does not yet meet intent.
 
-1. Read `## Acceptance Criteria` from `description.md`.
-   - Missing or empty → **STOP**. Tell the user the task predates the
-     acceptance-criteria convention (see `af.create-task`) and must add a
-     verifiable `## Acceptance Criteria` checklist before review can run.
-2. For **each** criterion, judge **met / unmet from the diff**, citing concrete
-   evidence (`file:line`). A criterion you cannot verify from the diff is itself
-   a finding (either unmet, or the criterion is unverifiable and must be rewritten).
-3. **Scope creep:** every diff hunk must trace to a criterion, or to a refactor
-   that respects `## Out of scope`. A hunk that maps to no criterion and is not
-   justified by the changelog is a finding.
-4. Decision:
+The gate is split into three substeps with distinct failure modes and distinct
+user-facing reports. Run them in order. Any substep failure stops the gate; do
+not merge failure reports across substeps.
 
-   | Result                                    | Action                                                                 |
-   | ----------------------------------------- | ---------------------------------------------------------------------- |
-   | All criteria met AND no scope creep       | Continue to Step 7.                                                     |
-   | Any criterion unmet OR scope creep found  | **STOP.** Report the gap list (unmet criteria + unjustified hunks) to the user. Do **not** dispatch the Step 7 subagents. |
+### Step 6.5a — Contract presence (fail-fast, no diff read needed)
+
+Verify `description.md` carries the three required body sections defined by
+the task-workflow contract (see `af.create-task` Step 7): `## Acceptance
+Criteria`, `## Out of scope`, `## Verification`.
+
+| Check                              | On failure                                                                                                                                                                                                     |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `## Acceptance Criteria` present   | Signal `LegacyTask` — task is missing the required `## Acceptance Criteria` section per the task-workflow contract. Add a verifiable checklist before review can run. **STOP**; do **not** proceed to 6.5b/c.  |
+| `## Acceptance Criteria` non-empty | Same `LegacyTask` signal, phrased "section present but empty". **STOP**.                                                                                                                                       |
+| `## Out of scope` present          | Signal `LegacyTask` — task is missing `## Out of scope` per the task-workflow contract. **STOP**.                                                                                                              |
+| `## Verification` present          | Signal `LegacyTask` — task is missing `## Verification` per the task-workflow contract. **STOP**.                                                                                                              |
+
+All three present and `## Acceptance Criteria` non-empty → continue to 6.5b.
+
+### Step 6.5b — DoD evidence (per-criterion table)
+
+For each criterion in `## Acceptance Criteria`, produce a row in the table
+below. A criterion is **verifiable** when at least one of the following applies:
+(a) a named test + expected assertion, (b) an observable input→output pair, or
+(c) a reproducible CLI/TUI smoke step with an expected result. When none apply,
+the verdict is `unverifiable` — the criterion itself must be rewritten before
+implementation can be accepted.
+
+| criterion (verbatim) | diff-evidence (`file:line`) | verdict            | reason if not `met` |
+| -------------------- | --------------------------- | ------------------ | ------------------- |
+| …                    | …                           | met / unmet / unverifiable | …             |
+
+Decision:
+
+| Result                                     | Action                                                                                                       |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| All rows `met`                             | Continue to 6.5c.                                                                                            |
+| Any row `unmet`                            | **STOP.** Report the table (highlight unmet rows) to the user. Do not proceed to 6.5c or Step 7.              |
+| Any row `unverifiable`                     | **STOP.** Report the table (highlight unverifiable rows) and ask the author to rewrite the criterion.        |
+
+### Step 6.5c — Scope-creep audit (ordered check)
+
+For **each diff hunk**, resolve its justification in this order — first match
+wins:
+
+1. The hunk directly implements one of the criteria from 6.5b (name the row).
+2. The hunk matches an explicit **refactor-allowed** bullet inside
+   `description.md` (a `- Refactor allowed: <scope>` line, or an equivalent
+   named allowance).
+3. The changelog names the hunk as a **mechanical follow-up** — one of `fmt`
+   / import order / generated file / rename-only. Vague "cleanup" prose does
+   not qualify.
+
+If none of (1)–(3) applies, the hunk is a scope-creep finding.
+
+Note: `## Out of scope` is a **negative** list (things NOT being done). A hunk
+that falls under it is by definition a contradiction with the section, not an
+escape hatch — treat as scope-creep.
+
+Decision:
+
+| Result                            | Action                                                                                                                          |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Every hunk resolves via (1)–(3)   | Continue to Step 7.                                                                                                             |
+| Any hunk unresolved               | **STOP.** Report the unresolved-hunk list (`file:line` + hunk summary) to the user. Do **not** dispatch the Step 7 subagents.   |
 
 ## Step 7 — Dispatch Parallel Review Subagents
 
@@ -195,7 +244,9 @@ This skill ends here. **Do not apply any fix** — that is the job of `af.task.r
 | Task not found            | Inform user, stop                               |
 | Missing frontmatter       | Tell user to fix, stop                          |
 | Status not `in-review`    | Signal specific error, stop                     |
-| `## Acceptance Criteria` missing/empty | Tell user task predates convention, stop before dispatch |
-| Acceptance criterion unmet, or scope creep | Report gap list, stop before dispatch |
+| Step 6.5a `LegacyTask` — required section missing/empty | Report which section, stop before 6.5b/c and before dispatch |
+| Step 6.5b — any criterion `unmet`      | Report the DoD evidence table, highlight unmet rows, stop before 6.5c and before dispatch |
+| Step 6.5b — any criterion `unverifiable` | Report the DoD evidence table, ask author to rewrite the criterion, stop before 6.5c and before dispatch |
+| Step 6.5c — any diff hunk unresolved   | Report unresolved-hunk list, stop before dispatch |
 | Plan or changelog missing | Record as a finding; continue                   |
 | Review file written       | Tell user to pick fixes + run apply skill, stop |

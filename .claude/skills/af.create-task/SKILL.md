@@ -76,10 +76,18 @@ Create the task folder in the chosen parent and write `description.md`. The body
 
 The acceptance-criteria checklist **is** the Definition of Done: a task is done
 when every box is `[x]` and `## Verification` passes. Keep criteria terse and
-**verifiable** — behavioral ones name a concrete `input → output` or a one-line
-smoke step. No separate DoD section (that would just restate the criteria).
+**verifiable** — behavioral ones name a concrete `input → output` or a named
+test (e.g. `go test -run TestX`). No separate DoD section (that would just
+restate the criteria).
 
-```markdown
+`## Verification` is a **bullet list**, not a shell block. The first bullet is
+the baseline gate (`make build && make test && make lint`); at least one
+additional bullet must name behavior-specific evidence — a named test
+(`go test -run TestX`), a reproducible smoke input→output (`./bin/af → screen →
+action → expected result`), or a fixture invocation. A `## Verification` with
+only the baseline bullet does **not** count as filled at Step 8.
+
+````markdown
 ---
 id: NNNN
 type: <type>
@@ -93,7 +101,7 @@ notes: <freeform text> # omit line if none
 
 ## Acceptance Criteria
 
-- [ ] <verifiable statement; behavioral → concrete input → output or smoke step>
+- [ ] <verifiable statement; behavioral → concrete input → output or named test>
 
 ## Out of scope
 
@@ -101,11 +109,10 @@ notes: <freeform text> # omit line if none
 
 ## Verification
 
-```
-make build && make test && make lint
-# + any manual smoke line, e.g.  ./bin/af → <screen> → <action>
-```
-```
+- Baseline: `make build && make test && make lint` pass.
+- <behavior-specific check; e.g. `go test -run TestFoo`, or `./bin/af → <screen>
+  → <action> → <expected result>`>
+````
 
 ## Step 8 — hand off
 
@@ -113,13 +120,17 @@ After the file exists:
 
 - If the `grilling` skill is available, invoke it to interview the user and flesh
   out the task details in `description.md`. The example tasks can be used for
-  inspiration. The interview **must not finish** until:
+  inspiration. The interview **must not finish** until **all three** required
+  sections defined in Step 7 are filled:
     - `## Acceptance Criteria` has **≥1** checkbox, every criterion verifiable
-      (if you cannot state how you'd check it, rewrite it until you can), and
+      (if you cannot state how you'd check it, rewrite it until you can),
     - `## Out of scope` is filled (`- none` is allowed only when nothing is
-      genuinely excluded).
-  These two sections are the task's Definition of Done — `af.task.review` gates
-  on them, so a vague or empty checklist will block review later.
+      genuinely excluded), and
+    - `## Verification` carries at least one behavior-specific bullet beyond
+      the baseline `make build && make test && make lint` gate (see Step 7).
+  These sections are the task's Definition of Done as defined in Step 7 —
+  `af.task.review` gates on them, so a vague or empty section blocks review
+  later.
 - Otherwise, tell the user the task was created (give the path), remind them the
   three required sections must be filled before `af.task.implement`, and open
   `description.md` for editing if the environment supports it.
