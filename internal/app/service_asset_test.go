@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/hexworks/agentfiles/internal/asset"
-	"github.com/hexworks/agentfiles/internal/config"
 	"github.com/hexworks/agentfiles/internal/errs"
 )
 
@@ -375,15 +374,15 @@ func TestDeleteAsset_PartialFailureLeavesRecoverableState(t *testing.T) {
 		t.Fatalf("add project: %v", addErrs)
 	}
 
-	// Make the project manifest unwritable so the per-project save fails
-	// mid-loop. The asset folder removal in DeleteAsset is separate and
-	// still runs, so the second half of the operation should succeed even
-	// though the first half fails.
-	manifestPath := filepath.Join(profilePath, config.ProjectsDirName, "repo.json")
-	if err := os.Chmod(manifestPath, 0o400); err != nil {
-		t.Fatalf("chmod project manifest: %v", err)
+	// Make the projects store file unwritable so the per-project save
+	// fails mid-loop. The asset folder removal in DeleteAsset is separate
+	// and still runs, so the second half of the operation should succeed
+	// even though the first half fails.
+	storePath := svc.Projects.Path
+	if err := os.Chmod(storePath, 0o400); err != nil {
+		t.Fatalf("chmod store file: %v", err)
 	}
-	t.Cleanup(func() { _ = os.Chmod(manifestPath, 0o644) })
+	t.Cleanup(func() { _ = os.Chmod(storePath, 0o644) })
 
 	err := svc.DeleteAsset("personal", "agents")
 	if err == nil {
@@ -395,7 +394,7 @@ func TestDeleteAsset_PartialFailureLeavesRecoverableState(t *testing.T) {
 	}
 
 	// Restore write permission so the recovery run can finish.
-	if err := os.Chmod(manifestPath, 0o644); err != nil {
+	if err := os.Chmod(storePath, 0o644); err != nil {
 		t.Fatalf("restore chmod: %v", err)
 	}
 	// Re-running DeleteAsset converges: by now the asset folder is gone,

@@ -2,89 +2,69 @@ package project
 
 import (
 	"errors"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
-
-	"github.com/hexworks/agentfiles/internal/config"
 )
 
-func TestDelete_RemovesManifestFile(t *testing.T) {
-	root := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(root, config.ProjectsDirName), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	manifest := &Manifest{
-		ID:            "repo",
-		Name:          "Repo",
-		Path:          filepath.Join(root, "repo"),
-		EnabledAgents: []string{"codex"},
-		CreatedAt:     time.Now().UTC(),
-	}
-	if err := Save(root, manifest); err != nil {
-		t.Fatalf("save: %v", err)
-	}
-	path := filepath.Join(root, config.ProjectsDirName, "repo.json")
-	if _, err := os.Stat(path); err != nil {
-		t.Fatalf("expected manifest on disk: %v", err)
-	}
-
-	if err := Delete(root, "repo"); err != nil {
-		t.Fatalf("delete: %v", err)
-	}
-
-	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		t.Fatalf("expected manifest removed, stat err = %v", err)
+func TestValidate_MissingFields(t *testing.T) {
+	m := &Manifest{}
+	err := m.Validate()
+	if !errors.Is(err, ErrProjectFieldsRequired) {
+		t.Fatalf("expected ErrProjectFieldsRequired, got %v", err)
 	}
 }
 
-func TestDelete_MissingFileIsIdempotent(t *testing.T) {
-	root := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(root, config.ProjectsDirName), 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := Delete(root, "never-existed"); err != nil {
-		t.Fatalf("first delete: %v", err)
-	}
-	if err := Delete(root, "never-existed"); err != nil {
-		t.Fatalf("second delete: %v", err)
+func TestValidate_NoEnabledAgents(t *testing.T) {
+	m := &Manifest{ID: "id", Name: "n", Path: "/p"}
+	err := m.Validate()
+	if !errors.Is(err, ErrNoEnabledAgents) {
+		t.Fatalf("expected ErrNoEnabledAgents, got %v", err)
 	}
 }
 
-func TestDelete_RealFailureReturnsTypedError(t *testing.T) {
-	if os.Geteuid() == 0 {
-		t.Skip("permission-based failure injection cannot run as root")
-	}
-	root := t.TempDir()
-	projects := filepath.Join(root, config.ProjectsDirName)
-	if err := os.MkdirAll(projects, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	manifest := &Manifest{
-		ID:            "repo",
-		Name:          "Repo",
-		Path:          filepath.Join(root, "repo"),
+func TestValidate_Ok(t *testing.T) {
+	m := &Manifest{
+		ID:            "id",
+		Name:          "n",
+		Path:          "/p",
 		EnabledAgents: []string{"codex"},
 		CreatedAt:     time.Now().UTC(),
 	}
-	if err := Save(root, manifest); err != nil {
-		t.Fatalf("save: %v", err)
+	if err := m.Validate(); err != nil {
+		t.Fatalf("expected nil, got %v", err)
 	}
-	// Drop write on the parent so os.Remove cannot unlink.
-	if err := os.Chmod(projects, 0o500); err != nil {
-		t.Fatalf("chmod: %v", err)
-	}
-	t.Cleanup(func() { _ = os.Chmod(projects, 0o755) })
+}
 
-	err := Delete(root, "repo")
-
-	var typed ProjectDeleteError
-	if !errors.As(err, &typed) {
-		t.Fatalf("expected ProjectDeleteError, got %T: %v", err, err)
+func TestNormalize_MakesPathAbsoluteAndSortsSlices(t *testing.T) {
+	rel := filepath.Join(t.TempDir(), "repo")
+	m := &Manifest{
+		ID:               "id",
+		Name:             "n",
+		Path:             rel,
+		EnabledAgents:    []string{"codex", "claude"},
+		SelectedAssetIDs: []string{"b", "a"},
 	}
-	if typed.Unwrap() == nil {
-		t.Fatal("expected wrapped os error preserved")
+	if err := m.Normalize(); err != nil {
+		t.Fatalf("normalize: %v", err)
+	}
+	if !filepath.IsAbs(m.Path) {
+		t.Fatalf("expected absolute path, got %q", m.Path)
+	}
+	if m.EnabledAgents[0] != "claude" || m.SelectedAssetIDs[0] != "a" {
+		t.Fatalf("expected sorted slices, got %+v", m)
+	}
+}
+
+func TestSelectAsset_AppendsWhenAbsent(t *testing.T) {
+	m := &Manifest{}
+	if !m.SelectAsset("skill-a") {
+		t.Fatalf("expected true on first insert")
+	}
+	if m.SelectAsset("skill-a") {
+		t.Fatalf("expected false on duplicate insert")
+	}
+	if len(m.SelectedAssetIDs) != 1 {
+		t.Fatalf("expected 1 selected id, got %d", len(m.SelectedAssetIDs))
 	}
 }

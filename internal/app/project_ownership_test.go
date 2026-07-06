@@ -4,6 +4,9 @@ import (
 	"errors"
 	"path/filepath"
 	"testing"
+	"time"
+
+	"github.com/hexworks/agentfiles/internal/project"
 )
 
 func TestProjectPathCannotBeSharedAcrossProfiles(t *testing.T) {
@@ -88,11 +91,19 @@ func TestEnsureProjectPathAvailable_AccumulatesAcrossMultipleProfiles(t *testing
 		t.Fatal("expected second add to fail because First already owns the path")
 	}
 
-	// Now manually create a project file in Second's profile so both
-	// First and Second own the path. (AddProject won't let us, by
-	// design, so we sidestep it for the test fixture only.)
-	mustCreateProjectFile(t, filepath.Join(root, "second", "projects", "owner2.json"),
-		`{"id":"owner2","name":"Owner2","path":"`+projectPath+`","enabled_agents":["codex"]}`)
+	// Sidestep AddProject to seed a second owner in the "second" group so
+	// the ownership check faces two conflicts at once. Writing straight
+	// to the projectstore is fine here because we are testing the
+	// aggregation behavior of ensureProjectPathAvailable, not AddProject.
+	if err := svc.Projects.Add("second", &project.Manifest{
+		ID:            "owner2",
+		Name:          "Owner2",
+		Path:          projectPath,
+		EnabledAgents: []string{"codex"},
+		CreatedAt:     time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("seed projectstore: %v", err)
+	}
 
 	_, addErrs := svc.AddProject("third", "Owner3", projectPath, []string{"codex"}, nil)
 	if len(addErrs) < 2 {
@@ -107,12 +118,5 @@ func TestEnsureProjectPathAvailable_AccumulatesAcrossMultipleProfiles(t *testing
 	}
 	if !owners["First"] || !owners["Second"] {
 		t.Fatalf("expected both profiles in conflict set, got %v", owners)
-	}
-}
-
-func mustCreateProjectFile(t *testing.T, path, body string) {
-	t.Helper()
-	if err := writeFileEnsureDir(path, body); err != nil {
-		t.Fatal(err)
 	}
 }

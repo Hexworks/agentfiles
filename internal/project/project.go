@@ -1,13 +1,10 @@
-// Package project models the per-project manifest stored inside a profile. A
-// project manifest records where a target repository lives, which agents are
-// enabled, and which assets are selected for rendering.
+// Package project models the per-project manifest that pairs a target
+// repository path with the agents and assets selected for it. The manifest
+// itself is content-only: persistence lives in `internal/projectstore` so
+// the profile folder can be shared without leaking per-machine selections.
 package project
 
 import (
-	"errors"
-	"io/fs"
-	"os"
-	"path/filepath"
 	"slices"
 	"time"
 
@@ -78,32 +75,5 @@ func (m *Manifest) Normalize() errs.DomainError {
 	m.Path = abs
 	slices.Sort(m.EnabledAgents)
 	slices.Sort(m.SelectedAssetIDs)
-	return nil
-}
-
-// Save writes the project manifest into the owning profile's projects/
-// directory.
-func Save(profileRoot string, manifest *Manifest) errs.DomainError {
-	if err := manifest.Normalize(); err != nil {
-		return err
-	}
-	if err := manifest.Validate(); err != nil {
-		return err
-	}
-	path := filepath.Join(profileRoot, config.ProjectsDirName, manifest.ID+".json")
-	return utils.WriteJSON(path, manifest)
-}
-
-// Delete removes the project manifest file from the owning profile's
-// projects/ directory. A missing file is treated as success so the
-// operation is idempotent.
-func Delete(profileRoot, projectID string) errs.DomainError {
-	path := filepath.Join(profileRoot, config.ProjectsDirName, projectID+".json")
-	if err := os.Remove(path); err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil
-		}
-		return ProjectDeleteError{Path: path, Err: err}
-	}
 	return nil
 }

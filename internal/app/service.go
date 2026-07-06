@@ -17,6 +17,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/profile"
 	"github.com/hexworks/agentfiles/internal/project"
+	"github.com/hexworks/agentfiles/internal/projectstore"
 	"github.com/hexworks/agentfiles/internal/registry"
 	llmsync "github.com/hexworks/agentfiles/internal/sync"
 	"github.com/hexworks/agentfiles/internal/utils"
@@ -26,19 +27,37 @@ import (
 //
 // The domain packages do the real work:
 //   - registry discovers profiles
-//   - profile/asset/project load the source model
+//   - profile/asset load the profile source model
+//   - projectstore persists per-user project selections
 //   - render computes desired outputs
 //   - sync compares and writes project files
 //
-// Service ties those packages together into user-facing operations.
+// Service ties those packages together into user-facing operations. It
+// holds the two centralized stores (profiles + projects) so every
+// operation runs against the same aggregate root.
 type Service struct {
 	Registry *registry.Store
+	Projects *projectstore.Store
 }
 
-// New builds a Service backed by the registry store at registryPath. An empty
-// path selects the default registry location.
+// New builds a Service from a registry path, deriving the sibling
+// projects-store path so callers with a scratch registryPath (tests) get
+// a projects.json inside the same tmpdir rather than the real user home.
+// An empty registryPath selects registry.DefaultPath — which places both
+// files under ~/.agentfiles as intended for production. main.go injects
+// both stores explicitly via NewWithStores.
 func New(registryPath string) *Service {
-	return &Service{Registry: registry.NewStore(registryPath)}
+	reg := registry.NewStore(registryPath)
+	projectsPath := filepath.Join(filepath.Dir(reg.Path), config.ProjectsStoreFileName)
+	return NewWithStores(reg, projectstore.NewStore(projectsPath))
+}
+
+// NewWithStores wires an already-built pair of stores into a Service. It
+// is the injection seam used by cmd/af/main.go so the same store
+// instances that migrate.Run consumed are the ones the app reads
+// afterwards.
+func NewWithStores(reg *registry.Store, proj *projectstore.Store) *Service {
+	return &Service{Registry: reg, Projects: proj}
 }
 
 // CreateProfile initializes a new profile folder on disk and registers it in
@@ -92,7 +111,10 @@ func (s *Service) RegisterProfile(path string) (*registry.ProfileRef, errs.Domai
 }
 
 // LoadProfile resolves a user-facing profile reference (id, name, or path),
-// updates its last-opened timestamp, and returns the fully loaded profile model.
+// updates its last-opened timestamp, and returns the fully loaded profile
+// model — assets from disk plus projects composed from the projects store.
+// The Projects map on the returned Profile is populated so downstream
+// callers see one aggregate instead of having to compose it themselves.
 func (s *Service) LoadProfile(ref string) (*profile.Profile, errs.DomainError) {
 	profileRef, err := s.Registry.Resolve(ref)
 	if err != nil {
@@ -101,7 +123,18 @@ func (s *Service) LoadProfile(ref string) (*profile.Profile, errs.DomainError) {
 	if err := s.Registry.Touch(profileRef.ID); err != nil {
 		return nil, err
 	}
-	return profile.Load(profileRef.Path)
+	loaded, err := profile.Load(profileRef.Path)
+	if err != nil {
+		return nil, err
+	}
+	projects, err := s.Projects.ListByProfile(loaded.Manifest.ID)
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range projects {
+		loaded.Projects[p.ID] = p
+	}
+	return loaded, nil
 }
 
 // AddProject creates a per-profile project manifest. Domain failures
@@ -132,7 +165,7 @@ func (s *Service) AddProject(profileRef, name, path string, agents, assetIDs []s
 	}
 	manifest := project.NewDraft(name, path, agents)
 	manifest.SelectedAssetIDs = assetIDs
-	if err := project.Save(loaded.Root, manifest); err != nil {
+	if err := s.Projects.Add(loaded.Manifest.ID, manifest); err != nil {
 		return nil, []errs.DomainError{err}
 	}
 	return manifest, nil
@@ -229,7 +262,7 @@ func (s *Service) CreateAssetFromFolder(profileRef, projectID string, manifest a
 		return "", initErr
 	}
 	p.SelectAsset(manifest.ID)
-	if saveErr := project.Save(loaded.Root, p); saveErr != nil {
+	if saveErr := s.Projects.Update(loaded.Manifest.ID, p); saveErr != nil {
 		failures := errs.Errors{saveErr}
 		if delErr := asset.Delete(dir); delErr != nil {
 			failures = append(failures, delErr)
@@ -480,46 +513,52 @@ func toSyncUnknownResolutions(in []UnknownResolution) []llmsync.UnknownResolutio
 	return out
 }
 
-// ensureProjectPathAvailable enforces the ownership rule that one repository
-// path may belong to only one project. Without this check, two projects could
-// fight over the same generated files and the same .agentfiles/state.json.
-// Both same-profile and cross-profile conflicts are reported; all conflicts
-// are accumulated so the caller learns about every owning project in one
-// pass. Project iteration is sorted so the returned slice is deterministic.
+// ensureProjectPathAvailable enforces the ownership rule that one
+// repository path may belong to only one project across every registered
+// profile. Without this check two projects could fight over the same
+// generated files and the same .agentfiles/state.json. The check runs
+// against the centralized projects store so it is a single pass with a
+// deterministic order (see projectstore.Store.AllProjects); the registry
+// is only consulted to translate profile ids into human-facing names.
 func (s *Service) ensureProjectPathAvailable(projectPath string, active *profile.Profile) []errs.DomainError {
-	var conflicts []errs.DomainError
-	for _, proj := range active.ProjectList() {
-		if proj.Path == projectPath {
-			conflicts = append(conflicts, ProjectPathOwnedError{
-				Path:        projectPath,
-				ProfileName: active.Manifest.Name,
-				ProjectName: proj.Name,
-			})
-		}
-	}
-	reg, err := s.Registry.Load()
+	owned, err := s.Projects.AllProjects()
 	if err != nil {
-		return append(conflicts, err)
+		return []errs.DomainError{err}
 	}
-	for _, profileRef := range reg.Profiles {
-		if profileRef.ID == active.Manifest.ID {
+	nameByID := s.profileNameByID()
+	var conflicts []errs.DomainError
+	for _, op := range owned {
+		if op.Manifest.Path != projectPath {
 			continue
 		}
-		loaded, loadErr := profile.Load(profileRef.Path)
-		if loadErr != nil {
-			continue
+		profileName := nameByID[op.ProfileID]
+		if op.ProfileID == active.Manifest.ID {
+			profileName = active.Manifest.Name
 		}
-		for _, proj := range loaded.ProjectList() {
-			if proj.Path == projectPath {
-				conflicts = append(conflicts, ProjectPathOwnedError{
-					Path:        projectPath,
-					ProfileName: profileRef.Name,
-					ProjectName: proj.Name,
-				})
-			}
-		}
+		conflicts = append(conflicts, ProjectPathOwnedError{
+			Path:        projectPath,
+			ProfileName: profileName,
+			ProjectName: op.Manifest.Name,
+		})
 	}
 	return conflicts
+}
+
+// profileNameByID indexes registered profile refs by id so path-conflict
+// messages can display a friendly name without a second lookup per hit.
+// A registry read failure returns an empty map; callers get an ok
+// message shape with a blank profile name rather than a fatal error at
+// what is really a lookup-side concern.
+func (s *Service) profileNameByID() map[string]string {
+	reg, err := s.Registry.Load()
+	if err != nil {
+		return map[string]string{}
+	}
+	names := make(map[string]string, len(reg.Profiles))
+	for _, ref := range reg.Profiles {
+		names[ref.ID] = ref.Name
+	}
+	return names
 }
 
 // LoadProfiles returns every registered profile, fully loaded (assets and
@@ -544,19 +583,35 @@ func (s *Service) LoadProfiles() ([]*profile.Profile, []errs.DomainError) {
 			loadErrs = append(loadErrs, loadErr)
 			continue
 		}
+		projects, listErr := s.Projects.ListByProfile(p.Manifest.ID)
+		if listErr != nil {
+			loadErrs = append(loadErrs, listErr)
+			continue
+		}
+		for _, pj := range projects {
+			p.Projects[pj.ID] = pj
+		}
 		loaded = append(loaded, p)
 	}
 	return loaded, loadErrs
 }
 
-// DeleteProfile removes the profile from the global registry only. The
-// on-disk profile folder is left untouched. Use DeleteProfileWithFolder
-// for the destructive variant; splitting the two operations makes caller
-// intent visible at the call site.
+// DeleteProfile removes the profile from the global registry and cascades
+// through the projects store so per-user selections for that profile do
+// not linger as orphans. The on-disk profile folder is left untouched;
+// use DeleteProfileWithFolder for the destructive variant.
+//
+// Projects are removed before the registry entry so a mid-operation crash
+// leaves the registry entry (and therefore recovery possible) rather than
+// leaving orphaned project groups that the next Load would surface as an
+// OrphanProfileIDError.
 func (s *Service) DeleteProfile(profileRef string) errs.DomainError {
 	ref, err := s.Registry.Resolve(profileRef)
 	if err != nil {
 		return err
+	}
+	if cascadeErr := s.Projects.RemoveByProfile(ref.ID); cascadeErr != nil {
+		return cascadeErr
 	}
 	return s.Registry.Remove(ref.ID)
 }
@@ -571,8 +626,8 @@ func (s *Service) DeleteProfile(profileRef string) errs.DomainError {
 // and it must not be a pathological deletion target (empty, the
 // filesystem root, the user's home directory, or an ancestor of the
 // global registry file). Both checks defend against tampered registry
-// state — a corrupted ~/.agentprofiles.json must not turn this call into
-// a wipe of an arbitrary directory.
+// state — a corrupted ~/.agentfiles/profiles.json must not turn this call
+// into a wipe of an arbitrary directory.
 func (s *Service) DeleteProfileWithFolder(profileRef string) errs.DomainError {
 	ref, err := s.Registry.Resolve(profileRef)
 	if err != nil {
@@ -583,8 +638,11 @@ func (s *Service) DeleteProfileWithFolder(profileRef string) errs.DomainError {
 	}
 	if !utils.Exists(ref.Path) {
 		// Folder already gone — proceed straight to deregistering so the
-		// registry side always converges, matching project.Delete /
+		// registry side always converges, matching projectstore.Remove /
 		// asset.Delete idempotence.
+		if cascadeErr := s.Projects.RemoveByProfile(ref.ID); cascadeErr != nil {
+			return cascadeErr
+		}
 		return s.Registry.Remove(ref.ID)
 	}
 	if !utils.Exists(filepath.Join(ref.Path, config.ProfileManifestFileName)) {
@@ -592,6 +650,9 @@ func (s *Service) DeleteProfileWithFolder(profileRef string) errs.DomainError {
 	}
 	if rmErr := os.RemoveAll(ref.Path); rmErr != nil && !errors.Is(rmErr, fs.ErrNotExist) {
 		return ProfileFolderRemoveError{Path: ref.Path, Err: rmErr}
+	}
+	if cascadeErr := s.Projects.RemoveByProfile(ref.ID); cascadeErr != nil {
+		return cascadeErr
 	}
 	return s.Registry.Remove(ref.ID)
 }
@@ -724,8 +785,10 @@ func (s *Service) DeleteAsset(profileRef, assetID string) errs.DomainError {
 		return err
 	}
 	var failures errs.Errors
-	if unselectErr := loaded.UnselectAsset(assetID); unselectErr != nil {
-		failures = append(failures, unselectErr)
+	for _, projectID := range loaded.UnselectAsset(assetID) {
+		if saveErr := s.Projects.Update(loaded.Manifest.ID, loaded.Projects[projectID]); saveErr != nil {
+			failures = append(failures, saveErr)
+		}
 	}
 	if delErr := asset.Delete(target.Dir); delErr != nil {
 		failures = append(failures, delErr)
@@ -757,7 +820,7 @@ func (s *Service) UpdateProject(profileRef, projectID, name, path string, enable
 	p.Name = name
 	p.Path = path
 	p.EnabledAgents = append([]string(nil), enabledAgents...)
-	return project.Save(loaded.Root, p)
+	return s.Projects.Update(loaded.Manifest.ID, p)
 }
 
 // SelectAsset appends assetID to the project's SelectedAssetIDs if not
@@ -775,7 +838,7 @@ func (s *Service) SelectAsset(profileRef, projectID, assetID string) ([]string, 
 		return nil, AssetNotFoundError{AssetID: assetID}
 	}
 	if p.SelectAsset(assetID) {
-		if saveErr := project.Save(loaded.Root, p); saveErr != nil {
+		if saveErr := s.Projects.Update(loaded.Manifest.ID, p); saveErr != nil {
 			return nil, saveErr
 		}
 	}
@@ -806,7 +869,7 @@ func (s *Service) UnselectAsset(profileRef, projectID, assetID string) ([]string
 		return append([]string(nil), p.SelectedAssetIDs...), nil
 	}
 	p.SelectedAssetIDs = append(p.SelectedAssetIDs[:idx], p.SelectedAssetIDs[idx+1:]...)
-	if saveErr := project.Save(loaded.Root, p); saveErr != nil {
+	if saveErr := s.Projects.Update(loaded.Manifest.ID, p); saveErr != nil {
 		return nil, saveErr
 	}
 	return append([]string(nil), p.SelectedAssetIDs...), nil
@@ -820,5 +883,5 @@ func (s *Service) DeleteProject(profileRef, projectID string) errs.DomainError {
 	if err != nil {
 		return err
 	}
-	return project.Delete(loaded.Root, projectID)
+	return s.Projects.Remove(loaded.Manifest.ID, projectID)
 }

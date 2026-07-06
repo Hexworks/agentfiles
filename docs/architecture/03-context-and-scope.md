@@ -11,12 +11,13 @@ into agent-specific outputs, and synchronize those outputs safely.
 | User / Terminal  | -----> |     agentfiles TUI   |
 +------------------+        +----------------------+
            |                           |
-           |                           +----> ~/.agentprofiles.json
+           |                           +----> ~/.agentfiles/           (user-config dir)
+           |                           |      profiles.json            (registry)
+           |                           |      projects.json            (project store)
            |                           |
-           |                           +----> Profile folders
+           |                           +----> Profile folders          (shareable)
            |                           |      profile.json
            |                           |      assets/
-           |                           |      projects/
            |                           |
            |                           +----> Target repositories
            |                                  AGENTS.md
@@ -24,7 +25,7 @@ into agent-specific outputs, and synchronize those outputs safely.
            |                                  .cursor/
            |                                  .codex/
            |                                  .opencode/
-           |                                  .agentfiles/state.json
+           |                                  .agentfiles/state.json   (managed-state dir)
 ```
 
 ## Business Context
@@ -44,17 +45,22 @@ domain-level terms; technical encodings are described in the next section.
 
 The system is fully TUI-driven. Running `af` opens the top-level menu and
 all navigation happens from there; the binary takes no positional arguments
-and has no subcommand tree. The only flag is `--registry`, used to override
-the registry file location for tests and isolated environments.
+and has no subcommand tree. The flags are `--registry` and `--projects`
+(both used to override the corresponding user-config file location for
+tests and isolated environments) and `--theme`.
 
-### Global Registry
+### User-Config Dir
 
-The registry file at `~/.agentprofiles.json` is used to discover profiles and
-resolve them by id, name, or path.
+The centralized user-config directory `~/.agentfiles/` (see ADR 0017)
+holds both `profiles.json` (the profile registry) and `projects.json`
+(the projects store). Its name intentionally matches the target-repo
+managed-state dir; the two live under different anchors ($HOME vs repo
+root) and the glossary disambiguates them.
 
 ### Filesystem
 
-Profiles and projects are both normal folders. This is the dominant external
-boundary of the application. Reads cover the profile library and the target
-repository; writes cover the managed surfaces inside the target repository
-and the per-repository state file at `<repo>/.agentfiles/state.json`.
+Profile folders hold shareable content only (`profile.json` + `assets/`);
+per-user selections live in the user-config dir. Target repositories are
+the second external boundary — reads cover managed files for drift
+comparison, writes cover the managed surfaces and the per-repository
+state file at `<repo>/.agentfiles/state.json`.

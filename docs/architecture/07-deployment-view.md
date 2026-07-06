@@ -9,13 +9,13 @@ server-side runtime and no distributed deployment topology.
 flowchart LR
     subgraph Workstation
         Bin["af binary<br/>(~/.local/bin/af)"]
-        Reg["~/.agentprofiles.json"]
-        Profiles["Profile folders<br/>(user-selected path)"]
+        UserCfg["~/.agentfiles/<br/>profiles.json<br/>projects.json"]
+        Profiles["Profile folders<br/>(user-selected path)<br/>profile.json + assets/"]
         Repo1["Target repo A<br/>.agentfiles/state.json<br/>AGENTS.md, .claude/, ..."]
         Repo2["Target repo B"]
     end
 
-    Bin --> Reg
+    Bin --> UserCfg
     Bin --> Profiles
     Bin --> Repo1
     Bin --> Repo2
@@ -34,8 +34,11 @@ of its own; all persistence is on the local filesystem.
 ## Relevant Locations
 
 - Binary install path: `~/.local/bin/af`
-- Global registry: `~/.agentprofiles.json`
-- Profile root: user-selected local path
+- User-config dir: `~/.agentfiles/`
+  - Profile registry: `~/.agentfiles/profiles.json`
+  - Projects store: `~/.agentfiles/projects.json`
+- Profile root: user-selected local path (contains `profile.json` +
+  `assets/` only; no `projects/` subdirectory since ADR 0017)
 - Managed project state: `<repo>/.agentfiles/state.json`
 - Rendered agent files:
   - `AGENTS.md`

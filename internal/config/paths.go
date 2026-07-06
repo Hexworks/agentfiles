@@ -10,9 +10,21 @@ package config
 
 // Filenames persisted to disk.
 
-// RegistryFileName is the conventional name of the global profile registry
-// file written under the user's home directory.
-const RegistryFileName = ".agentprofiles.json"
+// UserConfigDirName is the directory under the user's home that holds the
+// centralized profile registry and project store. It shares its name with
+// the target-repo managed-state dir (StateDirName) intentionally; the two
+// have different anchors ($HOME vs repo root). See docs/glossary.md.
+const UserConfigDirName = ".agentfiles"
+
+// ProfilesStoreFileName is the name of the profile registry file written
+// under UserConfigDirName. It replaces the v1 registry that lived directly
+// under $HOME as .agentprofiles.json.
+const ProfilesStoreFileName = "profiles.json"
+
+// ProjectsStoreFileName is the name of the project store file written
+// under UserConfigDirName. It holds per-user project selections that used
+// to live inside each profile folder.
+const ProjectsStoreFileName = "projects.json"
 
 // ProfileManifestFileName is the name of the per-profile manifest file
 // scaffolded by profile.Init at the profile root.
@@ -27,10 +39,6 @@ const AssetManifestFileName = "asset.json"
 // AssetsDirName is the subdirectory under a profile root that contains
 // per-type asset directories.
 const AssetsDirName = "assets"
-
-// ProjectsDirName is the subdirectory under a profile root that contains
-// per-project manifest files.
-const ProjectsDirName = "projects"
 
 // Managed-state location inside a target repository. Stored as separate
 // dir + filename so callers join with the OS separator at the use site.

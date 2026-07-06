@@ -12,7 +12,7 @@ All via `make` at repo root:
 | `make test`         | `go test ./...`                                                                                                            |
 | `make lint`         | `go vet ./...` (no golangci-lint configured)                                                                               |
 | `make fmt`          | `gofmt -w .`                                                                                                               |
-| `make run ARGS="…"` | Build then run `./bin/af` with args. Only flag the binary accepts is `--registry <path>`.                                  |
+| `make run ARGS="…"` | Build then run `./bin/af` with args. Accepted flags: `--registry <path>`, `--projects <path>`, `--theme <path>`.            |
 | `make clean`        | Remove `./bin/` and run `go clean`.                                                                                        |
 
 Run a single test: `go test ./internal/sync -run TestName` (or any package path). Toolchain pinned by `mise.toml` (`go = "latest"`; repo targets Go 1.26.1 per `go.mod`).
@@ -27,13 +27,15 @@ Domain packages are kept separable by design — do not blur them:
 
 - `config` — package-level constants for filenames and default profile metadata. No internal deps; sits at the bottom of the import graph and is the single edit-point for those values.
 - `surfaces` — owns the managed-surface root list and the `IsAllowed(target)` matcher. Render and sync both consume it; the data and the rule live together.
-- `registry` — global profile index at `~/.agentprofiles.json` (discovery only, no asset content).
-- `profile` — profile folder model (`profile.json`, `assets/`, `projects/`).
+- `registry` — global profile index at `~/.agentfiles/profiles.json` (discovery only, no asset content).
+- `projectstore` — centralized per-user project selection file at `~/.agentfiles/projects.json`. Owns Load/Save + typed CRUD (`Add`, `Update`, `Remove`, `ListByProfile`, `RemoveByProfile`, `AllProjects`). Introduced by ADR 0017 so profile folders can be shared without leaking per-machine selections.
+- `migrate` — one-shot v1→v2 user-config migration invoked from `cmd/af/main.go` before the TUI opens. Idempotent, presence-based; injectable logger surfaces non-fatal warnings. See ADR 0017.
+- `profile` — profile folder model (`profile.json` + `assets/`). `Profile.Projects` is retained as an in-memory projection populated by `app.Service.LoadProfile` from `projectstore`; profile folders no longer own projects on disk.
 - `asset` — typed asset manifest (`asset.json`) + scaffolding. Types: `skill`, `agents_doc`, `settings`, `mcp`, `rule`, `hook`. Exposes `AllTypes()` so `profile.Init` can iterate them without duplicating the list.
-- `project` — per-project manifest (target path + selected agents + selected asset ids). Lives inside a profile's `projects/`.
+- `project` — per-project manifest struct (target path + selected agents + selected asset ids) plus `Validate`/`Normalize`. Persistence lives in `projectstore`.
 - `render` — **read-only**. Builds desired files from profile+project. Calls `surfaces.IsAllowed` to gate projection targets against the safety fence (`AGENTS.md`, `.claude`, `.cursor`, `.codex`, `.opencode`, `.mcp.json`). Resolves `exclusive_group` conflicts and `compatible_agents` filters.
 - `sync` — compares render plan vs. repo, classifies as `create`/`update`/`drift`/`delete`, writes files, and rewrites `<repo>/.agentfiles/state.json` (hashes of managed files). Imported as `llmsync` in `internal/app` to avoid clashing with stdlib `sync`.
-- `app` — thin orchestration layer called by the TUI. Contains no business logic.
+- `app` — thin orchestration layer called by the TUI. Holds both centralized stores and cascades project removal on profile deletion. Contains no business logic.
 - `tui` — the only user interface. Menus + `huh` forms. `Esc` and `ctrl+c` both bound to Quit (see `runForm` in `tui/tui.go`) so Esc backs out one level.
 - `utils` — shared path/IO/hashing helpers and small generic utilities (e.g. `Deduplicate`).
 
@@ -43,7 +45,7 @@ Domain packages are kept separable by design — do not blur them:
 2. **Managed surfaces fence.** Render refuses any target where `surfaces.IsAllowed` returns false. Keep both the root list and the matcher in `internal/surfaces/surfaces.go`.
 3. **Drift vs. update.** `update` = desired content changed; `drift` = local file hash diverged from last `.agentfiles/state.json`. Never collapse them.
 4. **Delete opt-in.** `delete` is surfaced in the preview but only removed when `Apply` is called with `deleteCandidates=true`.
-5. **Single ownership.** One target repo path may belong to at most one profile. Enforced by `app.Service.ensureProjectPathAvailable`.
+5. **Single ownership.** One target repo path may belong to at most one project across every registered profile. Enforced by `app.Service.ensureProjectPathAvailable` in one pass against `projectstore.Store.AllProjects()` — no per-profile filesystem walk. Adding or moving a project against a path already owned elsewhere returns `app.ProjectPathOwnedError`.
 6. **Source of truth.** Profile content is authoritative; repo files are outputs. Never make render read from the repo as input.
 
 ### TUI-only

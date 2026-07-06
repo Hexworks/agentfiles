@@ -1,6 +1,7 @@
-// Package profile represents a profile folder on disk: its manifest, the
-// assets it contains, and the projects it owns. It is the authoritative source
-// of truth that render and sync consume.
+// Package profile represents a profile folder on disk: its manifest and
+// the assets it contains. The Projects field is populated by the app
+// layer from `internal/projectstore`; profile folders on disk no longer
+// own projects (see ADR 0017).
 package profile
 
 import (
@@ -30,8 +31,13 @@ type Manifest struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
-// Profile is the in-memory representation of a profile after scanning its asset
-// and project subdirectories. This is the object most domain operations work on.
+// Profile is the in-memory representation of a profile after scanning its
+// asset subdirectory. The Projects map is populated by the app layer from
+// the projects store; profile folders no longer own projects (ADR 0017).
+// The map is retained (rather than replaced by a slice) so downstream
+// callers that look projects up by id keep their existing API. Load
+// allocates an empty map; app.Service.loadWithProjects fills it before
+// handing the profile back to TUI callers.
 type Profile struct {
 	Root     string
 	Manifest Manifest
@@ -41,6 +47,8 @@ type Profile struct {
 
 // Init scaffolds a brand-new profile root with the expected folder layout.
 // The created directories mirror the current set of first-class asset types.
+// No `projects/` directory is scaffolded — per-user selections live in the
+// central projects store.
 func Init(root, name string) (*Manifest, errs.DomainError) {
 	root, absErr := utils.ToAbsolute(root)
 	if absErr != nil {
@@ -53,11 +61,10 @@ func Init(root, name string) (*Manifest, errs.DomainError) {
 		CreatedAt: time.Now().UTC(),
 	}
 	types := asset.AllTypes()
-	dirs := make([]string, 0, len(types)+1)
+	dirs := make([]string, 0, len(types))
 	for _, t := range types {
 		dirs = append(dirs, filepath.Join(root, config.AssetsDirName, string(t)))
 	}
-	dirs = append(dirs, filepath.Join(root, config.ProjectsDirName))
 	for _, dir := range dirs {
 		if err := utils.EnsureDir(dir); err != nil {
 			return nil, err
@@ -69,8 +76,9 @@ func Init(root, name string) (*Manifest, errs.DomainError) {
 	return manifest, nil
 }
 
-// Load reads profile.json and then scans assets/ and projects/ to build the
-// complete in-memory profile model.
+// Load reads profile.json and scans assets/ to build the in-memory profile
+// model. The Projects map is allocated empty; callers that need projects
+// call the app-layer composer that pulls them from the projects store.
 func Load(root string) (*Profile, errs.DomainError) {
 	root, absErr := utils.ToAbsolute(root)
 	if absErr != nil {
@@ -87,9 +95,6 @@ func Load(root string) (*Profile, errs.DomainError) {
 		Projects: map[string]*project.Manifest{},
 	}
 	if err := loadAssetsInto(profile); err != nil {
-		return nil, err
-	}
-	if err := loadProjectsInto(profile); err != nil {
 		return nil, err
 	}
 	return profile, nil
@@ -135,64 +140,23 @@ func loadAssetsInto(loaded *Profile) errs.DomainError {
 	return nil
 }
 
-// loadProjectsInto loads all project manifests from the profile's projects/
-// directory and normalizes them before exposing them to the rest of the app.
-func loadProjectsInto(loaded *Profile) errs.DomainError {
-	projectsRoot := filepath.Join(loaded.Root, config.ProjectsDirName)
-	entries, err := os.ReadDir(projectsRoot)
-	if err != nil {
-		return ProjectsReadDirError{Root: projectsRoot, Err: err}
-	}
-	for _, entry := range entries {
-		// TODO: Task 0012 tracks extracting this filter into a named helper.
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
-			continue
-		}
-		var manifest project.Manifest
-		path := filepath.Join(projectsRoot, entry.Name())
-		if readErr := utils.ReadJSON(path, &manifest); readErr != nil {
-			return readErr
-		}
-		if normErr := manifest.Normalize(); normErr != nil {
-			return normErr
-		}
-		if valErr := manifest.Validate(); valErr != nil {
-			return valErr
-		}
-		if _, exists := loaded.Projects[manifest.ID]; exists {
-			return DuplicateProjectIDError{ID: manifest.ID}
-		}
-		loaded.Projects[manifest.ID] = &manifest
-	}
-	return nil
-}
-
-// UnselectAsset removes assetID from SelectedAssetIDs on every project in
-// the profile and persists each modified project. The profile-level
-// invariant being enforced is "Project.SelectedAssetIDs may only
-// reference asset ids present in Profile.Assets" — when an asset
-// disappears, every referencing project must drop the id.
-//
-// Per-project save failures are accumulated into errs.Errors so the
-// caller sees every project that failed in one pass rather than the
-// loop short-circuiting on the first error. Projects that did not
-// reference assetID are skipped.
-func (l *Profile) UnselectAsset(assetID string) errs.DomainError {
-	var failures errs.Errors
-	for _, p := range l.ProjectList() {
+// UnselectAsset drops assetID from SelectedAssetIDs on every project in
+// the in-memory Projects map. Persistence is the caller's responsibility
+// (app.Service loops the mutated projects through the projects store) so
+// the profile package stays disk-free with respect to per-user selections.
+// The returned slice is the set of project ids whose selection actually
+// changed, in map iteration order.
+func (l *Profile) UnselectAsset(assetID string) []string {
+	var mutated []string
+	for id, p := range l.Projects {
 		idx := slices.Index(p.SelectedAssetIDs, assetID)
 		if idx < 0 {
 			continue
 		}
 		p.SelectedAssetIDs = slices.Delete(p.SelectedAssetIDs, idx, idx+1)
-		if saveErr := project.Save(l.Root, p); saveErr != nil {
-			failures = append(failures, saveErr)
-		}
+		mutated = append(mutated, id)
 	}
-	if len(failures) == 0 {
-		return nil
-	}
-	return failures
+	return mutated
 }
 
 // ProjectList returns projects sorted by display name, which keeps the

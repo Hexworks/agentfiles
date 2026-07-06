@@ -2,11 +2,8 @@ package app
 
 import (
 	"errors"
-	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/hexworks/agentfiles/internal/config"
 )
 
 func TestLoadProject_ReturnsManifest(t *testing.T) {
@@ -75,11 +72,10 @@ func TestUpdateProject_PersistsChanges(t *testing.T) {
 	}
 }
 
-func TestDeleteProject_RemovesManifestFile(t *testing.T) {
+func TestDeleteProject_RemovesFromProjectStore(t *testing.T) {
 	root := t.TempDir()
 	svc := New(filepath.Join(root, "registry.json"))
-	profilePath := filepath.Join(root, "profile")
-	if _, err := svc.CreateProfile("Personal", profilePath); err != nil {
+	if _, err := svc.CreateProfile("Personal", filepath.Join(root, "profile")); err != nil {
 		t.Fatalf("create profile: %v", err)
 	}
 	if _, addErrs := svc.AddProject("personal", "Repo", filepath.Join(root, "repo"),
@@ -91,8 +87,11 @@ func TestDeleteProject_RemovesManifestFile(t *testing.T) {
 		t.Fatalf("delete: %v", err)
 	}
 
-	path := filepath.Join(profilePath, config.ProjectsDirName, "repo.json")
-	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		t.Fatalf("expected manifest removed, stat err = %v", err)
+	stored, err := svc.Projects.ListByProfile("personal")
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(stored) != 0 {
+		t.Fatalf("expected empty project group, got %d", len(stored))
 	}
 }

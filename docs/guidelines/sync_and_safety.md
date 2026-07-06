@@ -79,3 +79,28 @@ Don't:
 - store unrelated project metadata in managed state
 ```
 
+## Enforce Single Project Ownership Globally
+
+One target-repo path may belong to at most one project across every
+registered profile. The rule protects the pipeline from two projects
+fighting over the same generated files and the same `state.json`.
+
+```text
+Do:
+- run the ownership check against the centralized projects store
+  (projectstore.AllProjects) in a single pass
+- surface a ProjectPathOwnedError when a path is already taken, naming
+  the owning profile and project
+- cascade project removal on profile deletion so the store never holds
+  orphan groups
+```
+
+```text
+Don't:
+- walk each profile folder's on-disk projects/ subdirectory — the split
+  in ADR 0017 removed that layout
+- silently prune projects.json entries whose profile id is unknown; the
+  file is app-owned, so an orphan surfaces as a typed
+  OrphanProfileIDError instead
+```
+

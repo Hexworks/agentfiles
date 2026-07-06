@@ -21,20 +21,6 @@ func (DuplicateAssetIDError) Severity() errs.Severity {
 	return errs.SeverityError
 }
 
-// DuplicateProjectIDError reports a project id collision inside a profile's
-// projects/ directory.
-type DuplicateProjectIDError struct {
-	ID string
-}
-
-func (e DuplicateProjectIDError) Error() string {
-	return fmt.Sprintf("duplicate project id: %s", e.ID)
-}
-
-func (DuplicateProjectIDError) Severity() errs.Severity {
-	return errs.SeverityError
-}
-
 // AssetsScanError reports a failure while walking the profile's assets/
 // tree (filesystem error from WalkDir, not a per-asset domain failure).
 type AssetsScanError struct {
@@ -51,24 +37,5 @@ func (AssetsScanError) Severity() errs.Severity {
 }
 
 func (e AssetsScanError) Unwrap() error {
-	return e.Err
-}
-
-// ProjectsReadDirError reports a failure while listing the profile's
-// projects/ directory.
-type ProjectsReadDirError struct {
-	Root string
-	Err  error
-}
-
-func (e ProjectsReadDirError) Error() string {
-	return fmt.Sprintf("read projects directory %s: %s", e.Root, e.Err.Error())
-}
-
-func (ProjectsReadDirError) Severity() errs.Severity {
-	return errs.SeverityError
-}
-
-func (e ProjectsReadDirError) Unwrap() error {
 	return e.Err
 }

@@ -17,7 +17,8 @@ import (
 // Version is the current registry file schema version written by Save.
 const Version = 1
 
-// ProfileRef is the lightweight, global metadata stored in ~/.agentfiles.json.
+// ProfileRef is the lightweight, global metadata stored in
+// ~/.agentfiles/profiles.json.
 //
 // It intentionally does not contain the whole profile model; it only provides
 // enough information to discover and resolve a profile folder quickly.
@@ -46,9 +47,11 @@ type Store struct {
 }
 
 // DefaultPath returns the conventional location of the global registry.
+// The registry now lives inside the centralized user-config directory
+// (see config.UserConfigDirName) instead of directly under $HOME.
 func DefaultPath() string {
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, config.RegistryFileName)
+	return filepath.Join(home, config.UserConfigDirName, config.ProfilesStoreFileName)
 }
 
 // NewStore creates a registry store. An empty path means "use the default

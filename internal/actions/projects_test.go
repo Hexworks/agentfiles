@@ -136,9 +136,12 @@ func TestActions_DeleteProject_RemovesManifestOnly(t *testing.T) {
 		t.Fatalf("DeleteProject: %v", err)
 	}
 
-	manifestPath := filepath.Join(f.ProfilePath, config.ProjectsDirName, "repo.json")
-	if _, statErr := os.Stat(manifestPath); !os.IsNotExist(statErr) {
-		t.Fatalf("expected manifest removed, stat err = %v", statErr)
+	stored, listErr := f.Svc.Projects.ListByProfile("personal")
+	if listErr != nil {
+		t.Fatalf("list: %v", listErr)
+	}
+	if len(stored) != 0 {
+		t.Fatalf("expected empty projects group, got %d", len(stored))
 	}
 }
 

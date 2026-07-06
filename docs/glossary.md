@@ -8,15 +8,35 @@ Following the bounded-context idea, the glossary prefers one precise meaning for
 each term inside this project. If implementation details evolve, the glossary
 should be updated so the language stays internally consistent.
 
+## User Config Dir
+
+The centralized directory `~/.agentfiles/` that holds the persistent CLI
+state: the profile registry (`profiles.json`) and the projects store
+(`projects.json`). Its name intentionally matches the target-repo
+[Managed State](#managed-state) dir — the two live under different
+anchors ($HOME vs repo root), so both can be called `.agentfiles/` without
+ambiguity at the file-system level. Introduced by ADR 0017.
+
 ## Registry
 
-The global profile index stored at `~/.agentprofiles.json`. It contains profile
-references and is used for discovery and resolution.
+The global profile index stored at `~/.agentfiles/profiles.json` inside
+the [User Config Dir](#user-config-dir). It contains profile references
+and is used for discovery and resolution.
+
+## Projects Store
+
+The centralized project selection file at `~/.agentfiles/projects.json`.
+It maps profile ids to arrays of project manifests, so per-user selections
+(target repo path, enabled agents, selected asset ids) live outside the
+profile folder and do not leak when the folder is shared. Introduced by
+ADR 0017.
 
 ## Profile
 
-A root folder containing `profile.json`, `assets/`, and `projects/`. It is the
-main source-of-truth unit in the system.
+A root folder containing `profile.json` and `assets/`. It is the
+shareable, authoritative source of asset content. Per-user project
+selections live in the [Projects Store](#projects-store) rather than
+inside the profile folder (ADR 0017).
 
 ## Profile Reference
 
@@ -35,8 +55,9 @@ selected assets.
 
 ## Project Manifest
 
-A JSON file under `projects/<id>.json` that records the project path, enabled
-agents, selected asset ids, and metadata such as creation time.
+An entry in the [Projects Store](#projects-store) that records the
+project path, enabled agents, selected asset ids, and metadata such as
+creation time. Grouped in `projects.json` under the owning profile id.
 
 ## Asset
 
@@ -136,6 +157,10 @@ The limited set of output locations that `agentfiles` is allowed to manage:
 
 The `.agentfiles/state.json` file written into a target repository. It stores
 managed-file hashes and generation metadata for the last successful apply.
+The containing directory `<repo>/.agentfiles/` shares its name with the
+[User Config Dir](#user-config-dir) intentionally; the two are anchored at
+the repo root and $HOME respectively, so callers disambiguate by anchor,
+not by name.
 
 ## Ignored Path
 

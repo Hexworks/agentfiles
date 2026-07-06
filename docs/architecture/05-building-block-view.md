@@ -18,6 +18,8 @@ flowchart TD
     actions --> app
     app --> render
     app --> sync
+    app --> projectstore
+    app --> migrate
     render --> profile
     render --> project
     render --> asset
@@ -27,6 +29,10 @@ flowchart TD
     sync --> utils
     profile --> asset
     profile --> project
+    projectstore --> project
+    projectstore --> config
+    migrate --> registry
+    migrate --> projectstore
     asset --> config
     project --> config
     registry --> config
@@ -72,13 +78,38 @@ safety fence stay in one package.
 
 ### `registry`
 
-Loads and saves `~/.agentprofiles.json`, resolves profiles, and tracks metadata
-such as last-opened timestamps.
+Loads and saves the profile registry at `~/.agentfiles/profiles.json`,
+resolves profiles, and tracks metadata such as last-opened timestamps.
+The registry file lives inside the user-config dir alongside the projects
+store (ADR 0017).
 
 ### `profile`
 
-Initializes and loads profile folders. A profile contains `profile.json`,
-`assets/`, and `projects/`.
+Initializes and loads profile folders. A profile contains `profile.json`
+and `assets/`; per-user project selections live in the projects store,
+not inside the profile folder (ADR 0017). `Profile.Projects` is retained
+as an in-memory convenience projection composed by `app.Service.LoadProfile`.
+
+### `projectstore`
+
+Owns `~/.agentfiles/projects.json`, the centralized per-user project
+selection file introduced by ADR 0017. Exposes `Load` (with an orphan
+check against the current registry), `Save`, and typed CRUD (`Add`,
+`Update`, `Remove`, `ListByProfile`, `RemoveByProfile`, `AllProjects`)
+so the app layer talks to one aggregate rather than walking every
+profile folder. `AllProjects` is the single-pass source that
+`app.Service.ensureProjectPathAvailable` uses to enforce
+CLAUDE.md invariant #5.
+
+### `migrate`
+
+One-shot user-config migration runner invoked from `cmd/af/main.go`
+before the TUI opens. Detects the v1 layout (`~/.agentprofiles.json` +
+per-profile `projects/` subdirectories), harvests it into v2 shape,
+writes-then-swaps into `~/.agentfiles/`, and deletes the originals.
+Idempotent by presence check; injectable logger captures non-fatal
+warnings (stale profile paths, best-effort cleanup failures) without
+touching stderr. See ADR 0017 for the full flow.
 
 ### `asset`
 
@@ -88,8 +119,10 @@ types currently include `skill`, `agents_doc`, `settings`, `mcp`, `rule`, and
 
 ### `project`
 
-Defines per-project manifests containing the target path, enabled agents, and
-selected asset ids.
+Defines the per-project manifest struct (target path, enabled agents,
+selected asset ids) plus `NewDraft`, `Validate`, and `Normalize`. The
+package is content-only; persistence lives in `projectstore` so the
+profile folder can be shared without leaking per-user selections.
 
 ### `errs`
 
@@ -208,11 +241,13 @@ future framed widget share one implementation.
 
 ### `cmd/af`
 
-The binary entry point. It parses the single `--registry` flag with the
-standard-library `flag` package, builds the `app.Service`, wraps it with
-`actions.New`, allocates a `notifications.Log`, and hands the trio to
-`shell.New` before running `tea.NewProgram(...).Run()`. There is no
-Cobra command tree and no intermediate routing package — `af` always
+The binary entry point. It parses the `--registry`, `--projects`, and
+`--theme` flags with the standard-library `flag` package, builds both
+centralized stores, invokes `migrate.Run` (a no-op after the first
+successful run), builds the `app.Service` via `app.NewWithStores`, wraps
+it with `actions.New`, allocates a `notifications.Log`, and hands the
+trio to `shell.New` before running `tea.NewProgram(...).Run()`. There is
+no Cobra command tree and no intermediate routing package — `af` always
 opens the alt-screen shell.
 
 ## Task-workflow Skill Contract

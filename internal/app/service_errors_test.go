@@ -2,12 +2,10 @@ package app
 
 import (
 	"errors"
-	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/hexworks/agentfiles/internal/asset"
-	"github.com/hexworks/agentfiles/internal/config"
 )
 
 func TestAddProject_AccumulatesUnknownAssets(t *testing.T) {
@@ -55,7 +53,7 @@ func TestPlan_ProjectNotFoundReturnsTypedError(t *testing.T) {
 
 // TestAddProject_RejectsMixedKnownAndUnknownAssets pins the contract
 // that any unknown asset id rejects the entire AddProject call — the
-// project file must NOT be written.
+// project manifest must NOT reach the projects store.
 func TestAddProject_RejectsMixedKnownAndUnknownAssets(t *testing.T) {
 	root := t.TempDir()
 	profilePath := filepath.Join(root, "profile")
@@ -86,24 +84,11 @@ func TestAddProject_RejectsMixedKnownAndUnknownAssets(t *testing.T) {
 	if !matched {
 		t.Fatalf("expected AssetNotFoundError for 'missing', got %+v", addErrs)
 	}
-	// Confirm the project file was not persisted.
-	entries, err := os.ReadDir(filepath.Join(profilePath, config.ProjectsDirName))
+	stored, err := svc.Projects.ListByProfile("personal")
 	if err != nil {
-		t.Fatalf("read projects dir: %v", err)
+		t.Fatalf("list: %v", err)
 	}
-	for _, entry := range entries {
-		if !entry.IsDir() && filepath.Ext(entry.Name()) == ".json" {
-			t.Fatalf("expected no project file, found %s", entry.Name())
-		}
+	if len(stored) != 0 {
+		t.Fatalf("expected no persisted project, got %d", len(stored))
 	}
-}
-
-// writeFileEnsureDir is shared with the project_ownership test suite as
-// a small fixture helper. Kept package-local to avoid a shared test
-// helper package for two callers.
-func writeFileEnsureDir(path, body string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(path, []byte(body), 0o644)
 }

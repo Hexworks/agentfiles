@@ -7,7 +7,35 @@ import (
 	"testing"
 
 	"github.com/hexworks/agentfiles/internal/config"
+	"github.com/hexworks/agentfiles/internal/project"
 )
+
+func TestInit_DoesNotScaffoldProjectsDir(t *testing.T) {
+	root := t.TempDir()
+	if _, err := Init(root, "Personal"); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "projects")); !os.IsNotExist(err) {
+		t.Fatalf("expected no projects/ dir, stat err = %v", err)
+	}
+}
+
+func TestLoad_ReturnsEmptyProjectsMap(t *testing.T) {
+	root := t.TempDir()
+	if _, err := Init(root, "Personal"); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	loaded, err := Load(root)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if loaded.Projects == nil {
+		t.Fatal("expected non-nil Projects map")
+	}
+	if len(loaded.Projects) != 0 {
+		t.Fatalf("expected empty Projects map, got %d entries", len(loaded.Projects))
+	}
+}
 
 func TestScanAssets_DuplicateIDReturnsTypedError(t *testing.T) {
 	root := t.TempDir()
@@ -28,77 +56,25 @@ func TestScanAssets_DuplicateIDReturnsTypedError(t *testing.T) {
 	}
 }
 
-func TestScanProjects_DuplicateIDReturnsTypedError(t *testing.T) {
-	root := t.TempDir()
-	if _, err := Init(root, "Personal"); err != nil {
-		t.Fatalf("init profile: %v", err)
+func TestUnselectAsset_MutatesEveryProjectInMemory(t *testing.T) {
+	p := &Profile{
+		Root: t.TempDir(),
+		Projects: map[string]*project.Manifest{
+			"alpha": {ID: "alpha", Name: "Alpha", Path: "/tmp/alpha", EnabledAgents: []string{"codex"}, SelectedAssetIDs: []string{"review"}},
+			"beta":  {ID: "beta", Name: "Beta", Path: "/tmp/beta", EnabledAgents: []string{"codex"}, SelectedAssetIDs: []string{"review"}},
+			"gamma": {ID: "gamma", Name: "Gamma", Path: "/tmp/gamma", EnabledAgents: []string{"codex"}, SelectedAssetIDs: []string{"other"}},
+		},
 	}
-	projectDir := filepath.Join(root, config.ProjectsDirName)
-	mustWriteFile(t, filepath.Join(projectDir, "a.json"),
-		`{"id":"app","name":"app-a","path":"/tmp/a","enabled_agents":["codex"]}`)
-	mustWriteFile(t, filepath.Join(projectDir, "b.json"),
-		`{"id":"app","name":"app-b","path":"/tmp/b","enabled_agents":["codex"]}`)
-
-	_, err := Load(root)
-
-	var typed DuplicateProjectIDError
-	if !errors.As(err, &typed) {
-		t.Fatalf("expected DuplicateProjectIDError, got %T: %v", err, err)
+	mutated := p.UnselectAsset("review")
+	if len(mutated) != 2 {
+		t.Fatalf("expected 2 mutated projects, got %v", mutated)
 	}
-	if typed.ID != "app" {
-		t.Fatalf("expected id preserved, got %q", typed.ID)
+	if len(p.Projects["alpha"].SelectedAssetIDs) != 0 {
+		t.Fatalf("expected alpha cleared, got %v", p.Projects["alpha"].SelectedAssetIDs)
 	}
-}
-
-func TestUnselectAsset_RemovesIDFromEveryProject(t *testing.T) {
-	root := t.TempDir()
-	if _, err := Init(root, "Personal"); err != nil {
-		t.Fatalf("init: %v", err)
+	if len(p.Projects["gamma"].SelectedAssetIDs) != 1 || p.Projects["gamma"].SelectedAssetIDs[0] != "other" {
+		t.Fatalf("expected gamma untouched, got %v", p.Projects["gamma"].SelectedAssetIDs)
 	}
-	mustWriteAsset(t, root, "skill", "review", `{"id":"review","name":"review","type":"skill"}`)
-	mustWriteProject(t, root, "alpha", "Alpha", "/tmp/alpha", []string{"review"})
-	mustWriteProject(t, root, "beta", "Beta", "/tmp/beta", []string{"review"})
-	mustWriteProject(t, root, "gamma", "Gamma", "/tmp/gamma", []string{"other"})
-	loaded, err := Load(root)
-	if err != nil {
-		t.Fatalf("load: %v", err)
-	}
-
-	if err := loaded.UnselectAsset("review"); err != nil {
-		t.Fatalf("unselect: %v", err)
-	}
-
-	reloaded, err := Load(root)
-	if err != nil {
-		t.Fatalf("reload: %v", err)
-	}
-	for _, id := range []string{"alpha", "beta"} {
-		p := reloaded.Projects[id]
-		if p == nil {
-			t.Fatalf("project %s missing", id)
-		}
-		if len(p.SelectedAssetIDs) != 0 {
-			t.Fatalf("project %s: expected cleared, got %v", id, p.SelectedAssetIDs)
-		}
-	}
-	gamma := reloaded.Projects["gamma"]
-	if gamma == nil || len(gamma.SelectedAssetIDs) != 1 || gamma.SelectedAssetIDs[0] != "other" {
-		t.Fatalf("expected gamma untouched, got %v", gamma)
-	}
-}
-
-func mustWriteProject(t *testing.T, root, id, name, path string, assetIDs []string) {
-	t.Helper()
-	assets := `[]`
-	if len(assetIDs) > 0 {
-		assets = `["` + assetIDs[0] + `"]`
-		for _, a := range assetIDs[1:] {
-			assets = assets[:len(assets)-1] + `,"` + a + `"]`
-		}
-	}
-	body := `{"id":"` + id + `","name":"` + name + `","path":"` + path +
-		`","enabled_agents":["codex"],"selected_asset_ids":` + assets + `}`
-	mustWriteFile(t, filepath.Join(root, config.ProjectsDirName, id+".json"), body)
 }
 
 func mustWriteAsset(t *testing.T, root, typeDir, name, manifest string) {
@@ -107,15 +83,7 @@ func mustWriteAsset(t *testing.T, root, typeDir, name, manifest string) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	mustWriteFile(t, filepath.Join(dir, config.AssetManifestFileName), manifest)
-}
-
-func mustWriteFile(t *testing.T, path, body string) {
-	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, config.AssetManifestFileName), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }

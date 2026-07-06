@@ -6,6 +6,18 @@ shell on the Welcome screen; the user navigates from there to the screen
 that owns the operation (Profiles, Project Detail, …). There are no direct
 subcommand paths.
 
+## Startup: User-Config Migration
+
+Before the shell opens, `cmd/af/main.go` invokes `migrate.Run` against the
+current registry and projects stores. When the v1 layout is detected
+(`~/.agentprofiles.json` plus per-profile `projects/` subdirectories), the
+runner harvests it into the v2 shape under `~/.agentfiles/`, writes the
+two v2 files, and removes the originals. Detection is presence-based so
+subsequent launches are a fast no-op — the migration never runs twice.
+Non-fatal events (stale profile paths, best-effort cleanup failures) are
+logged via the injected `Logger` rather than aborting startup. See
+ADR 0017.
+
 ## Scenario: Create A Profile
 
 1. The user reaches the Profiles screen and triggers Create.
@@ -13,7 +25,7 @@ subcommand paths.
 3. The application normalizes the requested path.
 4. The profile package creates the profile folder structure.
 5. The registry package appends a new profile reference to
-   `~/.agentprofiles.json`.
+   `~/.agentfiles/profiles.json`.
 6. The action's bridge command emits a `NotificationMsg`; the shell
    writes it to the log and surfaces the toast above the status bar.
 
