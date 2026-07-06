@@ -159,6 +159,27 @@ func Run(profileStore *registry.Store, projectStore *projectstore.Store) errs.Do
 - TUI shell tests that today inject `prof.Projects[id] = p` keep working
   (field retained), but fixtures construct via service composition.
 
+## Acceptance Criteria
+
+- [ ] `internal/config/paths.go` exports `UserConfigDirName = ".agentfiles"`, `ProfilesStoreFileName = "profiles.json"`, `ProjectsStoreFileName = "projects.json"`. Public `RegistryFileName` removed.
+- [ ] New `internal/projectstore` package exposes `Store` with `DefaultPath`, `NewStore`, `Load`, `Save`, `Add`, `Update`, `Remove`, `ListByProfile`, `RemoveByProfile` matching signatures in "API outline".
+- [ ] `projects.json` on disk is a JSON object keyed by `profile_id`, each value an array of `project.Manifest`. No `profile_id` field on `project.Manifest` struct.
+- [ ] `internal/project`: `Save(profileRoot,...)` and `Delete(profileRoot,...)` removed. Package reduced to `Manifest` + `Validate` + `Normalize`.
+- [ ] `internal/profile`: `Profile.Projects` field retained. `profile.Load` no longer walks `projects/`. `profile.Init` no longer scaffolds `projects/`.
+- [ ] `internal/registry` reads/writes `~/.agentfiles/profiles.json`. Old `~/.agentprofiles.json` no longer referenced from public API.
+- [ ] New `internal/migrate` package exposes `Run(profileStore, projectStore) errs.DomainError` and is invoked once from `cmd/af/main.go` before TUI starts.
+- [ ] Migration behavior: v1 detected → v2 written and originals deleted; v2 present → no-op; v1 write failure leaves originals intact; stale profile path skipped with startup log warning; run is idempotent.
+- [ ] `app.Service` constructor accepts `*projectstore.Store`. All `project.Save(loaded.Root,...)` / `project.Delete(loaded.Root,...)` sites route through `projectstore`. `DeleteProfile` cascades via `projectstore.RemoveByProfile(id)` after TUI confirm.
+- [ ] Repo-path uniqueness stays globally unique across all profiles+projects. `app.Service.ensureProjectPathAvailable` (or successor) enforces it against the projectstore aggregate.
+- [ ] `projectstore.Load` returns typed `DomainError` when a `projects.json` entry references an unknown `profile_id`. No silent pruning.
+- [ ] Tests listed in "Tests" section pass: `projectstore` CRUD + cascade + orphan; `migrate` scenarios; `profile.Init`/`Load` behavior; `app.Service` cascade + uniqueness; TUI shell fixtures composed via service.
+- [ ] New ADR added in `docs/adr/` for split + migration approach.
+- [ ] `docs/architecture/` block + runtime views updated.
+- [ ] `docs/glossary.md` updated: adds "user-config dir", "projects store"; refines "Profile" and "managed-state dir".
+- [ ] Top-level `CLAUDE.md` updated: package list (`projectstore`, `migrate`, refined `profile`) + rewritten invariant #5.
+- [ ] `docs/guidelines/sync_and_safety.md` updated for reworded single-ownership invariant.
+- [ ] `make build && make test && make lint` succeed. `./bin/af` first launch migrates cleanly; create + edit projects round-trip works post-migration.
+
 ## Out of scope
 
 - Profile distribution / discovery from remote sources (registry `Source`
