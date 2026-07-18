@@ -13,6 +13,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/app"
 	"github.com/hexworks/agentfiles/internal/asset"
 	"github.com/hexworks/agentfiles/internal/errs"
+	"github.com/hexworks/agentfiles/internal/projectstore"
 	"github.com/hexworks/agentfiles/internal/registry"
 	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
 	"github.com/hexworks/agentfiles/internal/tui/components/modal"
@@ -36,7 +37,10 @@ type editAssetFixture struct {
 func newEditAssetFixture(t *testing.T, assetName string, assetType asset.Type) *editAssetFixture {
 	t.Helper()
 	root := t.TempDir()
-	svc := app.New(filepath.Join(root, "registry.json"))
+	svc := app.New(
+		registry.NewStore(filepath.Join(root, "registry.json")),
+		projectstore.NewStore(filepath.Join(root, "projects.json")),
+	)
 	ref, err := svc.CreateProfile("alpha", filepath.Join(root, "alpha"))
 	if err != nil {
 		t.Fatalf("seed profile: %v", err)
@@ -53,7 +57,7 @@ func newEditAssetFixture(t *testing.T, assetName string, assetType asset.Type) *
 		t.Fatalf("LoadProfile: %v", lerr)
 	}
 	var id string
-	for _, a := range prof.Assets {
+	for _, a := range prof.Profile.Assets {
 		if a.Dir == dir {
 			id = a.ID
 			break

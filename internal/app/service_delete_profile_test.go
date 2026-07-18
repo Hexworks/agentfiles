@@ -11,7 +11,7 @@ import (
 
 func TestDeleteProfile_RemovesRegistryEntryOnly(t *testing.T) {
 	root := t.TempDir()
-	svc := New(filepath.Join(root, "registry.json"))
+	svc := newSvc(root)
 	profilePath := filepath.Join(root, "alpha")
 	if _, err := svc.CreateProfile("Alpha", profilePath); err != nil {
 		t.Fatalf("create: %v", err)
@@ -35,7 +35,7 @@ func TestDeleteProfile_RemovesRegistryEntryOnly(t *testing.T) {
 
 func TestDeleteProfileWithFolder_RemovesBoth(t *testing.T) {
 	root := t.TempDir()
-	svc := New(filepath.Join(root, "registry.json"))
+	svc := newSvc(root)
 	profilePath := filepath.Join(root, "alpha")
 	if _, err := svc.CreateProfile("Alpha", profilePath); err != nil {
 		t.Fatalf("create: %v", err)
@@ -59,7 +59,7 @@ func TestDeleteProfileWithFolder_RemovesBoth(t *testing.T) {
 
 func TestDeleteProfileWithFolder_FolderAlreadyMissingSucceeds(t *testing.T) {
 	root := t.TempDir()
-	svc := New(filepath.Join(root, "registry.json"))
+	svc := newSvc(root)
 	profilePath := filepath.Join(root, "alpha")
 	if _, err := svc.CreateProfile("Alpha", profilePath); err != nil {
 		t.Fatalf("create: %v", err)
@@ -83,7 +83,7 @@ func TestDeleteProfileWithFolder_FolderAlreadyMissingSucceeds(t *testing.T) {
 
 func TestDeleteProfile_UnknownRefReturnsProfileNotFoundError(t *testing.T) {
 	root := t.TempDir()
-	svc := New(filepath.Join(root, "registry.json"))
+	svc := newSvc(root)
 
 	err := svc.DeleteProfile("does-not-exist")
 
@@ -95,7 +95,7 @@ func TestDeleteProfile_UnknownRefReturnsProfileNotFoundError(t *testing.T) {
 
 func TestDeleteProfileWithFolder_RejectsPathThatLostItsManifest(t *testing.T) {
 	root := t.TempDir()
-	svc := New(filepath.Join(root, "registry.json"))
+	svc := newSvc(root)
 	profilePath := filepath.Join(root, "alpha")
 	if _, err := svc.CreateProfile("Alpha", profilePath); err != nil {
 		t.Fatalf("create: %v", err)
@@ -123,8 +123,7 @@ func TestDeleteProfileWithFolder_RejectsPathThatLostItsManifest(t *testing.T) {
 
 func TestDeleteProfileWithFolder_RejectsUnsafePaths(t *testing.T) {
 	root := t.TempDir()
-	regPath := filepath.Join(root, "registry.json")
-	svc := New(regPath)
+	svc := newSvc(root)
 	// Tamper-style entry pointing at the registry's own directory: a
 	// recursive removal would also delete registry.json.
 	if err := svc.Registry.Add(registry.ProfileRef{
@@ -152,7 +151,7 @@ func TestDeleteProfileWithFolder_ReversesOrderOnRemoveAllFailure(t *testing.T) {
 		t.Skip("permission-based failure injection cannot run as root")
 	}
 	root := t.TempDir()
-	svc := New(filepath.Join(root, "registry.json"))
+	svc := newSvc(root)
 	profilePath := filepath.Join(root, "alpha")
 	if _, err := svc.CreateProfile("Alpha", profilePath); err != nil {
 		t.Fatalf("create: %v", err)
@@ -193,7 +192,7 @@ func TestDeleteProfileWithFolder_ReversesOrderOnRemoveAllFailure(t *testing.T) {
 
 func TestDeleteProfileWithFolder_DoesNotFollowSymlinkTargets(t *testing.T) {
 	root := t.TempDir()
-	svc := New(filepath.Join(root, "registry.json"))
+	svc := newSvc(root)
 	profilePath := filepath.Join(root, "alpha")
 	if _, err := svc.CreateProfile("Alpha", profilePath); err != nil {
 		t.Fatalf("create: %v", err)

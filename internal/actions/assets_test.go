@@ -276,7 +276,7 @@ func TestActions_DeleteAsset_RemovesAssetAndUnselectsFromProjects(t *testing.T) 
 	}
 
 	loaded, _ := f.Svc.LoadProfile("personal")
-	if _, present := loaded.Assets["agents"]; present {
+	if _, present := loaded.Profile.Assets["agents"]; present {
 		t.Fatal("expected asset removed from profile")
 	}
 	p, err := f.Svc.LoadProject("personal", "repo")

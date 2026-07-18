@@ -22,8 +22,19 @@ import (
 )
 
 func main() {
-	registryPath := flag.String("registry", registry.DefaultPath(), "path to profile registry")
-	projectsPath := flag.String("projects", projectstore.DefaultPath(), "path to project store")
+	registryDefault, regPathErr := registry.DefaultPath()
+	if regPathErr != nil {
+		fmt.Fprintln(os.Stderr, regPathErr.Error())
+		os.Exit(1)
+	}
+	projectsDefault, projPathErr := projectstore.DefaultPath()
+	if projPathErr != nil {
+		fmt.Fprintln(os.Stderr, projPathErr.Error())
+		os.Exit(1)
+	}
+
+	registryPath := flag.String("registry", registryDefault, "path to profile registry")
+	projectsPath := flag.String("projects", projectsDefault, "path to project store")
 	themePath := flag.String("theme", "", "path to theme override (default $XDG_CONFIG_HOME/agentfiles/theme.json)")
 	flag.Parse()
 
@@ -40,7 +51,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	svc := app.NewWithStores(profileStore, projectStore)
+	svc := app.New(profileStore, projectStore)
 	a := actions.New(svc)
 	log := notifications.NewLog()
 

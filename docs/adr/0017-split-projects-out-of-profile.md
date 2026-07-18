@@ -97,6 +97,34 @@ user-config directory.
   `s.Projects.AllProjects()` pass instead of an O(profiles × projects)
   filesystem walk.
 
+### Aggregate boundaries after the split
+
+The domain rationale, which the on-disk layout only expresses, is that
+shareable assets and per-user selections form two distinct consistency
+boundaries and must not be updated as one transaction:
+
+- **Profile aggregate.** Root: `Profile{Manifest, Assets}`. Invariants
+  it protects: asset ids are unique within one profile; asset content is
+  authoritative (repo files are outputs); every asset in `Assets` was
+  loaded from the profile folder. The Profile aggregate no longer owns
+  project selections — that leak was the whole reason for the split.
+- **Projects Store aggregate.** Root:
+  `ProjectsStore{profileID → []project.Manifest}`. Invariants it
+  protects: one target repo path belongs to at most one project across
+  every registered profile (the reworded CLAUDE.md invariant #5); every
+  group's `profileID` corresponds to a registered profile (orphan groups
+  surface as `OrphanProfileIDError` on `Load`); project ids are unique
+  within one group. The store owns these rules directly: `Add`/`Update`
+  return `ProjectPathOwnedError` when a foreign group already claims the
+  path.
+
+`app.Service.LoadProfile` composes the two aggregates for downstream
+callers by returning `app.LoadedProfile{Profile, Projects}`. That
+composition is a read-time convenience; writes still route through the
+owning aggregate (asset changes into the profile folder, project
+changes into the projects store), so no code mutates one aggregate
+inside another's boundary.
+
 ### Migration (v1 → v2)
 
 Runs once at startup:

@@ -25,18 +25,35 @@ and is used for discovery and resolution.
 
 ## Projects Store
 
-The centralized project selection file at `~/.agentfiles/projects.json`.
-It maps profile ids to arrays of project manifests, so per-user selections
-(target repo path, enabled agents, selected asset ids) live outside the
-profile folder and do not leak when the folder is shared. Introduced by
-ADR 0017.
+The per-user aggregate that owns every project manifest across all
+registered profiles. Its root is `ProjectsStore{profileID → []Manifest}`
+persisted at `~/.agentfiles/projects.json`. The store enforces its own
+invariants — one target repo path per project globally, project ids
+unique within one profile group, no orphan groups — rather than
+delegating them to callers. Per-user selections live here so the
+profile folder can be shared without leaking machine-specific state.
+Introduced by ADR 0017.
 
 ## Profile
 
-A root folder containing `profile.json` and `assets/`. It is the
-shareable, authoritative source of asset content. Per-user project
-selections live in the [Projects Store](#projects-store) rather than
-inside the profile folder (ADR 0017).
+The shareable aggregate whose root is `Profile{Manifest, Assets}` on
+disk in the profile folder (`profile.json` + `assets/`). It is the
+authoritative source of asset content and enforces asset-id uniqueness
+within one profile. Per-user project selections live in the
+[Projects Store](#projects-store) aggregate; `app.Service.LoadProfile`
+composes the two aggregates at read time via `app.LoadedProfile`
+(ADR 0017).
+
+## Migration
+
+The one-shot startup process that upgrades a user's on-disk state from
+the v1 layout (`~/.agentprofiles.json` plus `<profile>/projects/`) to
+the v2 layout (`~/.agentfiles/profiles.json` +
+`~/.agentfiles/projects.json`). Runs from `cmd/af/main.go` before the
+TUI opens; presence-based detection makes it a no-op after the first
+successful run. The v1 filename lives only as a private constant inside
+`internal/migrate` so no other package accidentally reintroduces it.
+See ADR 0017.
 
 ## Profile Reference
 

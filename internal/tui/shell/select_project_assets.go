@@ -9,9 +9,9 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/hexworks/agentfiles/internal/actions"
+	"github.com/hexworks/agentfiles/internal/app"
 	"github.com/hexworks/agentfiles/internal/asset"
 	"github.com/hexworks/agentfiles/internal/errs"
-	"github.com/hexworks/agentfiles/internal/profile"
 	"github.com/hexworks/agentfiles/internal/project"
 	"github.com/hexworks/agentfiles/internal/tui/components/focus"
 	"github.com/hexworks/agentfiles/internal/tui/components/help"
@@ -25,7 +25,7 @@ import (
 // live on planProjectActions and are forwarded via the composed
 // selectProjectAssetsActions interface below.
 type selectProjectAssetsOwnActions interface {
-	LoadProfile(in actions.LoadProfileInput) (*profile.Profile, errs.DomainError)
+	LoadProfile(in actions.LoadProfileInput) (*app.LoadedProfile, errs.DomainError)
 	LoadProject(in actions.LoadProjectInput) (*project.Manifest, errs.DomainError)
 	SelectAsset(in actions.SelectAssetInput) ([]string, errs.DomainError)
 	UnselectAsset(in actions.UnselectAssetInput) ([]string, errs.DomainError)
@@ -45,7 +45,7 @@ type selectProjectAssetsActions interface {
 // selectProjectAssetsLoadedMsg is the result of the Init load command:
 // either the resolved profile + project pair or the load error.
 type selectProjectAssetsLoadedMsg struct {
-	prof *profile.Profile
+	prof *app.LoadedProfile
 	proj *project.Manifest
 	err  errs.DomainError
 }
@@ -72,7 +72,7 @@ type selectProjectAssetsScreen struct {
 	profileID string
 	projectID string
 
-	prof        *profile.Profile
+	prof        *app.LoadedProfile
 	projectName string
 	profileName string
 	selectedIDs []string
@@ -219,7 +219,7 @@ func (s *selectProjectAssetsScreen) handleLoaded(m selectProjectAssetsLoadedMsg)
 	}
 	s.loaded = true
 	s.prof = m.prof
-	s.profileName = m.prof.Manifest.Name
+	s.profileName = m.prof.Profile.Manifest.Name
 	s.projectName = m.proj.Name
 	s.selectedIDs = append([]string(nil), m.proj.SelectedAssetIDs...)
 	s.rebuildPartition()
@@ -238,7 +238,7 @@ func (s *selectProjectAssetsScreen) rebuildPartition() {
 		s.available = nil
 		return
 	}
-	s.selected, s.available = s.prof.PartitionAssets(s.selectedIDs)
+	s.selected, s.available = s.prof.Profile.PartitionAssets(s.selectedIDs)
 }
 
 func (s *selectProjectAssetsScreen) handleSelectionChanged(m selectionChangedMsg) (Screen, tea.Cmd) {

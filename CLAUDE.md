@@ -32,7 +32,7 @@ Domain packages are kept separable by design — do not blur them:
 - `migrate` — one-shot v1→v2 user-config migration invoked from `cmd/af/main.go` before the TUI opens. Idempotent, presence-based; injectable logger surfaces non-fatal warnings. See ADR 0017.
 - `profile` — profile folder model (`profile.json` + `assets/`). `Profile.Projects` is retained as an in-memory projection populated by `app.Service.LoadProfile` from `projectstore`; profile folders no longer own projects on disk.
 - `asset` — typed asset manifest (`asset.json`) + scaffolding. Types: `skill`, `agents_doc`, `settings`, `mcp`, `rule`, `hook`. Exposes `AllTypes()` so `profile.Init` can iterate them without duplicating the list.
-- `project` — per-project manifest struct (target path + selected agents + selected asset ids) plus `Validate`/`Normalize`. Persistence lives in `projectstore`.
+- `project` — per-project manifest struct (target path + selected agents + selected asset ids) plus `NewDraft`, `SelectAsset`, `Validate`, `Normalize`. Persistence lives in `projectstore`.
 - `render` — **read-only**. Builds desired files from profile+project. Calls `surfaces.IsAllowed` to gate projection targets against the safety fence (`AGENTS.md`, `.claude`, `.cursor`, `.codex`, `.opencode`, `.mcp.json`). Resolves `exclusive_group` conflicts and `compatible_agents` filters.
 - `sync` — compares render plan vs. repo, classifies as `create`/`update`/`drift`/`delete`, writes files, and rewrites `<repo>/.agentfiles/state.json` (hashes of managed files). Imported as `llmsync` in `internal/app` to avoid clashing with stdlib `sync`.
 - `app` — thin orchestration layer called by the TUI. Holds both centralized stores and cascades project removal on profile deletion. Contains no business logic.

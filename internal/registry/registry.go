@@ -49,16 +49,24 @@ type Store struct {
 // DefaultPath returns the conventional location of the global registry.
 // The registry now lives inside the centralized user-config directory
 // (see config.UserConfigDirName) instead of directly under $HOME.
-func DefaultPath() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, config.UserConfigDirName, config.ProfilesStoreFileName)
+// Returns HomeDirUnavailableError when os.UserHomeDir fails, so callers
+// surface the environment problem instead of writing to a CWD-relative
+// fallback.
+func DefaultPath() (string, errs.DomainError) {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return "", HomeDirUnavailableError{Err: err}
+	}
+	return filepath.Join(home, config.UserConfigDirName, config.ProfilesStoreFileName), nil
 }
 
 // NewStore creates a registry store. An empty path means "use the default
-// global registry location".
+// global registry location"; when DefaultPath itself fails the returned
+// store's Path is empty and every I/O method surfaces the underlying
+// filesystem error naturally.
 func NewStore(path string) *Store {
 	if path == "" {
-		path = DefaultPath()
+		path, _ = DefaultPath()
 	}
 	return &Store{Path: path}
 }
@@ -83,13 +91,16 @@ func (s *Store) Load() (*Registry, errs.DomainError) {
 }
 
 // Save sorts profiles by name before writing so the registry remains stable and
-// diff-friendly in Git.
+// diff-friendly in Git. Uses 0o700/0o600 so the user-config dir and its
+// registry file stay owner-readable only — the file contains absolute
+// profile paths (machine-identifying data) and should not be visible to
+// other local users on a multi-user host.
 func (s *Store) Save(reg *Registry) errs.DomainError {
 	reg.Version = Version
 	slices.SortFunc(reg.Profiles, func(a, b ProfileRef) int {
 		return strings.Compare(a.Name, b.Name)
 	})
-	return utils.WriteJSON(s.Path, reg)
+	return utils.WriteJSONMode(s.Path, reg, 0o700, 0o600)
 }
 
 // Add appends a profile reference after checking the registry-wide uniqueness

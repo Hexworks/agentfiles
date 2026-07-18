@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/hexworks/agentfiles/internal/config"
-	"github.com/hexworks/agentfiles/internal/project"
 )
 
 func TestInit_DoesNotScaffoldProjectsDir(t *testing.T) {
@@ -20,7 +19,7 @@ func TestInit_DoesNotScaffoldProjectsDir(t *testing.T) {
 	}
 }
 
-func TestLoad_ReturnsEmptyProjectsMap(t *testing.T) {
+func TestLoad_ReturnsAssetsOnly(t *testing.T) {
 	root := t.TempDir()
 	if _, err := Init(root, "Personal"); err != nil {
 		t.Fatalf("init: %v", err)
@@ -29,11 +28,11 @@ func TestLoad_ReturnsEmptyProjectsMap(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if loaded.Projects == nil {
-		t.Fatal("expected non-nil Projects map")
+	if loaded.Assets == nil {
+		t.Fatal("expected non-nil Assets map")
 	}
-	if len(loaded.Projects) != 0 {
-		t.Fatalf("expected empty Projects map, got %d entries", len(loaded.Projects))
+	if len(loaded.Assets) != 0 {
+		t.Fatalf("expected empty Assets map, got %d entries", len(loaded.Assets))
 	}
 }
 
@@ -53,27 +52,6 @@ func TestScanAssets_DuplicateIDReturnsTypedError(t *testing.T) {
 	}
 	if typed.ID != "review" {
 		t.Fatalf("expected id preserved, got %q", typed.ID)
-	}
-}
-
-func TestUnselectAsset_MutatesEveryProjectInMemory(t *testing.T) {
-	p := &Profile{
-		Root: t.TempDir(),
-		Projects: map[string]*project.Manifest{
-			"alpha": {ID: "alpha", Name: "Alpha", Path: "/tmp/alpha", EnabledAgents: []string{"codex"}, SelectedAssetIDs: []string{"review"}},
-			"beta":  {ID: "beta", Name: "Beta", Path: "/tmp/beta", EnabledAgents: []string{"codex"}, SelectedAssetIDs: []string{"review"}},
-			"gamma": {ID: "gamma", Name: "Gamma", Path: "/tmp/gamma", EnabledAgents: []string{"codex"}, SelectedAssetIDs: []string{"other"}},
-		},
-	}
-	mutated := p.UnselectAsset("review")
-	if len(mutated) != 2 {
-		t.Fatalf("expected 2 mutated projects, got %v", mutated)
-	}
-	if len(p.Projects["alpha"].SelectedAssetIDs) != 0 {
-		t.Fatalf("expected alpha cleared, got %v", p.Projects["alpha"].SelectedAssetIDs)
-	}
-	if len(p.Projects["gamma"].SelectedAssetIDs) != 1 || p.Projects["gamma"].SelectedAssetIDs[0] != "other" {
-		t.Fatalf("expected gamma untouched, got %v", p.Projects["gamma"].SelectedAssetIDs)
 	}
 }
 

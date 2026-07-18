@@ -33,7 +33,15 @@ func ExpandHome(path string) string {
 // and execute but not write (5) — the standard mode for user-owned directories
 // that should be traversable by everyone but only modifiable by the owner.
 func EnsureDir(path string) errs.DomainError {
-	if err := os.MkdirAll(path, 0o755); err != nil {
+	return EnsureDirMode(path, 0o755)
+}
+
+// EnsureDirMode is EnsureDir with an explicit mode. User-private state should
+// pass 0o700 so no other local user can traverse it — the two centralized
+// user-config files (~/.agentfiles/profiles.json and projects.json) hold
+// machine-identifying paths and go through this path.
+func EnsureDirMode(path string, mode fs.FileMode) errs.DomainError {
+	if err := os.MkdirAll(path, mode); err != nil {
 		return EnsureDirError{Path: path, Err: err}
 	}
 	return nil
@@ -61,10 +69,21 @@ func ReadJSON(path string, v any) errs.DomainError {
 }
 
 // WriteJSON marshals v as pretty-printed JSON with a trailing newline and
-// writes it to path, creating parent directories as needed.
+// writes it to path, creating parent directories as needed. Uses the
+// project-wide default 0o755/0o644 modes for repo-projected files;
+// user-private state should call WriteJSONMode with 0o700/0o600 so the
+// files never become world-readable on a multi-user host.
 // TODO: make this a generic function (@see task#0001)
 func WriteJSON(path string, v any) errs.DomainError {
-	if dirErr := EnsureDir(filepath.Dir(path)); dirErr != nil {
+	return WriteJSONMode(path, v, 0o755, 0o644)
+}
+
+// WriteJSONMode is WriteJSON with explicit directory and file permission
+// bits. The two centralized user-config files (~/.agentfiles/profiles.json
+// and projects.json) hold machine-identifying paths and pass 0o700/0o600
+// so no other local user can read them.
+func WriteJSONMode(path string, v any, dirMode, fileMode fs.FileMode) errs.DomainError {
+	if dirErr := EnsureDirMode(filepath.Dir(path), dirMode); dirErr != nil {
 		return dirErr
 	}
 	data, err := json.MarshalIndent(v, "", "  ")
@@ -72,8 +91,61 @@ func WriteJSON(path string, v any) errs.DomainError {
 		return WriteJSONError{Path: path, Err: err}
 	}
 	data = append(data, '\n')
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+	if err := os.WriteFile(path, data, fileMode); err != nil {
 		return WriteJSONError{Path: path, Err: err}
+	}
+	return nil
+}
+
+// WriteJSONAtomic writes v to a same-directory temp file, fsyncs it,
+// renames it into place, and fsyncs the parent directory. A crash any
+// time before the rename leaves path unchanged; a crash between the
+// rename and the parent fsync still leaves a durable file (the rename
+// itself is atomic). Used for the two centralized user-config files
+// where a partial write would strand the migration in a state where the
+// next launch's presence check trips on a corrupt file.
+func WriteJSONAtomic(path string, v any, dirMode, fileMode fs.FileMode) errs.DomainError {
+	dir := filepath.Dir(path)
+	if dirErr := EnsureDirMode(dir, dirMode); dirErr != nil {
+		return dirErr
+	}
+	data, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return WriteJSONError{Path: path, Err: err}
+	}
+	data = append(data, '\n')
+	tmp, err := os.CreateTemp(dir, filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return WriteJSONError{Path: path, Err: err}
+	}
+	tmpPath := tmp.Name()
+	cleanup := func() { _ = os.Remove(tmpPath) }
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		cleanup()
+		return WriteJSONError{Path: path, Err: err}
+	}
+	if err := tmp.Chmod(fileMode); err != nil {
+		_ = tmp.Close()
+		cleanup()
+		return WriteJSONError{Path: path, Err: err}
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		cleanup()
+		return WriteJSONError{Path: path, Err: err}
+	}
+	if err := tmp.Close(); err != nil {
+		cleanup()
+		return WriteJSONError{Path: path, Err: err}
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		cleanup()
+		return WriteJSONError{Path: path, Err: err}
+	}
+	if d, err := os.Open(dir); err == nil {
+		_ = d.Sync()
+		_ = d.Close()
 	}
 	return nil
 }

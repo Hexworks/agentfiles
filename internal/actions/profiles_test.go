@@ -73,8 +73,8 @@ func TestActions_LoadProfile_ResolvesByID(t *testing.T) {
 	if loadErr != nil {
 		t.Fatalf("LoadProfile: %v", loadErr)
 	}
-	if got.Manifest.ID != ref.ID {
-		t.Fatalf("expected id %q, got %q", ref.ID, got.Manifest.ID)
+	if got.Profile.Manifest.ID != ref.ID {
+		t.Fatalf("expected id %q, got %q", ref.ID, got.Profile.Manifest.ID)
 	}
 }
 

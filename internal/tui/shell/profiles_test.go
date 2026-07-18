@@ -14,6 +14,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/config"
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/profile"
+	"github.com/hexworks/agentfiles/internal/projectstore"
 	"github.com/hexworks/agentfiles/internal/registry"
 	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
 	"github.com/hexworks/agentfiles/internal/tui/components/modal"
@@ -34,7 +35,10 @@ type profilesFixture struct {
 func newProfilesFixture(t *testing.T) *profilesFixture {
 	t.Helper()
 	root := t.TempDir()
-	svc := app.New(filepath.Join(root, "registry.json"))
+	svc := app.New(
+		registry.NewStore(filepath.Join(root, "registry.json")),
+		projectstore.NewStore(filepath.Join(root, "projects.json")),
+	)
 	return &profilesFixture{Root: root, Service: svc, Actions: actions.New(svc)}
 }
 
@@ -49,16 +53,18 @@ func (f *profilesFixture) seed(t *testing.T, name string) *registry.ProfileRef {
 
 // withProfiles bypasses LoadProfiles and pushes a hand-built slice into
 // the screen so UI-state tests can run without spinning a real registry.
-func withProfiles(s *profilesScreen, profiles []*profile.Profile) {
+func withProfiles(s *profilesScreen, profiles []*app.LoadedProfile) {
 	s.profiles = profiles
 	s.rebuildSet()
 	s.rebuildTable()
 }
 
-func fakeProfile(id, name, root string) *profile.Profile {
-	return &profile.Profile{
-		Root:     root,
-		Manifest: profile.Manifest{ID: id, Name: name},
+func fakeProfile(id, name, root string) *app.LoadedProfile {
+	return &app.LoadedProfile{
+		Profile: &profile.Profile{
+			Root:     root,
+			Manifest: profile.Manifest{ID: id, Name: name},
+		},
 	}
 }
 
@@ -90,8 +96,8 @@ func TestProfilesScreen_InitLoadsProfilesFromActions(t *testing.T) {
 	if len(loaded.profiles) != 1 {
 		t.Fatalf("loaded %d profiles, want 1", len(loaded.profiles))
 	}
-	if loaded.profiles[0].Manifest.Name != "alpha" {
-		t.Errorf("loaded name = %q, want alpha", loaded.profiles[0].Manifest.Name)
+	if loaded.profiles[0].Profile.Manifest.Name != "alpha" {
+		t.Errorf("loaded name = %q, want alpha", loaded.profiles[0].Profile.Manifest.Name)
 	}
 }
 
@@ -110,7 +116,7 @@ func TestProfilesScreen_NoProfiles_MnemonicSetHasOnlyCRB(t *testing.T) {
 func TestProfilesScreen_WithProfiles_MnemonicSetHasEDCRB_AllUnique(t *testing.T) {
 	f := newProfilesFixture(t)
 	s := newProfilesScreen(f.Actions)
-	withProfiles(s, []*profile.Profile{fakeProfile("alpha", "Alpha", "/tmp/alpha")})
+	withProfiles(s, []*app.LoadedProfile{fakeProfile("alpha", "Alpha", "/tmp/alpha")})
 
 	got := mnemonicLabels(s.set)
 	want := []string{"Edit", "Delete", "Create New Profile", "Register Profile", "Back"}
@@ -163,7 +169,7 @@ func TestProfilesScreen_DuplicateMnemonicWouldPanic(t *testing.T) {
 func TestProfilesScreen_StatusKeysExcludeScreenLevelButtons(t *testing.T) {
 	f := newProfilesFixture(t)
 	s := newProfilesScreen(f.Actions)
-	withProfiles(s, []*profile.Profile{fakeProfile("alpha", "Alpha", "/tmp/alpha")})
+	withProfiles(s, []*app.LoadedProfile{fakeProfile("alpha", "Alpha", "/tmp/alpha")})
 
 	keys := s.StatusKeys()
 	if len(keys) != 2 {
@@ -254,7 +260,7 @@ func TestProfilesScreen_RKeyOpensRegisterProfileModal(t *testing.T) {
 func TestProfilesScreen_EKeyPushesEditProfileScreen(t *testing.T) {
 	f := newProfilesFixture(t)
 	s := newProfilesScreen(f.Actions)
-	withProfiles(s, []*profile.Profile{fakeProfile("alpha", "Alpha", "/tmp/alpha")})
+	withProfiles(s, []*app.LoadedProfile{fakeProfile("alpha", "Alpha", "/tmp/alpha")})
 
 	_, cmd := s.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
 
@@ -274,7 +280,7 @@ func TestProfilesScreen_EKeyPushesEditProfileScreen(t *testing.T) {
 func TestProfilesScreen_DKeyOpensFirstConfirmModal(t *testing.T) {
 	f := newProfilesFixture(t)
 	s := newProfilesScreen(f.Actions)
-	withProfiles(s, []*profile.Profile{fakeProfile("alpha", "Alpha", "/tmp/alpha")})
+	withProfiles(s, []*app.LoadedProfile{fakeProfile("alpha", "Alpha", "/tmp/alpha")})
 
 	_, _ = s.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
 
@@ -296,7 +302,7 @@ func TestProfilesScreen_DeleteStep1NoMakesNoServiceCall(t *testing.T) {
 	f := newProfilesFixture(t)
 	ref := f.seed(t, "alpha")
 	s := newProfilesScreen(f.Actions)
-	withProfiles(s, []*profile.Profile{fakeProfile(ref.ID, ref.Name, ref.Path)})
+	withProfiles(s, []*app.LoadedProfile{fakeProfile(ref.ID, ref.Name, ref.Path)})
 
 	_, _ = s.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
 	if s.modal == nil {
@@ -327,7 +333,7 @@ func TestProfilesScreen_DeleteStep2NoCallsKeepFolders(t *testing.T) {
 	f := newProfilesFixture(t)
 	ref := f.seed(t, "alpha")
 	s := newProfilesScreen(f.Actions)
-	withProfiles(s, []*profile.Profile{fakeProfile(ref.ID, ref.Name, ref.Path)})
+	withProfiles(s, []*app.LoadedProfile{fakeProfile(ref.ID, ref.Name, ref.Path)})
 
 	_, _ = s.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
 	_, _ = s.Update(modal.ResolvedMsg{ID: "delete-profile-1", Confirmed: true})
@@ -363,7 +369,7 @@ func TestProfilesScreen_DeleteStep2YesCallsDeleteFolders(t *testing.T) {
 	f := newProfilesFixture(t)
 	ref := f.seed(t, "alpha")
 	s := newProfilesScreen(f.Actions)
-	withProfiles(s, []*profile.Profile{fakeProfile(ref.ID, ref.Name, ref.Path)})
+	withProfiles(s, []*app.LoadedProfile{fakeProfile(ref.ID, ref.Name, ref.Path)})
 
 	_, _ = s.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
 	_, _ = s.Update(modal.ResolvedMsg{ID: "delete-profile-1", Confirmed: true})
@@ -509,7 +515,7 @@ func TestProfilesScreen_TitleAndBodyContainRequiredText(t *testing.T) {
 func TestProfilesScreen_BodyShowsProfileRowsAndActions(t *testing.T) {
 	f := newProfilesFixture(t)
 	s := newProfilesScreen(f.Actions)
-	withProfiles(s, []*profile.Profile{fakeProfile("alpha", "Alpha", "/tmp/alpha")})
+	withProfiles(s, []*app.LoadedProfile{fakeProfile("alpha", "Alpha", "/tmp/alpha")})
 	_, _ = s.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
 
 	body := s.Body(100)
@@ -527,7 +533,7 @@ func TestProfilesScreen_BodyShowsProfileRowsAndActions(t *testing.T) {
 func TestProfilesScreen_CursorMoveRebuildsActionsColumn(t *testing.T) {
 	f := newProfilesFixture(t)
 	s := newProfilesScreen(f.Actions)
-	withProfiles(s, []*profile.Profile{
+	withProfiles(s, []*app.LoadedProfile{
 		fakeProfile("alpha", "Alpha", "/tmp/alpha"),
 		fakeProfile("beta", "Beta", "/tmp/beta"),
 	})
@@ -559,17 +565,17 @@ func TestProfilesScreen_BodyTracksRowCount(t *testing.T) {
 	f := newProfilesFixture(t)
 	cases := []struct {
 		name     string
-		profiles []*profile.Profile
+		profiles []*app.LoadedProfile
 		want     int
 	}{
 		// empty: hint line + spacer + buttons = 3 rows
 		{"empty state", nil, 3},
 		// populated: 2 border rows + table header + 1 row + spacer + buttons = 6 rows
-		{"one profile", []*profile.Profile{fakeProfile("alpha", "Alpha", "/tmp/alpha")}, 6},
+		{"one profile", []*app.LoadedProfile{fakeProfile("alpha", "Alpha", "/tmp/alpha")}, 6},
 		// populated: 2 border + header + 2 rows + spacer + buttons = 7 rows
 		{
 			"two profiles",
-			[]*profile.Profile{
+			[]*app.LoadedProfile{
 				fakeProfile("alpha", "Alpha", "/tmp/alpha"),
 				fakeProfile("beta", "Beta", "/tmp/beta"),
 			},

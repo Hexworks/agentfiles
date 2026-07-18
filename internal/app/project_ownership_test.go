@@ -4,14 +4,17 @@ import (
 	"errors"
 	"path/filepath"
 	"testing"
-	"time"
 
-	"github.com/hexworks/agentfiles/internal/project"
+	"github.com/hexworks/agentfiles/internal/projectstore"
+	"github.com/hexworks/agentfiles/internal/registry"
 )
 
 func TestProjectPathCannotBeSharedAcrossProfiles(t *testing.T) {
 	root := t.TempDir()
-	svc := New(filepath.Join(root, "registry.json"))
+	svc := New(
+		registry.NewStore(filepath.Join(root, "registry.json")),
+		projectstore.NewStore(filepath.Join(root, "projects.json")),
+	)
 	firstProfile := filepath.Join(root, "first")
 	secondProfile := filepath.Join(root, "second")
 	if _, err := svc.CreateProfile("First", firstProfile); err != nil {
@@ -41,7 +44,10 @@ func TestProjectPathCannotBeSharedAcrossProfiles(t *testing.T) {
 
 func TestProjectPathCannotBeSharedWithinSameProfile(t *testing.T) {
 	root := t.TempDir()
-	svc := New(filepath.Join(root, "registry.json"))
+	svc := New(
+		registry.NewStore(filepath.Join(root, "registry.json")),
+		projectstore.NewStore(filepath.Join(root, "projects.json")),
+	)
 	if _, err := svc.CreateProfile("Personal", filepath.Join(root, "profile")); err != nil {
 		t.Fatal(err)
 	}
@@ -67,56 +73,36 @@ func TestProjectPathCannotBeSharedWithinSameProfile(t *testing.T) {
 	}
 }
 
-// TestEnsureProjectPathAvailable_AccumulatesAcrossMultipleProfiles
-// ensures that when the same path is owned by projects in two different
-// profiles, AddProject (called from a third profile) reports both
-// owners in a single error slice.
-func TestEnsureProjectPathAvailable_AccumulatesAcrossMultipleProfiles(t *testing.T) {
+// TestPathOwnershipIsEnforcedInsideStore proves the store aggregate
+// itself rejects a foreign-path Add (belt-and-suspenders next to
+// app.Service's translation layer). A test that reaches straight into
+// s.Projects.Add bypasses AddProject; the store must still refuse.
+func TestPathOwnershipIsEnforcedInsideStore(t *testing.T) {
 	root := t.TempDir()
-	svc := New(filepath.Join(root, "registry.json"))
+	svc := New(
+		registry.NewStore(filepath.Join(root, "registry.json")),
+		projectstore.NewStore(filepath.Join(root, "projects.json")),
+	)
 	if _, err := svc.CreateProfile("First", filepath.Join(root, "first")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := svc.CreateProfile("Second", filepath.Join(root, "second")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.CreateProfile("Third", filepath.Join(root, "third")); err != nil {
-		t.Fatal(err)
-	}
 	projectPath := filepath.Join(root, "repo")
 	if _, addErrs := svc.AddProject("first", "Owner1", projectPath, []string{"codex"}, nil); len(addErrs) > 0 {
-		t.Fatalf("first add: %v", addErrs)
-	}
-	if _, addErrs := svc.AddProject("second", "Owner2", projectPath, []string{"codex"}, nil); len(addErrs) == 0 {
-		t.Fatal("expected second add to fail because First already owns the path")
+		t.Fatalf("seed first: %v", addErrs)
 	}
 
-	// Sidestep AddProject to seed a second owner in the "second" group so
-	// the ownership check faces two conflicts at once. Writing straight
-	// to the projectstore is fine here because we are testing the
-	// aggregation behavior of ensureProjectPathAvailable, not AddProject.
-	if err := svc.Projects.Add("second", &project.Manifest{
-		ID:            "owner2",
-		Name:          "Owner2",
-		Path:          projectPath,
-		EnabledAgents: []string{"codex"},
-		CreatedAt:     time.Now().UTC(),
-	}); err != nil {
-		t.Fatalf("seed projectstore: %v", err)
+	_, addErrs := svc.AddProject("second", "Owner2", projectPath, []string{"codex"}, nil)
+	if len(addErrs) == 0 {
+		t.Fatal("expected store-level rejection")
 	}
-
-	_, addErrs := svc.AddProject("third", "Owner3", projectPath, []string{"codex"}, nil)
-	if len(addErrs) < 2 {
-		t.Fatalf("expected at least 2 conflicts, got %d: %+v", len(addErrs), addErrs)
+	var typed ProjectPathOwnedError
+	if !errors.As(addErrs[0], &typed) {
+		t.Fatalf("expected translated app.ProjectPathOwnedError, got %T: %v", addErrs[0], addErrs[0])
 	}
-	owners := map[string]bool{}
-	for _, e := range addErrs {
-		var typed ProjectPathOwnedError
-		if errors.As(e, &typed) {
-			owners[typed.ProfileName] = true
-		}
-	}
-	if !owners["First"] || !owners["Second"] {
-		t.Fatalf("expected both profiles in conflict set, got %v", owners)
+	if typed.ProfileName != "First" || typed.ProjectName != "Owner1" {
+		t.Fatalf("expected First/Owner1 as existing owner, got %+v", typed)
 	}
 }

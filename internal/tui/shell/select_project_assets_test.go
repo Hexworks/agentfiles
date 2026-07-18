@@ -25,7 +25,7 @@ var _ Screen = (*selectProjectAssetsScreen)(nil)
 // SelectAsset / UnselectAsset is the post-persistence selection — the
 // real service returns the same shape so the screen can trust it.
 type fakeSelectActions struct {
-	prof           *profile.Profile
+	prof           *app.LoadedProfile
 	loadErr        errs.DomainError
 	loadProjectErr errs.DomainError
 	selectResult   []string
@@ -40,7 +40,7 @@ type fakeSelectActions struct {
 	syncInputs     []actions.SyncProjectInput
 }
 
-func (f *fakeSelectActions) LoadProfile(in actions.LoadProfileInput) (*profile.Profile, errs.DomainError) {
+func (f *fakeSelectActions) LoadProfile(in actions.LoadProfileInput) (*app.LoadedProfile, errs.DomainError) {
 	return f.prof, f.loadErr
 }
 
@@ -94,15 +94,18 @@ func newSelectActionsFake(assets []*asset.Asset, proj *project.Manifest) *fakeSe
 		Root:     "/tmp/x",
 		Manifest: profile.Manifest{ID: "alpha", Name: "Alpha"},
 		Assets:   map[string]*asset.Asset{},
-		Projects: map[string]*project.Manifest{},
 	}
 	for _, a := range assets {
 		prof.Assets[a.ID] = a
 	}
-	if proj != nil {
-		prof.Projects[proj.ID] = proj
+	loaded := &app.LoadedProfile{
+		Profile:  prof,
+		Projects: map[string]*project.Manifest{},
 	}
-	return &fakeSelectActions{prof: prof}
+	if proj != nil {
+		loaded.Projects[proj.ID] = proj
+	}
+	return &fakeSelectActions{prof: loaded}
 }
 
 // loadInto bypasses the Init command by injecting the fake's loaded
@@ -239,7 +242,7 @@ func TestSelectProjectAssets_AvailableOrderingMatchesAssetList(t *testing.T) {
 	s := newSelectProjectAssetsScreen(f, "alpha", "proj-1")
 	loadInto(t, s, f, "proj-1")
 
-	want := idsOf(f.prof.AssetList())
+	want := idsOf(f.prof.Profile.AssetList())
 	if got := idsOf(s.available); !slices.Equal(got, want) {
 		t.Errorf("available order = %v, want AssetList order %v", got, want)
 	}

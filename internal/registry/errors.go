@@ -48,6 +48,26 @@ func (ProfilePathExistsError) Severity() errs.Severity {
 	return errs.SeverityWarning
 }
 
+// HomeDirUnavailableError reports that os.UserHomeDir failed or returned
+// empty when computing DefaultPath. Surfaced instead of silently
+// returning a CWD-relative fallback so the environment problem is
+// visible to the caller.
+type HomeDirUnavailableError struct {
+	Err error
+}
+
+func (HomeDirUnavailableError) Error() string {
+	return "user home directory unavailable"
+}
+
+func (HomeDirUnavailableError) Severity() errs.Severity {
+	return errs.SeverityError
+}
+
+func (e HomeDirUnavailableError) Unwrap() error {
+	return e.Err
+}
+
 // ProfileNotFoundError reports a Resolve or Touch lookup that did not
 // match any registered profile.
 type ProfileNotFoundError struct {

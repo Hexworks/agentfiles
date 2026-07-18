@@ -17,6 +17,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/profile"
 	"github.com/hexworks/agentfiles/internal/project"
+	"github.com/hexworks/agentfiles/internal/projectstore"
 	"github.com/hexworks/agentfiles/internal/registry"
 	"github.com/hexworks/agentfiles/internal/tui/components/modal"
 	"github.com/hexworks/agentfiles/internal/tui/modals"
@@ -36,7 +37,10 @@ type editProfileFixture struct {
 func newEditProfileFixture(t *testing.T) *editProfileFixture {
 	t.Helper()
 	root := t.TempDir()
-	svc := app.New(filepath.Join(root, "registry.json"))
+	svc := app.New(
+		registry.NewStore(filepath.Join(root, "registry.json")),
+		projectstore.NewStore(filepath.Join(root, "projects.json")),
+	)
 	ref, err := svc.CreateProfile("alpha", filepath.Join(root, "alpha"))
 	if err != nil {
 		t.Fatalf("seed profile: %v", err)
@@ -78,29 +82,29 @@ func (f *editProfileFixture) seedProject(t *testing.T, name, path string) *proje
 // withProfile bypasses the load command and pushes a pre-loaded
 // profile + sorted asset / project slices into the screen so UI-state
 // tests run without spinning the registry.
-func withProfile(s *editProfileScreen, prof *profile.Profile) {
-	s.rebuildLists(prof)
+func withProfile(s *editProfileScreen, loaded *app.LoadedProfile) {
+	s.rebuildLists(loaded)
 	s.rebuildAssetsTable()
 	s.rebuildProjectsTable()
 	_ = s.handler.FocusIndex(0)
 	s.rebuildSet()
 }
 
-func fakeLoadedProfile(t *testing.T, root string, assets []*asset.Asset, projects []*project.Manifest) *profile.Profile {
+func fakeLoadedProfile(t *testing.T, root string, assets []*asset.Asset, projects []*project.Manifest) *app.LoadedProfile {
 	t.Helper()
 	prof := &profile.Profile{
 		Root:     root,
 		Manifest: profile.Manifest{ID: "alpha", Name: "Alpha"},
 		Assets:   map[string]*asset.Asset{},
-		Projects: map[string]*project.Manifest{},
 	}
 	for _, a := range assets {
 		prof.Assets[a.ID] = a
 	}
+	byID := make(map[string]*project.Manifest, len(projects))
 	for _, p := range projects {
-		prof.Projects[p.ID] = p
+		byID[p.ID] = p
 	}
-	return prof
+	return &app.LoadedProfile{Profile: prof, Projects: byID}
 }
 
 func TestEditProfileScreen_InitLoadsProfileFromActions(t *testing.T) {
@@ -120,8 +124,8 @@ func TestEditProfileScreen_InitLoadsProfileFromActions(t *testing.T) {
 	if loaded.prof == nil {
 		t.Fatalf("loaded.prof = nil, want a profile")
 	}
-	if len(loaded.prof.Assets) != 1 {
-		t.Errorf("loaded asset count = %d, want 1", len(loaded.prof.Assets))
+	if len(loaded.prof.Profile.Assets) != 1 {
+		t.Errorf("loaded asset count = %d, want 1", len(loaded.prof.Profile.Assets))
 	}
 }
 
@@ -314,8 +318,8 @@ func TestEditProfileScreen_AssetDeleteConfirmedRemovesAsset(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadProfile after delete: %v", err)
 	}
-	if len(fresh.Assets) != 0 {
-		t.Errorf("asset count after delete = %d, want 0", len(fresh.Assets))
+	if len(fresh.Profile.Assets) != 0 {
+		t.Errorf("asset count after delete = %d, want 0", len(fresh.Profile.Assets))
 	}
 }
 
@@ -343,8 +347,8 @@ func TestEditProfileScreen_AssetDeleteRejectedMakesNoServiceCall(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadProfile: %v", err)
 	}
-	if len(fresh.Assets) != 1 {
-		t.Errorf("asset count = %d, want 1 (no service call)", len(fresh.Assets))
+	if len(fresh.Profile.Assets) != 1 {
+		t.Errorf("asset count = %d, want 1 (no service call)", len(fresh.Profile.Assets))
 	}
 }
 

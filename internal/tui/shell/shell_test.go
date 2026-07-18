@@ -11,14 +11,23 @@ import (
 	"github.com/hexworks/agentfiles/internal/actions"
 	"github.com/hexworks/agentfiles/internal/app"
 	"github.com/hexworks/agentfiles/internal/errs"
+	"github.com/hexworks/agentfiles/internal/projectstore"
+	"github.com/hexworks/agentfiles/internal/registry"
 	"github.com/hexworks/agentfiles/internal/tui/notifications"
 )
 
-func newTestShell(t *testing.T) Model {
+func newTestSvc(t *testing.T) *app.Service {
 	t.Helper()
 	dir := t.TempDir()
-	svc := app.New(dir + "/registry.json")
-	return New(actions.New(svc), notifications.NewLog())
+	return app.New(
+		registry.NewStore(dir+"/registry.json"),
+		projectstore.NewStore(dir+"/projects.json"),
+	)
+}
+
+func newTestShell(t *testing.T) Model {
+	t.Helper()
+	return New(actions.New(newTestSvc(t)), notifications.NewLog())
 }
 
 func TestNew_PanicsOnNilActions(t *testing.T) {
@@ -36,8 +45,7 @@ func TestNew_PanicsOnNilLog(t *testing.T) {
 			t.Fatalf("expected panic on nil log, got none")
 		}
 	}()
-	dir := t.TempDir()
-	svc := app.New(dir + "/registry.json")
+	svc := newTestSvc(t)
 	New(actions.New(svc), nil)
 }
 

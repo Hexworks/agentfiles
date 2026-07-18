@@ -8,7 +8,7 @@ import (
 
 func TestLoadProject_ReturnsManifest(t *testing.T) {
 	root := t.TempDir()
-	svc := New(filepath.Join(root, "registry.json"))
+	svc := newSvc(root)
 	if _, err := svc.CreateProfile("Personal", filepath.Join(root, "profile")); err != nil {
 		t.Fatalf("create profile: %v", err)
 	}
@@ -28,7 +28,7 @@ func TestLoadProject_ReturnsManifest(t *testing.T) {
 
 func TestLoadProject_MissingReturnsProjectNotFoundError(t *testing.T) {
 	root := t.TempDir()
-	svc := New(filepath.Join(root, "registry.json"))
+	svc := newSvc(root)
 	if _, err := svc.CreateProfile("Personal", filepath.Join(root, "profile")); err != nil {
 		t.Fatalf("create profile: %v", err)
 	}
@@ -46,7 +46,7 @@ func TestLoadProject_MissingReturnsProjectNotFoundError(t *testing.T) {
 
 func TestUpdateProject_PersistsChanges(t *testing.T) {
 	root := t.TempDir()
-	svc := New(filepath.Join(root, "registry.json"))
+	svc := newSvc(root)
 	if _, err := svc.CreateProfile("Personal", filepath.Join(root, "profile")); err != nil {
 		t.Fatalf("create profile: %v", err)
 	}
@@ -74,7 +74,7 @@ func TestUpdateProject_PersistsChanges(t *testing.T) {
 
 func TestDeleteProject_RemovesFromProjectStore(t *testing.T) {
 	root := t.TempDir()
-	svc := New(filepath.Join(root, "registry.json"))
+	svc := newSvc(root)
 	if _, err := svc.CreateProfile("Personal", filepath.Join(root, "profile")); err != nil {
 		t.Fatalf("create profile: %v", err)
 	}

@@ -17,7 +17,7 @@ import (
 func seedFolderRegisterProject(t *testing.T, files map[string]string) (svc *Service, profileID, projectID, repoPath string) {
 	t.Helper()
 	root := t.TempDir()
-	svc = New(filepath.Join(root, "registry.json"))
+	svc = newSvc(root)
 	if _, err := svc.CreateProfile("Personal", filepath.Join(root, "profile")); err != nil {
 		t.Fatalf("create profile: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestCreateAssetFromFolder_CopiesContentAndSelectsForProject(t *testing.T) {
 	if loadErr != nil {
 		t.Fatalf("reload profile: %v", loadErr)
 	}
-	created := prof.Assets["something"]
+	created := prof.Profile.Assets["something"]
 	if created == nil {
 		t.Fatal("expected asset 'something' in profile")
 	}
@@ -123,7 +123,7 @@ func TestCreateAssetFromFolder_CopiesNestedSubtree(t *testing.T) {
 		t.Fatalf("CreateAssetFromFolder: %v", err)
 	}
 	prof, _ := svc.LoadProfile(profileID)
-	created := prof.Assets[id]
+	created := prof.Profile.Assets[id]
 	body, readErr := os.ReadFile(filepath.Join(created.Dir, "sub", "inner.md"))
 	if readErr != nil {
 		t.Fatalf("read nested copied content: %v", readErr)
@@ -201,7 +201,7 @@ func TestCreateAssetFromFolder_InvalidSourceLeavesNoPartialState(t *testing.T) {
 		t.Fatalf("expected MissingContentFileError, got %T: %v", err, err)
 	}
 	prof, _ := svc.LoadProfile(profileID)
-	if prof.Assets["x"] != nil {
+	if prof.Profile.Assets["x"] != nil {
 		t.Fatal("asset created despite invalid source")
 	}
 	p, _ := svc.LoadProject(profileID, projectID)

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/hexworks/agentfiles/internal/config"
+	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/project"
 )
 
@@ -35,12 +36,12 @@ func knownSet(ids ...string) map[string]struct{} {
 
 func TestLoad_MissingFileIsEmpty(t *testing.T) {
 	s := newStore(t)
-	out, err := s.Load(knownSet())
+	state, err := s.Load(knownSet())
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if len(out) != 0 {
-		t.Fatalf("expected empty state, got %d groups", len(out))
+	if state == nil || len(state.Projects) != 0 {
+		t.Fatalf("expected empty state, got %+v", state)
 	}
 }
 
@@ -51,12 +52,12 @@ func TestAddLoadRoundTrip(t *testing.T) {
 	if err := s.Add("prof-a", m); err != nil {
 		t.Fatalf("add: %v", err)
 	}
-	out, err := s.Load(knownSet("prof-a"))
+	state, err := s.Load(knownSet("prof-a"))
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if len(out["prof-a"]) != 1 || out["prof-a"][0].ID != "repo" {
-		t.Fatalf("expected round-trip repo, got %+v", out)
+	if len(state.Projects["prof-a"]) != 1 || state.Projects["prof-a"][0].ID != "repo" {
+		t.Fatalf("expected round-trip repo, got %+v", state)
 	}
 }
 
@@ -71,6 +72,40 @@ func TestAddRejectsDuplicate(t *testing.T) {
 	var dup DuplicateProjectIDError
 	if !errors.As(err, &dup) {
 		t.Fatalf("expected DuplicateProjectIDError, got %T: %v", err, err)
+	}
+}
+
+func TestAdd_RejectsForeignPathOwned(t *testing.T) {
+	s := newStore(t)
+	shared := t.TempDir()
+	if err := s.Add("prof-a", newManifest("repo-a", "Repo A", shared)); err != nil {
+		t.Fatalf("add first: %v", err)
+	}
+	err := s.Add("prof-b", newManifest("repo-b", "Repo B", shared))
+	var owned ProjectPathOwnedError
+	if !errors.As(err, &owned) {
+		t.Fatalf("expected ProjectPathOwnedError, got %T: %v", err, err)
+	}
+	if owned.ExistingProfileID != "prof-a" || owned.ExistingProjectID != "repo-a" {
+		t.Fatalf("expected conflict against (prof-a/repo-a), got %+v", owned)
+	}
+}
+
+func TestUpdate_RejectsForeignPathOwned(t *testing.T) {
+	s := newStore(t)
+	foreign := t.TempDir()
+	own := t.TempDir()
+	if err := s.Add("prof-a", newManifest("repo-a", "Repo A", foreign)); err != nil {
+		t.Fatalf("add prof-a: %v", err)
+	}
+	if err := s.Add("prof-b", newManifest("repo-b", "Repo B", own)); err != nil {
+		t.Fatalf("add prof-b: %v", err)
+	}
+	moving := newManifest("repo-b", "Repo B", foreign)
+	err := s.Update("prof-b", moving)
+	var owned ProjectPathOwnedError
+	if !errors.As(err, &owned) {
+		t.Fatalf("expected ProjectPathOwnedError, got %T: %v", err, err)
 	}
 }
 
@@ -128,15 +163,15 @@ func TestRemoveByProfile_CascadesEveryProject(t *testing.T) {
 	if err := s.RemoveByProfile("prof-a"); err != nil {
 		t.Fatalf("remove by profile: %v", err)
 	}
-	got, err := s.Load(knownSet("prof-a", "prof-b"))
+	state, err := s.Load(knownSet("prof-a", "prof-b"))
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if _, ok := got["prof-a"]; ok {
+	if _, ok := state.Projects["prof-a"]; ok {
 		t.Fatalf("prof-a group should be gone")
 	}
-	if len(got["prof-b"]) != 1 {
-		t.Fatalf("prof-b untouched, got %+v", got["prof-b"])
+	if len(state.Projects["prof-b"]) != 1 {
+		t.Fatalf("prof-b untouched, got %+v", state.Projects["prof-b"])
 	}
 }
 
@@ -161,6 +196,32 @@ func TestListByProfile_SortedByName(t *testing.T) {
 	}
 	if out[0].Name != "Alpha" || out[1].Name != "Beta" {
 		t.Fatalf("expected [Alpha, Beta], got %+v", out)
+	}
+}
+
+// TestSave_WritesProjectsSortedByName asserts the Save-time sort so a
+// regression that dropped it would fail here (ListByProfile also sorts
+// on read and would mask the regression on its own).
+func TestSave_WritesProjectsSortedByName(t *testing.T) {
+	s := newStore(t)
+	if err := s.Save(&State{Version: Version, Projects: map[string][]*project.Manifest{
+		"prof-a": {
+			newManifest("b", "Beta", t.TempDir()),
+			newManifest("a", "Alpha", t.TempDir()),
+		},
+	}}); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	// Read via a fresh store instance without invoking ListByProfile so
+	// we observe the on-disk order directly.
+	fresh := NewStore(s.Path)
+	state, err := fresh.readState()
+	if err != nil {
+		t.Fatalf("readState: %v", err)
+	}
+	group := state.Projects["prof-a"]
+	if len(group) != 2 || group[0].Name != "Alpha" || group[1].Name != "Beta" {
+		t.Fatalf("expected on-disk [Alpha, Beta], got %+v", group)
 	}
 }
 
@@ -193,6 +254,26 @@ func TestAllProjects_SortedDeterministic(t *testing.T) {
 	}
 }
 
+// TestAllProjects_SingleProfileSortedByName covers the majority case: a
+// single-group user expects deterministic ordering too. Regression to
+// insertion-order would only fail here.
+func TestAllProjects_SingleProfileSortedByName(t *testing.T) {
+	s := newStore(t)
+	if err := s.Add("prof-a", newManifest("b", "Beta", t.TempDir())); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Add("prof-a", newManifest("a", "Alpha", t.TempDir())); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.AllProjects()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].Manifest.Name != "Alpha" || got[1].Manifest.Name != "Beta" {
+		t.Fatalf("expected [Alpha, Beta] in one group, got %+v", got)
+	}
+}
+
 func TestLoad_ReportsOrphanProfileID(t *testing.T) {
 	s := newStore(t)
 	if err := s.Add("gone", newManifest("r", "R", t.TempDir())); err != nil {
@@ -205,5 +286,28 @@ func TestLoad_ReportsOrphanProfileID(t *testing.T) {
 	}
 	if orphan.ProfileID != "gone" {
 		t.Fatalf("expected profile id 'gone', got %q", orphan.ProfileID)
+	}
+}
+
+// TestCRUD_RunsOrphanCheckThroughKnownProvider asserts the wired
+// KnownProvider surfaces orphan groups on internal CRUD reads, not only
+// on Load. A hand-edited projects.json with a group under an unknown id
+// would otherwise sit there quietly and block a legitimate Add.
+func TestCRUD_RunsOrphanCheckThroughKnownProvider(t *testing.T) {
+	s := newStore(t)
+	// Seed a projects.json with an orphan group via Save (bypassing the
+	// orphan gate, matching a hand edit or a stale registry).
+	if err := s.Save(&State{Version: Version, Projects: map[string][]*project.Manifest{
+		"gone": {newManifest("r", "R", t.TempDir())},
+	}}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	s.KnownProfiles = func() (map[string]struct{}, errs.DomainError) {
+		return knownSet(), nil
+	}
+	err := s.Add("prof-a", newManifest("new", "New", t.TempDir()))
+	var orphan OrphanProfileIDError
+	if !errors.As(err, &orphan) {
+		t.Fatalf("expected orphan surfaced via CRUD, got %T: %v", err, err)
 	}
 }

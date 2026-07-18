@@ -9,9 +9,9 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/hexworks/agentfiles/internal/actions"
+	"github.com/hexworks/agentfiles/internal/app"
 	"github.com/hexworks/agentfiles/internal/asset"
 	"github.com/hexworks/agentfiles/internal/errs"
-	"github.com/hexworks/agentfiles/internal/profile"
 	"github.com/hexworks/agentfiles/internal/project"
 	"github.com/hexworks/agentfiles/internal/tui/components/focus"
 	"github.com/hexworks/agentfiles/internal/tui/components/help"
@@ -26,7 +26,7 @@ import (
 // glance which interface widening reflects an own dependency versus a
 // child-screen pass-through.
 type editProfileOwnActions interface {
-	LoadProfile(in actions.LoadProfileInput) (*profile.Profile, errs.DomainError)
+	LoadProfile(in actions.LoadProfileInput) (*app.LoadedProfile, errs.DomainError)
 	CreateAsset(in actions.CreateAssetInput) (string, errs.DomainError)
 	DeleteAsset(in actions.DeleteAssetInput) (struct{}, errs.DomainError)
 	AddProject(in actions.AddProjectInput) (*project.Manifest, errs.DomainError)
@@ -104,7 +104,7 @@ type editProfileScreen struct {
 // editProfileLoadedMsg carries the loaded profile (or load error) that
 // Init's command produces.
 type editProfileLoadedMsg struct {
-	prof *profile.Profile
+	prof *app.LoadedProfile
 	err  errs.DomainError
 }
 
@@ -425,18 +425,19 @@ func applyTable(t *table.Model, cols []table.Column, rows []table.Row) {
 
 // rebuildLists materializes ordered slices of assets and projects from
 // the freshly-loaded profile so the tables (and tests) see a stable
-// iteration order. Domain ordering is owned by profile.AssetList /
-// ProjectList — the screen does not re-implement sort rules.
-func (s *editProfileScreen) rebuildLists(prof *profile.Profile) {
-	if prof == nil {
+// iteration order. Domain ordering is owned by profile.AssetList and
+// app.LoadedProfile.ProjectList — the screen does not re-implement sort
+// rules.
+func (s *editProfileScreen) rebuildLists(loaded *app.LoadedProfile) {
+	if loaded == nil {
 		s.assets = nil
 		s.projects = nil
 		s.profileName = ""
 		return
 	}
-	s.assets = prof.AssetList()
-	s.projects = prof.ProjectList()
-	s.profileName = prof.Manifest.Name
+	s.assets = loaded.Profile.AssetList()
+	s.projects = loaded.ProjectList()
+	s.profileName = loaded.Profile.Manifest.Name
 }
 
 // rebuildAssetsTable seeds rows + naturally-sized columns from the

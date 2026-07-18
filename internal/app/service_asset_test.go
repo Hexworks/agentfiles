@@ -12,7 +12,7 @@ import (
 
 func TestLoadAsset_ReturnsExisting(t *testing.T) {
 	root := t.TempDir()
-	svc := New(filepath.Join(root, "registry.json"))
+	svc := newSvc(root)
 	if _, err := svc.CreateProfile("Personal", filepath.Join(root, "profile")); err != nil {
 		t.Fatalf("create profile: %v", err)
 	}
@@ -33,7 +33,7 @@ func TestLoadAsset_ReturnsExisting(t *testing.T) {
 
 func TestLoadAsset_MissingReturnsAssetNotFoundError(t *testing.T) {
 	root := t.TempDir()
-	svc := New(filepath.Join(root, "registry.json"))
+	svc := newSvc(root)
 	if _, err := svc.CreateProfile("Personal", filepath.Join(root, "profile")); err != nil {
 		t.Fatalf("create profile: %v", err)
 	}
@@ -51,7 +51,7 @@ func TestLoadAsset_MissingReturnsAssetNotFoundError(t *testing.T) {
 
 func TestUpdateAsset_OverwritesManifestOnDisk(t *testing.T) {
 	root := t.TempDir()
-	svc := New(filepath.Join(root, "registry.json"))
+	svc := newSvc(root)
 	if _, err := svc.CreateProfile("Personal", filepath.Join(root, "profile")); err != nil {
 		t.Fatalf("create profile: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestUpdateAsset_OverwritesManifestOnDisk(t *testing.T) {
 
 func TestUpdateAsset_MissingAssetReturnsError(t *testing.T) {
 	root := t.TempDir()
-	svc := New(filepath.Join(root, "registry.json"))
+	svc := newSvc(root)
 	if _, err := svc.CreateProfile("Personal", filepath.Join(root, "profile")); err != nil {
 		t.Fatalf("create profile: %v", err)
 	}
@@ -101,7 +101,7 @@ func TestUpdateAsset_MissingAssetReturnsError(t *testing.T) {
 
 func TestUpdateAsset_IgnoresCallerSuppliedDir(t *testing.T) {
 	root := t.TempDir()
-	svc := New(filepath.Join(root, "registry.json"))
+	svc := newSvc(root)
 	if _, err := svc.CreateProfile("Personal", filepath.Join(root, "profile")); err != nil {
 		t.Fatalf("create profile: %v", err)
 	}
@@ -140,7 +140,7 @@ func TestUpdateAsset_IgnoresCallerSuppliedDir(t *testing.T) {
 
 func TestDeleteAsset_RemovesAssetDirectory(t *testing.T) {
 	root := t.TempDir()
-	svc := New(filepath.Join(root, "registry.json"))
+	svc := newSvc(root)
 	if _, err := svc.CreateProfile("Personal", filepath.Join(root, "profile")); err != nil {
 		t.Fatalf("create profile: %v", err)
 	}
@@ -162,7 +162,7 @@ func TestDeleteAsset_RemovesAssetDirectory(t *testing.T) {
 
 func TestDeleteAsset_UnselectsAssetFromProjects(t *testing.T) {
 	root := t.TempDir()
-	svc := New(filepath.Join(root, "registry.json"))
+	svc := newSvc(root)
 	if _, err := svc.CreateProfile("Personal", filepath.Join(root, "profile")); err != nil {
 		t.Fatalf("create profile: %v", err)
 	}
@@ -191,7 +191,7 @@ func TestDeleteAsset_UnselectsAssetFromProjects(t *testing.T) {
 
 func TestDeleteAsset_UnselectsAcrossMultipleProjects(t *testing.T) {
 	root := t.TempDir()
-	svc := New(filepath.Join(root, "registry.json"))
+	svc := newSvc(root)
 	if _, err := svc.CreateProfile("Personal", filepath.Join(root, "profile")); err != nil {
 		t.Fatalf("create profile: %v", err)
 	}
@@ -272,7 +272,7 @@ func TestService_SelectAsset_MissingAssetReturnsAssetNotFoundError(t *testing.T)
 
 func TestService_SelectAsset_MissingProjectReturnsProjectNotFoundError(t *testing.T) {
 	root := t.TempDir()
-	svc := New(filepath.Join(root, "registry.json"))
+	svc := newSvc(root)
 	if _, err := svc.CreateProfile("Personal", filepath.Join(root, "profile")); err != nil {
 		t.Fatalf("create profile: %v", err)
 	}
@@ -336,7 +336,7 @@ func TestService_UnselectAsset_MissingAssetReturnsAssetNotFoundError(t *testing.
 func seedServiceWithProjectAndAsset(t *testing.T, assetID string) (svc *Service, profileID, projectID string) {
 	t.Helper()
 	root := t.TempDir()
-	svc = New(filepath.Join(root, "registry.json"))
+	svc = newSvc(root)
 	if _, err := svc.CreateProfile("Personal", filepath.Join(root, "profile")); err != nil {
 		t.Fatalf("create profile: %v", err)
 	}
@@ -359,7 +359,7 @@ func TestDeleteAsset_PartialFailureLeavesRecoverableState(t *testing.T) {
 		t.Skip("permission-based failure injection cannot run as root")
 	}
 	root := t.TempDir()
-	svc := New(filepath.Join(root, "registry.json"))
+	svc := newSvc(root)
 	profilePath := filepath.Join(root, "profile")
 	if _, err := svc.CreateProfile("Personal", profilePath); err != nil {
 		t.Fatalf("create profile: %v", err)
@@ -374,15 +374,18 @@ func TestDeleteAsset_PartialFailureLeavesRecoverableState(t *testing.T) {
 		t.Fatalf("add project: %v", addErrs)
 	}
 
-	// Make the projects store file unwritable so the per-project save
-	// fails mid-loop. The asset folder removal in DeleteAsset is separate
-	// and still runs, so the second half of the operation should succeed
-	// even though the first half fails.
-	storePath := svc.Projects.Path
-	if err := os.Chmod(storePath, 0o400); err != nil {
-		t.Fatalf("chmod store file: %v", err)
+	// Make the projects store's *directory* unwritable so the per-project
+	// save fails mid-loop. Store.Save now writes atomically via a
+	// same-dir temp file + rename, so denying write to the file itself
+	// no longer blocks the write — the temp file lands next to it. The
+	// asset folder removal in DeleteAsset is separate and still runs, so
+	// the second half of the operation should succeed even though the
+	// first half fails.
+	storeDir := filepath.Dir(svc.Projects.Path)
+	if err := os.Chmod(storeDir, 0o500); err != nil {
+		t.Fatalf("chmod store dir: %v", err)
 	}
-	t.Cleanup(func() { _ = os.Chmod(storePath, 0o644) })
+	t.Cleanup(func() { _ = os.Chmod(storeDir, 0o755) })
 
 	err := svc.DeleteAsset("personal", "agents")
 	if err == nil {
@@ -394,7 +397,7 @@ func TestDeleteAsset_PartialFailureLeavesRecoverableState(t *testing.T) {
 	}
 
 	// Restore write permission so the recovery run can finish.
-	if err := os.Chmod(storePath, 0o644); err != nil {
+	if err := os.Chmod(storeDir, 0o755); err != nil {
 		t.Fatalf("restore chmod: %v", err)
 	}
 	// Re-running DeleteAsset converges: by now the asset folder is gone,

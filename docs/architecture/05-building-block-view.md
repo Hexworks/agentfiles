@@ -10,6 +10,8 @@ flowchart TD
     cmdaf["cmd/af"] --> tui_shell["tui/shell"]
     cmdaf --> app
     cmdaf --> registry
+    cmdaf --> projectstore
+    cmdaf --> migrate
     tui_shell --> actions
     tui_shell --> tui_notifications["tui/notifications"]
     tui_shell --> tui_mnemonic["tui/components/mnemonic"]
@@ -19,7 +21,6 @@ flowchart TD
     app --> render
     app --> sync
     app --> projectstore
-    app --> migrate
     render --> profile
     render --> project
     render --> asset

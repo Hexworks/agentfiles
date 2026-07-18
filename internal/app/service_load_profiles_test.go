@@ -12,7 +12,7 @@ import (
 
 func TestLoadProfiles_ReturnsRegisteredProfiles(t *testing.T) {
 	root := t.TempDir()
-	svc := New(filepath.Join(root, "registry.json"))
+	svc := newSvc(root)
 	if _, err := svc.CreateProfile("Alpha", filepath.Join(root, "alpha")); err != nil {
 		t.Fatalf("create alpha: %v", err)
 	}
@@ -30,7 +30,7 @@ func TestLoadProfiles_ReturnsRegisteredProfiles(t *testing.T) {
 	}
 	names := map[string]bool{}
 	for _, p := range loaded {
-		names[p.Manifest.Name] = true
+		names[p.Profile.Manifest.Name] = true
 	}
 	if !names["Alpha"] || !names["Beta"] {
 		t.Fatalf("expected both profiles in result, got %v", names)
@@ -39,7 +39,7 @@ func TestLoadProfiles_ReturnsRegisteredProfiles(t *testing.T) {
 
 func TestLoadProfiles_AggregatesPerProfileLoadErrors(t *testing.T) {
 	root := t.TempDir()
-	svc := New(filepath.Join(root, "registry.json"))
+	svc := newSvc(root)
 	alphaPath := filepath.Join(root, "alpha")
 	betaPath := filepath.Join(root, "beta")
 	if _, err := svc.CreateProfile("Alpha", alphaPath); err != nil {
@@ -55,7 +55,7 @@ func TestLoadProfiles_AggregatesPerProfileLoadErrors(t *testing.T) {
 
 	loaded, loadErrs := svc.LoadProfiles()
 
-	if len(loaded) != 1 || loaded[0].Manifest.Name != "Alpha" {
+	if len(loaded) != 1 || loaded[0].Profile.Manifest.Name != "Alpha" {
 		t.Fatalf("expected only Alpha loaded, got %v", loaded)
 	}
 	if len(loadErrs) != 1 {

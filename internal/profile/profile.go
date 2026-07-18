@@ -1,20 +1,19 @@
 // Package profile represents a profile folder on disk: its manifest and
-// the assets it contains. The Projects field is populated by the app
-// layer from `internal/projectstore`; profile folders on disk no longer
-// own projects (see ADR 0017).
+// the assets it contains. Per-user project selections live in a separate
+// aggregate (see ADR 0017 + internal/projectstore); the app layer
+// composes them at load time via app.LoadedProfile so this package stays
+// free of any projects-store dependency.
 package profile
 
 import (
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"time"
 
 	"github.com/hexworks/agentfiles/internal/asset"
 	"github.com/hexworks/agentfiles/internal/config"
 	"github.com/hexworks/agentfiles/internal/errs"
-	"github.com/hexworks/agentfiles/internal/project"
 	"github.com/hexworks/agentfiles/internal/utils"
 )
 
@@ -32,17 +31,13 @@ type Manifest struct {
 }
 
 // Profile is the in-memory representation of a profile after scanning its
-// asset subdirectory. The Projects map is populated by the app layer from
-// the projects store; profile folders no longer own projects (ADR 0017).
-// The map is retained (rather than replaced by a slice) so downstream
-// callers that look projects up by id keep their existing API. Load
-// allocates an empty map; app.Service.loadWithProjects fills it before
-// handing the profile back to TUI callers.
+// asset subdirectory. Project selections live in a separate aggregate
+// (see ADR 0017); callers that need both view them through
+// app.LoadedProfile rather than reaching for a field on Profile.
 type Profile struct {
 	Root     string
 	Manifest Manifest
 	Assets   map[string]*asset.Asset
-	Projects map[string]*project.Manifest
 }
 
 // Init scaffolds a brand-new profile root with the expected folder layout.
@@ -92,7 +87,6 @@ func Load(root string) (*Profile, errs.DomainError) {
 		Root:     root,
 		Manifest: manifest,
 		Assets:   map[string]*asset.Asset{},
-		Projects: map[string]*project.Manifest{},
 	}
 	if err := loadAssetsInto(profile); err != nil {
 		return nil, err
@@ -140,41 +134,9 @@ func loadAssetsInto(loaded *Profile) errs.DomainError {
 	return nil
 }
 
-// UnselectAsset drops assetID from SelectedAssetIDs on every project in
-// the in-memory Projects map. Persistence is the caller's responsibility
-// (app.Service loops the mutated projects through the projects store) so
-// the profile package stays disk-free with respect to per-user selections.
-// The returned slice is the set of project ids whose selection actually
-// changed, in map iteration order.
-func (l *Profile) UnselectAsset(assetID string) []string {
-	var mutated []string
-	for id, p := range l.Projects {
-		idx := slices.Index(p.SelectedAssetIDs, assetID)
-		if idx < 0 {
-			continue
-		}
-		p.SelectedAssetIDs = slices.Delete(p.SelectedAssetIDs, idx, idx+1)
-		mutated = append(mutated, id)
-	}
-	return mutated
-}
-
-// ProjectList returns projects sorted by display name, which keeps the
-// TUI presentation stable.
-func (l *Profile) ProjectList() []*project.Manifest {
-	var list []*project.Manifest
-	for _, p := range l.Projects {
-		list = append(list, p)
-	}
-	slices.SortFunc(list, func(a, b *project.Manifest) int {
-		return strings.Compare(a.Name, b.Name)
-	})
-	return list
-}
-
-// AssetList returns assets sorted by display name. Mirrors ProjectList so
-// TUI rendering stays stable across reloads without each screen re-implementing
-// the ordering rule.
+// AssetList returns assets sorted by display name so TUI rendering stays
+// stable across reloads without each screen re-implementing the ordering
+// rule.
 func (l *Profile) AssetList() []*asset.Asset {
 	list := make([]*asset.Asset, 0, len(l.Assets))
 	for _, a := range l.Assets {

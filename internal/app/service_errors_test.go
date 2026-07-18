@@ -10,7 +10,7 @@ import (
 
 func TestAddProject_AccumulatesUnknownAssets(t *testing.T) {
 	root := t.TempDir()
-	svc := New(filepath.Join(root, "registry.json"))
+	svc := newSvc(root)
 	if _, err := svc.CreateProfile("Personal", filepath.Join(root, "profile")); err != nil {
 		t.Fatalf("create profile: %v", err)
 	}
@@ -35,7 +35,7 @@ func TestAddProject_AccumulatesUnknownAssets(t *testing.T) {
 
 func TestPlan_ProjectNotFoundReturnsTypedError(t *testing.T) {
 	root := t.TempDir()
-	svc := New(filepath.Join(root, "registry.json"))
+	svc := newSvc(root)
 	if _, err := svc.CreateProfile("Personal", filepath.Join(root, "profile")); err != nil {
 		t.Fatalf("create profile: %v", err)
 	}
@@ -57,7 +57,7 @@ func TestPlan_ProjectNotFoundReturnsTypedError(t *testing.T) {
 func TestAddProject_RejectsMixedKnownAndUnknownAssets(t *testing.T) {
 	root := t.TempDir()
 	profilePath := filepath.Join(root, "profile")
-	svc := New(filepath.Join(root, "registry.json"))
+	svc := newSvc(root)
 	if _, err := svc.CreateProfile("Personal", profilePath); err != nil {
 		t.Fatalf("create profile: %v", err)
 	}

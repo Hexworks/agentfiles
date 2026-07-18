@@ -26,7 +26,7 @@ var _ Screen = (*planProjectScreen)(nil)
 // path; syncResult lets tests assert that the screen does not assume
 // PlanProject and SyncProject return the same Preview shape.
 type fakePlanActions struct {
-	prof       *profile.Profile
+	prof       *app.LoadedProfile
 	proj       *project.Manifest
 	preview    *app.Preview
 	syncResult *app.Preview
@@ -38,7 +38,7 @@ type fakePlanActions struct {
 	createErr    errs.DomainError
 }
 
-func (f *fakePlanActions) LoadProfile(in actions.LoadProfileInput) (*profile.Profile, errs.DomainError) {
+func (f *fakePlanActions) LoadProfile(in actions.LoadProfileInput) (*app.LoadedProfile, errs.DomainError) {
 	return f.prof, nil
 }
 
@@ -68,7 +68,9 @@ func (f *fakePlanActions) CreateAssetFromFolder(in actions.CreateAssetFromFolder
 
 func newPlanActionsFake(projName string, changes []app.FileChange) *fakePlanActions {
 	return &fakePlanActions{
-		prof:       &profile.Profile{Manifest: profile.Manifest{ID: "alpha", Name: "Alpha"}},
+		prof: &app.LoadedProfile{
+			Profile: &profile.Profile{Manifest: profile.Manifest{ID: "alpha", Name: "Alpha"}},
+		},
 		proj:       &project.Manifest{ID: "proj-1", Name: projName},
 		preview:    &app.Preview{ProfileID: "alpha", ProjectID: "proj-1", Changes: changes},
 		syncResult: &app.Preview{ProfileID: "alpha", ProjectID: "proj-1"},

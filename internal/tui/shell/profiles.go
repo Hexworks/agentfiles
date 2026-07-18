@@ -10,8 +10,8 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/hexworks/agentfiles/internal/actions"
+	"github.com/hexworks/agentfiles/internal/app"
 	"github.com/hexworks/agentfiles/internal/errs"
-	"github.com/hexworks/agentfiles/internal/profile"
 	"github.com/hexworks/agentfiles/internal/tui/components/help"
 	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
 	"github.com/hexworks/agentfiles/internal/tui/components/modal"
@@ -28,7 +28,7 @@ import (
 // composite over the screen body; no sub-screen is pushed for them.
 type profilesScreen struct {
 	actions  *actions.Actions
-	profiles []*profile.Profile
+	profiles []*app.LoadedProfile
 	table    table.Model
 
 	modal             *modal.Modal
@@ -52,7 +52,7 @@ type profilesScreen struct {
 // It carries every Profile pointer LoadProfiles produced plus any domain
 // error so Update can both rebuild the table and emit a notification.
 type profilesLoadedMsg struct {
-	profiles []*profile.Profile
+	profiles []*app.LoadedProfile
 	err      errs.DomainError
 }
 
@@ -255,7 +255,7 @@ func (s *profilesScreen) buildRows(cursor int) []table.Row {
 		if i == cursor {
 			actions = s.actionsCellContent()
 		}
-		rows[i] = table.Row{p.Manifest.ID, p.Manifest.Name, p.Root, actions}
+		rows[i] = table.Row{p.Profile.Manifest.ID, p.Profile.Manifest.Name, p.Profile.Root, actions}
 	}
 	return rows
 }
@@ -271,7 +271,7 @@ func (s *profilesScreen) actionsCellContent() string {
 
 // selectedProfile returns the profile under the table cursor. Returns
 // ok=false when the table is empty so callers can no-op the row action.
-func (s *profilesScreen) selectedProfile() (*profile.Profile, bool) {
+func (s *profilesScreen) selectedProfile() (*app.LoadedProfile, bool) {
 	if len(s.profiles) == 0 {
 		return nil, false
 	}
@@ -287,7 +287,7 @@ func (s *profilesScreen) onEdit() tea.Cmd {
 	if !ok {
 		return nil
 	}
-	return pushCmd(newEditProfileScreen(s.actions, p.Manifest.ID))
+	return pushCmd(newEditProfileScreen(s.actions, p.Profile.Manifest.ID))
 }
 
 func (s *profilesScreen) onDelete() tea.Cmd {
@@ -295,9 +295,9 @@ func (s *profilesScreen) onDelete() tea.Cmd {
 	if !ok {
 		return nil
 	}
-	s.pendingDeleteID = p.Manifest.ID
-	s.pendingDeleteName = p.Manifest.Name
-	prompt := fmt.Sprintf("Are you sure you want to delete profile %q?", p.Manifest.Name)
+	s.pendingDeleteID = p.Profile.Manifest.ID
+	s.pendingDeleteName = p.Profile.Manifest.Name
+	prompt := fmt.Sprintf("Are you sure you want to delete profile %q?", p.Profile.Manifest.Name)
 	s.openModal(modal.NewConfirm("delete-profile-1", prompt, nil))
 	return s.modal.Init()
 }

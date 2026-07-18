@@ -16,7 +16,6 @@ import (
 	"github.com/hexworks/agentfiles/internal/app"
 	"github.com/hexworks/agentfiles/internal/asset"
 	"github.com/hexworks/agentfiles/internal/errs"
-	"github.com/hexworks/agentfiles/internal/profile"
 	"github.com/hexworks/agentfiles/internal/project"
 	"github.com/hexworks/agentfiles/internal/tui/components/help"
 	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
@@ -33,7 +32,7 @@ import (
 // dependency direction tui→app explicit and lets tests substitute a
 // fake.
 type planProjectActions interface {
-	LoadProfile(in actions.LoadProfileInput) (*profile.Profile, errs.DomainError)
+	LoadProfile(in actions.LoadProfileInput) (*app.LoadedProfile, errs.DomainError)
 	LoadProject(in actions.LoadProjectInput) (*project.Manifest, errs.DomainError)
 	PlanProject(in actions.PlanProjectInput) (*app.Preview, errs.DomainError)
 	SyncProject(in actions.SyncProjectInput) (*app.Preview, errs.DomainError)
@@ -101,7 +100,7 @@ func planDirNode(n *treetable.Node) (planNode, bool) {
 // resolving the project, profile, and preview triplet. Either every
 // field is set or err carries the first failure.
 type planProjectLoadedMsg struct {
-	prof    *profile.Profile
+	prof    *app.LoadedProfile
 	proj    *project.Manifest
 	preview *app.Preview
 	err     errs.DomainError
@@ -374,7 +373,7 @@ func (s *planProjectScreen) handleLoaded(m planProjectLoadedMsg) (Screen, tea.Cm
 	if m.err != nil {
 		return s, notificationCmd(m.err.Severity(), m.err.Error())
 	}
-	s.profileName = m.prof.Manifest.Name
+	s.profileName = m.prof.Profile.Manifest.Name
 	s.projectName = m.proj.Name
 	s.projectPath = m.proj.Path
 	s.preview = m.preview
