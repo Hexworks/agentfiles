@@ -7,6 +7,7 @@ import (
 )
 
 func TestResultFromMsg(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		msg  modal.ResolvedMsg
@@ -40,6 +41,7 @@ func TestResultFromMsg(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got, ok := ResultFromMsg(tc.msg)
 			if ok != tc.ok {
 				t.Fatalf("ok = %v, want %v", ok, tc.ok)

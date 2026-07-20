@@ -27,6 +27,20 @@ import (
 	"github.com/hexworks/agentfiles/internal/tui/components/panel"
 )
 
+const (
+	// ChromeWidth is the horizontal space the modal frame consumes around
+	// its Content — 1 border char + 2 padding chars on each side, applied
+	// uniformly by both the styled-border and captioned frame paths.
+	// Content implementations that size themselves against the outer
+	// terminal width should subtract this to derive their usable inner
+	// width.
+	ChromeWidth = 6
+	// ChromeHeight is the vertical space the modal frame consumes around
+	// its Content — 1 border line + 1 padding line on top and bottom,
+	// applied uniformly by both frame paths.
+	ChromeHeight = 4
+)
+
 // LifecycleState enumerates the three states a [Content] can be in. It
 // replaces an earlier two-bool encoding so illegal combinations cannot be
 // expressed.

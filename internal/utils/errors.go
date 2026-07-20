@@ -169,3 +169,30 @@ func (AbsPathError) Severity() errs.Severity {
 func (e AbsPathError) Unwrap() error {
 	return e.Err
 }
+
+// PathResolutionError reports a failure to symlink-resolve Path. Returned
+// by ResolveAbs when follow is true and filepath.EvalSymlinks fails — a
+// dangling symlink, a permission-denied on a path component, or a race
+// that removed the target between Abs and EvalSymlinks all surface here.
+// Callers treat this as a containment failure: the path cannot be proven
+// to sit under any expected root, so it must not be handed to the
+// filesystem.
+type PathResolutionError struct {
+	Path string
+	Err  error
+}
+
+func (e PathResolutionError) Error() string {
+	if e.Err == nil {
+		return fmt.Sprintf("resolve path %s", e.Path)
+	}
+	return fmt.Sprintf("resolve path %s: %s", e.Path, e.Err.Error())
+}
+
+func (PathResolutionError) Severity() errs.Severity {
+	return errs.SeverityError
+}
+
+func (e PathResolutionError) Unwrap() error {
+	return e.Err
+}

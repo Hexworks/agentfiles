@@ -3,22 +3,22 @@ package pathselector
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/tui/components/modal"
-	"github.com/hexworks/agentfiles/internal/tui/notifications"
 )
 
-// TestConstraintRootUpwardNoop — AC #1. At the constraint root the `..` row is
-// absent, so upward navigation is impossible and no error notification fires.
+// TestConstraintRootUpwardNoop — AC #1. At the constraint root the `..` row
+// is absent, so upward navigation is impossible; an explicit navigate() to
+// the parent of the constraint root must emit a ConstraintViolationMsg and
+// leave the current folder untouched.
 func TestConstraintRootUpwardNoop(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	mustMkdir(t, filepath.Join(root, "alpha"))
-	c := mustNew(t, Options{Constraint: root, StartFolder: root})
+	c := mustNew(t, Options{ConstraintRoot: root, StartFolder: root})
 
 	// No `..` in the listing.
 	for _, e := range c.entries {
@@ -27,32 +27,38 @@ func TestConstraintRootUpwardNoop(t *testing.T) {
 		}
 	}
 
-	// Sanity: sending arrow-up from the top row leaves state Active with the
-	// same folder and no error notification.
+	// Direct escape attempt: navigate to the parent of the resolved
+	// constraint root. Must emit ConstraintViolationMsg and stay put. This
+	// exercises the constraint gate itself, not the treetable cursor
+	// clamping — which is what the older arrow-up sanity really tested.
 	before := c.current
-	_, cmd := c.Update(keyPress("up", tea.KeyUp))
+	cmd := c.navigate(filepath.Dir(root))
 	if state, _ := c.Lifecycle(); state != modal.Active {
 		t.Fatalf("lifecycle = %v, want Active", state)
 	}
 	if c.current != before {
-		t.Fatalf("current changed after up-key at root: %q → %q", before, c.current)
+		t.Fatalf("current changed after escape attempt: %q → %q", before, c.current)
 	}
-	notes := drainNotifications(t, cmd)
-	if len(notes) != 0 {
-		t.Fatalf("expected no notifications, got %v", notes)
+	viols := drainConstraintViolations(t, cmd)
+	if len(viols) != 1 {
+		t.Fatalf("expected 1 ConstraintViolationMsg, got %d (%v)", len(viols), viols)
+	}
+	if viols[0].Constraint != c.opts.constraint {
+		t.Fatalf("constraint = %q, want %q", viols[0].Constraint, c.opts.constraint)
 	}
 }
 
 // TestSymlinkEscapeRejected — AC #2. Enter on a directory symlink whose
-// target resolves outside Constraint emits an error notification and leaves
-// the current folder untouched.
+// target resolves outside ConstraintRoot emits a ConstraintViolationMsg
+// and leaves the current folder untouched.
 func TestSymlinkEscapeRejected(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	other := t.TempDir()
 	if err := os.Symlink(other, filepath.Join(root, "out")); err != nil {
 		t.Fatal(err)
 	}
-	c := mustNew(t, Options{Constraint: root, StartFolder: root, FollowSymlinks: true})
+	c := mustNew(t, Options{ConstraintRoot: root, StartFolder: root, FollowSymlinks: true})
 
 	// Move cursor onto `out@`.
 	before := c.current
@@ -64,28 +70,23 @@ func TestSymlinkEscapeRejected(t *testing.T) {
 	if c.current != before {
 		t.Fatalf("current changed after escape attempt: %q → %q", before, c.current)
 	}
-	notes := drainNotifications(t, cmd)
-	if len(notes) != 1 {
-		t.Fatalf("expected 1 notification, got %d (%v)", len(notes), notes)
-	}
-	if notes[0].Severity != errs.SeverityError {
-		t.Fatalf("severity = %v, want SeverityError", notes[0].Severity)
-	}
-	if !strings.HasPrefix(notes[0].Text, "Cannot leave ") {
-		t.Fatalf("text = %q, want to start with %q", notes[0].Text, "Cannot leave ")
+	viols := drainConstraintViolations(t, cmd)
+	if len(viols) != 1 {
+		t.Fatalf("expected 1 ConstraintViolationMsg, got %d (%v)", len(viols), viols)
 	}
 }
 
 // TestSymlinkNoFollow — AC #3. With FollowSymlinks=false, Enter on a
 // directory symlink is a silent no-op.
 func TestSymlinkNoFollow(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	target := filepath.Join(root, "inside")
 	mustMkdir(t, target)
 	if err := os.Symlink(target, filepath.Join(root, "alias")); err != nil {
 		t.Fatal(err)
 	}
-	c := mustNew(t, Options{Constraint: root, StartFolder: root, FollowSymlinks: false})
+	c := mustNew(t, Options{ConstraintRoot: root, StartFolder: root, FollowSymlinks: false})
 
 	moveCursorTo(t, c, "alias@")
 	before := c.current
@@ -93,8 +94,11 @@ func TestSymlinkNoFollow(t *testing.T) {
 	if c.current != before {
 		t.Fatalf("current changed: %q → %q", before, c.current)
 	}
-	if got := drainNotifications(t, cmd); len(got) != 0 {
-		t.Fatalf("expected no notifications, got %v", got)
+	if got := drainConstraintViolations(t, cmd); len(got) != 0 {
+		t.Fatalf("expected no ConstraintViolationMsg, got %v", got)
+	}
+	if got := drainReadDirErrors(t, cmd); len(got) != 0 {
+		t.Fatalf("expected no ReadDirErrorMsg, got %v", got)
 	}
 	if state, _ := c.Lifecycle(); state != modal.Active {
 		t.Fatalf("lifecycle = %v, want Active", state)
@@ -103,10 +107,11 @@ func TestSymlinkNoFollow(t *testing.T) {
 
 // TestHiddenToggle — AC #8. Pressing `h` toggles dotfile visibility.
 func TestHiddenToggle(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	mustWriteFile(t, filepath.Join(root, ".secret"))
 	mustWriteFile(t, filepath.Join(root, "visible.md"))
-	c := mustNew(t, Options{Constraint: root, StartFolder: root, ShowFiles: true})
+	c := mustNew(t, Options{ConstraintRoot: root, StartFolder: root, ShowFiles: true})
 
 	if hasEntryNamed(c, ".secret") {
 		t.Fatalf("initial listing must hide .secret; got %v", entryNames(c.entries))
@@ -124,10 +129,11 @@ func TestHiddenToggle(t *testing.T) {
 // TestEnterSemantics — AC #9. Enter on a folder navigates in; Enter on a file
 // is a no-op.
 func TestEnterSemantics(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	mustMkdir(t, filepath.Join(root, "inside"))
 	mustWriteFile(t, filepath.Join(root, "note.md"))
-	c := mustNew(t, Options{Constraint: root, StartFolder: root, ShowFiles: true})
+	c := mustNew(t, Options{ConstraintRoot: root, StartFolder: root, ShowFiles: true})
 
 	moveCursorTo(t, c, "inside/")
 	_, _ = c.Update(keyPress("enter", tea.KeyEnter))
@@ -155,6 +161,7 @@ func TestEnterSemantics(t *testing.T) {
 // TestRowSelectResolvesResult — AC #10. `s` on a file / folder / `..` row
 // resolves the modal with the correct Result.
 func TestRowSelectResolvesResult(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	inside := filepath.Join(root, "inside")
 	mustMkdir(t, inside)
@@ -162,21 +169,24 @@ func TestRowSelectResolvesResult(t *testing.T) {
 	mustWriteFile(t, filePath)
 
 	t.Run("file", func(t *testing.T) {
-		c := mustNew(t, Options{Constraint: root, StartFolder: inside, ShowFiles: true})
+		t.Parallel()
+		c := mustNew(t, Options{ConstraintRoot: root, StartFolder: inside, ShowFiles: true})
 		moveCursorTo(t, c, "note.md")
 		_, _ = c.Update(keyPress("s", 's'))
 		assertConfirmed(t, c, Result{Path: filePath, IsDir: false})
 	})
 
 	t.Run("folder", func(t *testing.T) {
-		c := mustNew(t, Options{Constraint: root, StartFolder: root})
+		t.Parallel()
+		c := mustNew(t, Options{ConstraintRoot: root, StartFolder: root})
 		moveCursorTo(t, c, "inside/")
 		_, _ = c.Update(keyPress("s", 's'))
 		assertConfirmed(t, c, Result{Path: inside, IsDir: true})
 	})
 
 	t.Run("parent", func(t *testing.T) {
-		c := mustNew(t, Options{Constraint: root, StartFolder: inside})
+		t.Parallel()
+		c := mustNew(t, Options{ConstraintRoot: root, StartFolder: inside})
 		moveCursorTo(t, c, "..")
 		_, _ = c.Update(keyPress("s", 's'))
 		assertConfirmed(t, c, Result{Path: root, IsDir: true})
@@ -186,9 +196,10 @@ func TestRowSelectResolvesResult(t *testing.T) {
 // TestSelectCurrentDir — AC #11. `c` resolves the modal with the folder
 // currently being browsed regardless of cursor position.
 func TestSelectCurrentDir(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	mustWriteFile(t, filepath.Join(root, "note.md"))
-	c := mustNew(t, Options{Constraint: root, StartFolder: root, ShowFiles: true})
+	c := mustNew(t, Options{ConstraintRoot: root, StartFolder: root, ShowFiles: true})
 
 	moveCursorTo(t, c, "note.md")
 	_, _ = c.Update(keyPress("c", 'c'))
@@ -196,8 +207,9 @@ func TestSelectCurrentDir(t *testing.T) {
 }
 
 // TestReadDirDeniedNotifies — AC #12. A permission-denied ReadDir on Enter
-// leaves the modal on the previous folder and emits an error notification.
+// leaves the modal on the previous folder and emits a ReadDirErrorMsg.
 func TestReadDirDeniedNotifies(t *testing.T) {
+	t.Parallel()
 	if os.Geteuid() == 0 {
 		t.Skip("running as root; chmod-based deny does not apply")
 	}
@@ -209,19 +221,16 @@ func TestReadDirDeniedNotifies(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
 
-	c := mustNew(t, Options{Constraint: root, StartFolder: root})
+	c := mustNew(t, Options{ConstraintRoot: root, StartFolder: root})
 	moveCursorTo(t, c, "locked/")
 	before := c.current
 	_, cmd := c.Update(keyPress("enter", tea.KeyEnter))
 	if c.current != before {
 		t.Fatalf("current changed after denied Enter: %q → %q", before, c.current)
 	}
-	notes := drainNotifications(t, cmd)
-	if len(notes) != 1 {
-		t.Fatalf("expected 1 notification, got %d (%v)", len(notes), notes)
-	}
-	if notes[0].Severity != errs.SeverityError {
-		t.Fatalf("severity = %v, want SeverityError", notes[0].Severity)
+	errs := drainReadDirErrors(t, cmd)
+	if len(errs) != 1 {
+		t.Fatalf("expected 1 ReadDirErrorMsg, got %d (%v)", len(errs), errs)
 	}
 	if state, _ := c.Lifecycle(); state != modal.Active {
 		t.Fatalf("lifecycle = %v, want Active", state)
@@ -231,10 +240,12 @@ func TestReadDirDeniedNotifies(t *testing.T) {
 // TestCancelPaths — AC #13. Both Esc and the `n` mnemonic resolve the modal
 // with Confirmed=false / Value=nil.
 func TestCancelPaths(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 
 	t.Run("esc", func(t *testing.T) {
-		c := mustNew(t, Options{Constraint: root, StartFolder: root})
+		t.Parallel()
+		c := mustNew(t, Options{ConstraintRoot: root, StartFolder: root})
 		_, _ = c.Update(keyPress("esc", tea.KeyEsc))
 		state, value := c.Lifecycle()
 		if state != modal.Cancelled {
@@ -246,7 +257,8 @@ func TestCancelPaths(t *testing.T) {
 	})
 
 	t.Run("mnemonic n", func(t *testing.T) {
-		c := mustNew(t, Options{Constraint: root, StartFolder: root})
+		t.Parallel()
+		c := mustNew(t, Options{ConstraintRoot: root, StartFolder: root})
 		_, _ = c.Update(keyPress("n", 'n'))
 		state, value := c.Lifecycle()
 		if state != modal.Cancelled {
@@ -263,12 +275,13 @@ func TestCancelPaths(t *testing.T) {
 // [Select] joins the mnemonic set on selectable rows so the check covers it
 // too.
 func TestMnemonicUniqueness(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	mustMkdir(t, filepath.Join(root, "sub"))
 	mustWriteFile(t, filepath.Join(root, "note.md"))
 
 	// Folders + files present, cursor sweeps every kind.
-	c := mustNew(t, Options{Constraint: root, StartFolder: root, ShowFiles: true})
+	c := mustNew(t, Options{ConstraintRoot: root, StartFolder: root, ShowFiles: true})
 	assertUnique := func(name string) {
 		e := c.cursorEntry()
 		labels := []string{c.selectCurBtn.Label(), c.hiddenBtn.Label(), c.cancelBtn.Label()}
@@ -296,13 +309,13 @@ func TestMnemonicUniqueness(t *testing.T) {
 
 	// Empty folder state.
 	empty := t.TempDir() // fresh empty dir outside constraint semantics
-	c2 := mustNew(t, Options{Constraint: empty, StartFolder: empty, ShowFiles: true})
+	c2 := mustNew(t, Options{ConstraintRoot: empty, StartFolder: empty, ShowFiles: true})
 	assertUnique("empty")
 	moveCursorTo(t, c2, "<empty>")
 	assertUnique("empty-cursor")
 
 	// Folders-only mode.
-	c3 := mustNew(t, Options{Constraint: root, StartFolder: root, ShowFiles: false})
+	c3 := mustNew(t, Options{ConstraintRoot: root, StartFolder: root, ShowFiles: false})
 	assertUnique("folders-only header")
 	moveCursorTo(t, c3, "sub/")
 	assertUnique("folders-only cursor on folder")
@@ -323,26 +336,25 @@ func mustNew(t *testing.T, opts Options) *Content {
 	return c
 }
 
-// moveCursorTo drives arrow-down presses until the cursor entry's display name
-// matches want. Fails the test if the row cannot be reached within a bounded
-// number of moves.
+// moveCursorTo drives arrow-down presses until the cursor entry's display
+// name matches want. Fails with a diagnostic if the row is not reached
+// after exactly len(c.entries) presses — the exact upper bound needed to
+// visit every child from the initial header position.
 func moveCursorTo(t *testing.T, c *Content, want string) {
 	t.Helper()
-	// The tree cursor starts on the root (index 0). Bounded loop over the
-	// visible children — each 'j' should advance by exactly one row.
-	for range len(c.entries) + 1 {
+	presses := len(c.entries)
+	for range presses {
 		e := c.cursorEntry()
 		if e.Kind != entryHeader && e.Name == want {
 			return
 		}
 		_, _ = c.Update(keyPress("j", 'j'))
 	}
-	// If we ran out of moves without finding, try one more sweep upward from
-	// wherever we ended up so the test can retry from the top.
-	if c.cursorEntry().Name == want {
+	e := c.cursorEntry()
+	if e.Kind != entryHeader && e.Name == want {
 		return
 	}
-	t.Fatalf("row %q not reachable; visible entries: %v", want, entryNames(c.entries))
+	t.Fatalf("row %q not reachable after %d presses; visible entries: %v", want, presses, entryNames(c.entries))
 }
 
 // hasEntryNamed reports whether the current listing carries a row whose
@@ -364,32 +376,51 @@ func keyPress(text string, code rune) tea.KeyPressMsg {
 	return tea.KeyPressMsg{Code: code, Text: text}
 }
 
-// drainNotifications executes cmd and returns every NotificationMsg the runtime
-// would receive. Batched commands are walked. Non-notification messages are
-// discarded.
-func drainNotifications(t *testing.T, cmd tea.Cmd) []notifications.Notification {
+// drainConstraintViolations executes cmd and returns every
+// [ConstraintViolationMsg] the runtime would receive. Batched commands
+// are walked. Non-violation messages are discarded.
+func drainConstraintViolations(t *testing.T, cmd tea.Cmd) []ConstraintViolationMsg {
 	t.Helper()
+	var out []ConstraintViolationMsg
+	for _, msg := range drainMessages(cmd) {
+		if v, ok := msg.(ConstraintViolationMsg); ok {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// drainReadDirErrors executes cmd and returns every [ReadDirErrorMsg]
+// the runtime would receive.
+func drainReadDirErrors(t *testing.T, cmd tea.Cmd) []ReadDirErrorMsg {
+	t.Helper()
+	var out []ReadDirErrorMsg
+	for _, msg := range drainMessages(cmd) {
+		if e, ok := msg.(ReadDirErrorMsg); ok {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// drainMessages executes cmd and flattens any BatchMsg into the returned
+// slice of individual tea.Msg values.
+func drainMessages(cmd tea.Cmd) []tea.Msg {
 	if cmd == nil {
 		return nil
 	}
-	var out []notifications.Notification
-	collect := func(msg tea.Msg) {
-		if n, ok := msg.(notifications.NotificationMsg); ok {
-			out = append(out, n.Notification)
-		}
-	}
 	msg := cmd()
 	if batch, ok := msg.(tea.BatchMsg); ok {
+		out := make([]tea.Msg, 0, len(batch))
 		for _, sub := range batch {
 			if sub == nil {
 				continue
 			}
-			collect(sub())
+			out = append(out, sub())
 		}
 		return out
 	}
-	collect(msg)
-	return out
+	return []tea.Msg{msg}
 }
 
 // assertConfirmed asserts the modal has resolved with the expected [Result]

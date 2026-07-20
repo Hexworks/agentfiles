@@ -31,6 +31,20 @@ import (
 	"github.com/hexworks/agentfiles/internal/tui/styles"
 )
 
+const (
+	// CellPaddingPerColumn is the horizontal padding the underlying
+	// bubbles/table adds per column — one space on each side. Callers
+	// that size treetable against an outer width should subtract this
+	// per column they configure.
+	CellPaddingPerColumn = 2
+	// HeaderRowHeight is the number of lines the header row occupies
+	// inside the underlying bubbles/table's Height. Callers that split
+	// vertical space between the tree and other widgets subtract this
+	// (plus any external chrome they own) to derive the visible-row
+	// count.
+	HeaderRowHeight = 1
+)
+
 // Node is a single entry in the tree displayed by the component. Children
 // drive the visual hierarchy; Label is the text rendered in the first column;
 // Data is opaque payload the caller's ActionsFunc consumes to decide which

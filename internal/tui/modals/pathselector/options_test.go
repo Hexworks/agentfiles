@@ -8,10 +8,13 @@ import (
 )
 
 func TestConstructorValidatesInputs(t *testing.T) {
+	t.Parallel()
+
 	t.Run("StartFolder outside constraint returns StartOutsideConstraintError", func(t *testing.T) {
+		t.Parallel()
 		root := t.TempDir()
 		outside := t.TempDir()
-		_, err := New(Options{Constraint: root, StartFolder: outside})
+		_, err := New(Options{ConstraintRoot: root, StartFolder: outside})
 		if err == nil {
 			t.Fatalf("expected StartOutsideConstraintError, got nil")
 		}
@@ -22,9 +25,10 @@ func TestConstructorValidatesInputs(t *testing.T) {
 	})
 
 	t.Run("Unreadable StartFolder returns StartUnreadableError", func(t *testing.T) {
+		t.Parallel()
 		root := t.TempDir()
 		missing := filepath.Join(root, "does-not-exist")
-		_, err := New(Options{Constraint: root, StartFolder: missing})
+		_, err := New(Options{ConstraintRoot: root, StartFolder: missing})
 		if err == nil {
 			t.Fatalf("expected StartUnreadableError, got nil")
 		}
@@ -34,9 +38,10 @@ func TestConstructorValidatesInputs(t *testing.T) {
 		}
 	})
 
-	t.Run("Unreadable Constraint returns ConstraintUnreadableError", func(t *testing.T) {
+	t.Run("Unreadable ConstraintRoot returns ConstraintUnreadableError", func(t *testing.T) {
+		t.Parallel()
 		missing := filepath.Join(t.TempDir(), "does-not-exist")
-		_, err := New(Options{Constraint: missing})
+		_, err := New(Options{ConstraintRoot: missing})
 		if err == nil {
 			t.Fatalf("expected ConstraintUnreadableError, got nil")
 		}
@@ -47,12 +52,13 @@ func TestConstructorValidatesInputs(t *testing.T) {
 	})
 
 	t.Run("StartFolder is a regular file returns StartUnreadableError", func(t *testing.T) {
+		t.Parallel()
 		root := t.TempDir()
 		file := filepath.Join(root, "not-a-dir")
 		if err := os.WriteFile(file, nil, 0o644); err != nil {
 			t.Fatal(err)
 		}
-		_, err := New(Options{Constraint: root, StartFolder: file})
+		_, err := New(Options{ConstraintRoot: root, StartFolder: file})
 		if err == nil {
 			t.Fatalf("expected StartUnreadableError, got nil")
 		}
@@ -62,12 +68,13 @@ func TestConstructorValidatesInputs(t *testing.T) {
 		}
 	})
 
-	t.Run("Constraint is a regular file returns ConstraintUnreadableError", func(t *testing.T) {
+	t.Run("ConstraintRoot is a regular file returns ConstraintUnreadableError", func(t *testing.T) {
+		t.Parallel()
 		file := filepath.Join(t.TempDir(), "not-a-dir")
 		if err := os.WriteFile(file, nil, 0o644); err != nil {
 			t.Fatal(err)
 		}
-		_, err := New(Options{Constraint: file})
+		_, err := New(Options{ConstraintRoot: file})
 		if err == nil {
 			t.Fatalf("expected ConstraintUnreadableError, got nil")
 		}
@@ -77,9 +84,10 @@ func TestConstructorValidatesInputs(t *testing.T) {
 		}
 	})
 
-	t.Run("Empty StartFolder falls back to Constraint", func(t *testing.T) {
+	t.Run("Empty StartFolder falls back to ConstraintRoot", func(t *testing.T) {
+		t.Parallel()
 		root := t.TempDir()
-		c, err := New(Options{Constraint: root})
+		c, err := New(Options{ConstraintRoot: root})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -89,7 +97,38 @@ func TestConstructorValidatesInputs(t *testing.T) {
 	})
 }
 
+func TestCanonicalizePureAndDeterministic(t *testing.T) {
+	t.Parallel()
+	opts := Options{
+		Caption:           "  Pick file  ",
+		ConstraintRoot:    "  /tmp  ",
+		StartFolder:       " /tmp/start ",
+		AllowedExtensions: []string{"md", ".JSON", " "},
+		FollowSymlinks:    true,
+	}
+	canon := opts.canonicalize()
+	if canon.caption != "Pick file" {
+		t.Fatalf("caption = %q, want %q", canon.caption, "Pick file")
+	}
+	if canon.constraint != "/tmp" {
+		t.Fatalf("constraint = %q, want %q", canon.constraint, "/tmp")
+	}
+	if canon.startInput != "/tmp/start" {
+		t.Fatalf("startInput = %q, want %q", canon.startInput, "/tmp/start")
+	}
+	if _, ok := canon.allowedExt[".md"]; !ok {
+		t.Fatalf("allowedExt missing .md: %v", canon.allowedExt)
+	}
+	if _, ok := canon.allowedExt[".json"]; !ok {
+		t.Fatalf("allowedExt missing .json: %v", canon.allowedExt)
+	}
+	if !canon.followSymlinks {
+		t.Fatalf("followSymlinks lost through canonicalize")
+	}
+}
+
 func TestNormalizeExtensions(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		in   []string
@@ -106,6 +145,7 @@ func TestNormalizeExtensions(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got := normalizeExtensions(tc.in)
 			if len(got) != len(tc.want) {
 				t.Fatalf("size = %d, want %d (got=%v)", len(got), len(tc.want), got)
@@ -116,5 +156,15 @@ func TestNormalizeExtensions(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestUserFacingPath(t *testing.T) {
+	t.Parallel()
+	if got := userFacingPath("~/foo", "/home/x/foo"); got != "~/foo" {
+		t.Fatalf("input non-empty must win: got %q", got)
+	}
+	if got := userFacingPath("", "/home/x/foo"); got != "/home/x/foo" {
+		t.Fatalf("empty input must fall back: got %q", got)
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/hexworks/agentfiles/internal/errs"
+	"github.com/hexworks/agentfiles/internal/utils"
 )
 
 // entryKind classifies a single row in the modal's listing. Sort order and
@@ -50,9 +51,14 @@ type entry struct {
 	Hidden bool
 }
 
-// isDir reports whether the entry's target is a directory the modal can
-// navigate into or select as a folder.
-func (e entry) isDir() bool {
+// selectsAsDir reports whether selecting or navigating into this row
+// should be treated as producing a directory. Named after the rule the
+// method actually encodes: entryHeader and entryParent are synthetic UI
+// rows, not filesystem directories, but selecting them yields
+// Result{IsDir: true}. A caller that needs to know "is this row backed
+// by a real directory on disk" should compare Kind against the concrete
+// entryDir / entryDirSymlink values instead.
+func (e entry) selectsAsDir() bool {
 	switch e.Kind {
 	case entryHeader, entryParent, entryDir, entryDirSymlink:
 		return true
@@ -73,8 +79,14 @@ func (e entry) isSelectable() bool {
 // slice never contains an [entryHeader] row — that is produced by the caller
 // (it depends on the constraint state and is used as the treetable root).
 // A read failure returns a typed [ReadDirError].
-func buildEntries(dir string, opts resolvedOptions, showHidden bool) ([]entry, errs.DomainError) {
-	dirents, err := os.ReadDir(dir)
+//
+// When root is non-nil, the directory is read through the pinned
+// *os.Root so a swap of the constraint root or a symlink escape between
+// construction and this call cannot redirect the read (see ADR-worthy
+// discussion in the task's review notes; boils down to closing the
+// TOCTOU window between construction-time validation and runtime read).
+func buildEntries(dir string, opts resolvedOptions, root *os.Root, showHidden bool) ([]entry, errs.DomainError) {
+	dirents, err := readDirents(dir, opts.constraint, root)
 	if err != nil {
 		return nil, ReadDirError{Path: dir, Err: err}
 	}
@@ -118,11 +130,13 @@ func buildEntries(dir string, opts resolvedOptions, showHidden bool) ([]entry, e
 
 	out := make([]entry, 0, len(dirs)+len(files)+1)
 	if dir != opts.constraint {
-		out = append(out, entry{
-			Name: "..",
-			Abs:  filepath.Dir(filepath.Clean(dir)),
-			Kind: entryParent,
-		})
+		if parentAbs, parentErr := utils.ResolveAbs(filepath.Dir(dir), true); parentErr == nil {
+			out = append(out, entry{
+				Name: "..",
+				Abs:  parentAbs,
+				Kind: entryParent,
+			})
+		}
 	}
 	out = append(out, dirs...)
 	out = append(out, files...)
@@ -132,9 +146,51 @@ func buildEntries(dir string, opts resolvedOptions, showHidden bool) ([]entry, e
 	return out, nil
 }
 
+// readDirents chooses between the pinned *os.Root (constrained mode) and
+// a plain os.ReadDir (unconstrained mode) so the caller does not have to
+// branch. When root is set the read is anchored to the fd opened at
+// construction; when root is nil the modal is running without a
+// constraint root and the caller has opted out of the fence.
+func readDirents(dir, constraint string, root *os.Root) ([]os.DirEntry, error) {
+	if root == nil {
+		return os.ReadDir(dir)
+	}
+	rel, err := relTo(constraint, dir)
+	if err != nil {
+		return nil, err
+	}
+	f, err := root.Open(rel)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return f.ReadDir(-1)
+}
+
+// relTo returns the root-relative form of dir. Root.Open expects a name
+// relative to the fd it was opened at; filepath.Rel converts the
+// modal's absolute-path bookkeeping into that form. "." is Root's own
+// spelling for the root directory itself.
+func relTo(root, dir string) (string, error) {
+	rel, err := filepath.Rel(root, dir)
+	if err != nil {
+		return "", err
+	}
+	if rel == "" || rel == "." {
+		return ".", nil
+	}
+	return rel, nil
+}
+
 // classify identifies the entry kind for a dirent. Directory symlinks are
 // stat-followed so a broken symlink degrades to a file-symlink classification
 // rather than being surfaced as a real directory the user can enter.
+//
+// Classification uses a plain os.Stat (not Root.Stat): symlinks whose
+// targets sit outside the constraint should still appear in the listing
+// so the user can see the escape attempt, and the [Content.navigate] gate
+// is what refuses to follow them. Hiding them here would surface them as
+// silent no-ops instead of an "Cannot leave …" message.
 func classify(d os.DirEntry, abs string) entryKind {
 	if d.Type()&os.ModeSymlink != 0 {
 		info, err := os.Stat(abs)

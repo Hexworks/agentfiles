@@ -165,6 +165,22 @@ func New(label string, mnemonic rune, action Action, opts ...Option) *Button {
 // Label returns the button label (without brackets).
 func (b *Button) Label() string { return b.label }
 
+// SetLabel swaps the button label in place. The mnemonic rune must still
+// appear in the new label (case-insensitive); an empty label or one
+// missing the mnemonic panics — programmer error, same as construction.
+// The binding and mnemonic are preserved; only the displayed text
+// changes, so callers can flip a stateful button ("Show hidden" ↔
+// "Hide hidden") without reallocating.
+func (b *Button) SetLabel(label string) {
+	if label == "" {
+		panic("mnemonic: empty label")
+	}
+	if !containsRuneFold(label, b.mnemonic) {
+		panic("mnemonic: mnemonic rune not present in label")
+	}
+	b.label = label
+}
+
 // Mnemonic returns the shortcut rune (the original case as constructed).
 func (b *Button) Mnemonic() rune { return b.mnemonic }
 

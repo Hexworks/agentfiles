@@ -7,6 +7,7 @@ import (
 )
 
 func TestListingSortOrder(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	mustMkdir(t, filepath.Join(dir, "Bar"))
 	mustMkdir(t, filepath.Join(dir, "alpha"))
@@ -17,7 +18,7 @@ func TestListingSortOrder(t *testing.T) {
 		showFiles:  true,
 		constraint: dir, // suppress the `..` row so ordering matches the AC verbatim
 	}
-	got, err := buildEntries(dir, opts, false)
+	got, err := buildEntries(dir, opts, nil, false)
 	if err != nil {
 		t.Fatalf("buildEntries: %v", err)
 	}
@@ -35,11 +36,12 @@ func TestListingSortOrder(t *testing.T) {
 }
 
 func TestListingSortIncludesParentAtTopWhenNotAtConstraintRoot(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	mustMkdir(t, filepath.Join(dir, "alpha"))
 
 	opts := resolvedOptions{showFiles: true} // no constraint → `..` present
-	got, err := buildEntries(dir, opts, false)
+	got, err := buildEntries(dir, opts, nil, false)
 	if err != nil {
 		t.Fatalf("buildEntries: %v", err)
 	}
@@ -52,6 +54,7 @@ func TestListingSortIncludesParentAtTopWhenNotAtConstraintRoot(t *testing.T) {
 }
 
 func TestFoldersOnlyMode(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	mustMkdir(t, filepath.Join(dir, "alpha"))
 	mustWriteFile(t, filepath.Join(dir, "a.txt"))
@@ -62,7 +65,7 @@ func TestFoldersOnlyMode(t *testing.T) {
 		allowedExt: map[string]struct{}{".md": {}}, // must be ignored
 		constraint: dir,
 	}
-	got, err := buildEntries(dir, opts, false)
+	got, err := buildEntries(dir, opts, nil, false)
 	if err != nil {
 		t.Fatalf("buildEntries: %v", err)
 	}
@@ -73,6 +76,7 @@ func TestFoldersOnlyMode(t *testing.T) {
 }
 
 func TestExtensionFilterCaseInsensitive(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	mustWriteFile(t, filepath.Join(dir, "NOTES.MD"))
 	mustWriteFile(t, filepath.Join(dir, "config.JSON"))
@@ -83,7 +87,7 @@ func TestExtensionFilterCaseInsensitive(t *testing.T) {
 		allowedExt: map[string]struct{}{".md": {}, ".json": {}},
 		constraint: dir,
 	}
-	got, err := buildEntries(dir, opts, false)
+	got, err := buildEntries(dir, opts, nil, false)
 	if err != nil {
 		t.Fatalf("buildEntries: %v", err)
 	}
@@ -99,9 +103,10 @@ func TestExtensionFilterCaseInsensitive(t *testing.T) {
 }
 
 func TestBuildEntriesEmptyFolderYieldsPlaceholder(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	opts := resolvedOptions{showFiles: true, constraint: dir}
-	got, err := buildEntries(dir, opts, false)
+	got, err := buildEntries(dir, opts, nil, false)
 	if err != nil {
 		t.Fatalf("buildEntries: %v", err)
 	}
@@ -111,12 +116,13 @@ func TestBuildEntriesEmptyFolderYieldsPlaceholder(t *testing.T) {
 }
 
 func TestBuildEntriesHidesDotfilesWhenShowHiddenFalse(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	mustWriteFile(t, filepath.Join(dir, ".secret"))
 	mustWriteFile(t, filepath.Join(dir, "visible.md"))
 
 	opts := resolvedOptions{showFiles: true, constraint: dir}
-	got, err := buildEntries(dir, opts, false)
+	got, err := buildEntries(dir, opts, nil, false)
 	if err != nil {
 		t.Fatalf("buildEntries: %v", err)
 	}
@@ -129,12 +135,13 @@ func TestBuildEntriesHidesDotfilesWhenShowHiddenFalse(t *testing.T) {
 }
 
 func TestBuildEntriesShowHiddenSurfacesDotfiles(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	mustWriteFile(t, filepath.Join(dir, ".secret"))
 	mustWriteFile(t, filepath.Join(dir, "visible.md"))
 
 	opts := resolvedOptions{showFiles: true, constraint: dir}
-	got, err := buildEntries(dir, opts, true)
+	got, err := buildEntries(dir, opts, nil, true)
 	if err != nil {
 		t.Fatalf("buildEntries: %v", err)
 	}

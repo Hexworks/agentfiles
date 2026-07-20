@@ -747,40 +747,13 @@ func (s *Service) isUnsafeProfilePath(p string) (string, bool) {
 		return "user home directory", true
 	}
 	regDir := filepath.Clean(filepath.Dir(s.Registry.Path))
-	if regDir != "" && regDir != "." && (clean == regDir || isAncestor(clean, regDir)) {
+	if regDir != "" && regDir != "." && (clean == regDir || utils.IsAncestor(clean, regDir)) {
 		return "ancestor of the profile registry file", true
 	}
-	if s.profilesRoot != "" && !isUnderRoot(clean, s.profilesRoot) {
+	if s.profilesRoot != "" && !utils.IsUnderRoot(clean, s.profilesRoot) {
 		return "outside the configured profiles root", true
 	}
 	return "", false
-}
-
-// isAncestor reports whether ancestor strictly contains descendant.
-func isAncestor(ancestor, descendant string) bool {
-	sep := string(filepath.Separator)
-	return strings.HasPrefix(descendant+sep, ancestor+sep) && ancestor != descendant
-}
-
-// isUnderRoot reports whether path sits under root after evaluating
-// symlinks on both sides. A symlink that would otherwise escape the
-// allow-list is rejected because filepath.EvalSymlinks resolves the
-// escape before the comparison happens.
-func isUnderRoot(path, root string) bool {
-	resolvedPath, err := filepath.EvalSymlinks(path)
-	if err != nil {
-		resolvedPath = path
-	}
-	resolvedRoot, err := filepath.EvalSymlinks(root)
-	if err != nil {
-		resolvedRoot = root
-	}
-	resolvedPath = filepath.Clean(resolvedPath)
-	resolvedRoot = filepath.Clean(resolvedRoot)
-	if resolvedPath == resolvedRoot {
-		return true
-	}
-	return isAncestor(resolvedRoot, resolvedPath)
 }
 
 // resolveAsset is the shared prelude for every asset CRUD method: load
