@@ -394,6 +394,30 @@ This is an initial implementation. Working today:
 
 ---
 
+## License
+
+Agentfiles is licensed under the **GNU Affero General Public License v3.0**
+(AGPL-3.0). See [`LICENSE`](./LICENSE) for the full text.
+
+In short: you may use, modify, and distribute this software freely, but if you
+run a modified version as a network service you must make your source available
+to its users (AGPL §13).
+
+### Commercial license
+
+A separate commercial license — permitting use without the AGPL's copyleft and
+network-source obligations — is available for organizations that cannot comply
+with the AGPL. Contact **info@hexworks.org**.
+
+### Contributing
+
+By submitting a contribution you agree to the
+[Contributor License Agreement](./CLA.md), under which you assign copyright in
+your contribution to Hexworks. This lets Hexworks offer the project under both
+the AGPL and a commercial license. See [`CLA.md`](./CLA.md) for details.
+
+---
+
 ## Further reading
 
 More detailed documentation lives under [`docs/`](./docs/):
