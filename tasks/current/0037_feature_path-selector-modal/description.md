@@ -1,7 +1,7 @@
 ---
 id: 0037
 type: feature
-status: pending
+status: in-review
 topics: tui, charm, go, security
 ---
 
@@ -196,3 +196,49 @@ func ResultFromMsg(m modal.ResolvedMsg) (Result, bool)
 - Security-focused subset — path-traversal safety gates:
   `go test ./internal/tui/modals/pathselector -run 'TestConstraintRootUpwardNoop|TestSymlinkEscapeRejected|TestSymlinkNoFollow|TestConstructorValidatesInputs'`
   green.
+
+## Plan
+
+[plan.md](./plan.md)
+
+## Clarification
+
+### Question
+
+The `FollowSymlinks bool` field is documented as "true (default)" but
+Go's zero value for `bool` is `false`. Should we invert the field
+(`NoFollowSymlinks`), promote it to `*bool`, or leave the shape and
+document the zero-value semantics?
+
+### Answer
+
+Keep the field named `FollowSymlinks bool`. The doc comment states that
+the zero value is `false` and callers must set it to `true` explicitly
+to follow directory symlinks. No inversion, no pointer bool.
+
+### Question
+
+The task requires a screen-level `[Cancel]` mnemonic button, but does
+not pin a letter. `s`, `c`, and `h` are already taken by
+`[Select]`, `[Select current]`, and `[Show hidden]`. Which unused
+letter from "Cancel" should be the mnemonic?
+
+### Answer
+
+Use `n` (`ca[N]cel`). The button also carries `esc` as an extra key
+binding so raw `Esc` and the mnemonic behave identically.
+
+### Question
+
+The task text uses names like `ErrStartOutsideConstraint` — a
+Go-idiomatic prefix for **sentinel values**. Every other domain
+package in this repo defines struct types (`AssetNotFoundError`,
+`FilePathError`, …) compared via `errors.As`. Which shape should the
+package expose?
+
+### Answer
+
+Struct types: `StartOutsideConstraintError`, `StartUnreadableError`,
+`ConstraintUnreadableError`. Callers use `errors.As`. No `Err…`
+sentinel values. This matches every other `errors.go` in the repo and
+`docs/guidelines/errors.md`.
