@@ -356,3 +356,25 @@ satisfies `errs.DomainError`. Accumulator functions return
 `[]errs.DomainError` directly; non-accumulator functions return
 `error` and let `errs.Collect` flatten domain leaves. See
 [`docs/guidelines/errors.md`](./guidelines/errors.md).
+
+## Constraint Root
+
+An absolute filesystem directory that bounds a
+[Path Selector Modal](#path-selector-modal). The user cannot navigate
+above it, and — with `Options.FollowSymlinks` enabled — symlink
+targets that resolve outside it are rejected with an error
+notification. Set the empty string to allow browsing the entire
+filesystem. The value is `EvalSymlinks`-resolved and cleaned during
+option validation so subsequent containment checks compare canonical
+paths.
+
+## Path Selector Modal
+
+The reusable TUI modal implemented in
+`internal/tui/modals/pathselector` and opened by callers through
+`modals.NewSelectPath(opts)`. It lets the user pick a folder or file
+inside a [Constraint Root](#constraint-root), filters files by
+extension when `Options.ShowFiles` is set, and offers a runtime
+`Show hidden / Hide hidden` toggle (mnemonic `h`). The selection is
+delivered as a typed `pathselector.Result{Path, IsDir}` on the
+`modal.ResolvedMsg` — extract it with `pathselector.ResultFromMsg`.

@@ -240,6 +240,26 @@ draws a rounded frame with the caption spliced into the top border, and
 extracted from `treetable` so the treetable, modal captions, and any
 future framed widget share one implementation.
 
+### `tui/modals/pathselector`
+
+Reusable file/folder-picker modal opened by callers through the
+`modals.NewSelectPath(opts)` wrapper. The package owns a `modal.Content`
+implementation that combines the shared `treetable` (flat root, per-row
+`[Select]` actions column) with three screen-level mnemonic buttons —
+`[Select current]`, `[Show hidden] / [Hide hidden]`, and `[Cancel]` —
+and returns the user's choice as a typed `pathselector.Result{Path,
+IsDir}` through `modal.ResolvedMsg`. It is safety-critical: navigation
+above a caller-supplied `Options.Constraint` is rejected (the `..` row
+is absent at the constraint root) and, when `Options.FollowSymlinks` is
+enabled, symlink targets are `EvalSymlinks`-resolved and refused if
+they escape the constraint — an error `notifications.NotificationMsg`
+is emitted in that case. Read failures on `os.ReadDir` (permission
+denied, folder disappeared) surface through the same notification path
+without changing the current folder; the modal never resolves on an
+I/O error. This task adds the modal component only; wiring it into
+existing screens (register project, register asset, edit profile,
+…) is a follow-up.
+
 ### `cmd/af`
 
 The binary entry point. It parses the `--registry`, `--projects`, and

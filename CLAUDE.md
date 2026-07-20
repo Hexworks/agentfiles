@@ -38,6 +38,7 @@ Domain packages are kept separable by design — do not blur them:
 - `app` — thin orchestration layer called by the TUI. Holds both centralized stores and cascades project removal on profile deletion. Contains no business logic.
 - `tui` — the only user interface. Menus + `huh` forms. `Esc` and `ctrl+c` both bound to Quit (see `runForm` in `tui/tui.go`) so Esc backs out one level.
 - `utils` — shared path/IO/hashing helpers and small generic utilities (e.g. `Deduplicate`).
+- `tui/modals/pathselector` — reusable file/folder picker modal opened via `modals.NewSelectPath(opts)`. Enforces a caller-supplied `Options.Constraint` root (no browsing above it) and, when `Options.FollowSymlinks` is true, `EvalSymlinks`-rejects symlink targets that resolve outside the root. Returns a typed `pathselector.Result{Path, IsDir}` on `modal.ResolvedMsg` — extract with `pathselector.ResultFromMsg`.
 
 ### Critical invariants
 
