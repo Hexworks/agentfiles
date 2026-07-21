@@ -1,7 +1,7 @@
 ---
 id: 0033
 type: bug
-status: pending
+status: active
 topics: sync_and_safety, tui, charm, go
 ---
 
