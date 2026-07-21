@@ -19,7 +19,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/project"
 	"github.com/hexworks/agentfiles/internal/projectstore"
 	"github.com/hexworks/agentfiles/internal/registry"
-	"github.com/hexworks/agentfiles/internal/render"
+	"github.com/hexworks/agentfiles/internal/surfaces"
 	llmsync "github.com/hexworks/agentfiles/internal/sync"
 	"github.com/hexworks/agentfiles/internal/utils"
 )
@@ -211,46 +211,22 @@ func (s *Service) InitAsset(profileRef string, manifest asset.Manifest) (string,
 	return asset.Init(loaded.Profile.Root, manifest)
 }
 
-// RegisterableDirs returns the set of directory keys in changes that are
-// eligible for asset registration: the directory's parent path is a known
-// asset-container root (render.AssetContainerRoots) and every descendant
-// leaf under it is unknown. Ancestors above a container root and folders
-// nested deeper than a direct child are never returned — the "register
-// folder as asset" flow only makes sense for a direct child of a container
-// root. CreateAssetFromFolder re-asserts on this set so a stale or nested
-// dirKey is rejected with FolderNotRegisterableError.
+// RegisterableDirs returns the set of directory keys in changes that
+// are eligible for asset registration. Thin adapter over
+// surfaces.RegisterableFolders: copies the change-kind classification
+// into surfaces.Leaf so the eligibility rule and its container-root
+// data live together in surfaces, while app keeps its
+// FileChange/ChangeKind vocabulary intact.
 func RegisterableDirs(changes []FileChange) map[string]bool {
-	rootList := render.AssetContainerRoots()
-	roots := make(map[string]bool, len(rootList))
-	for _, r := range rootList {
-		roots[r] = true
+	return surfaces.RegisterableFolders(leavesFromChanges(changes))
+}
+
+func leavesFromChanges(changes []FileChange) []surfaces.Leaf {
+	leaves := make([]surfaces.Leaf, len(changes))
+	for i, ch := range changes {
+		leaves[i] = surfaces.Leaf{Path: ch.Path, IsUnknown: ch.Kind == ChangeUnknown}
 	}
-	total := map[string]int{}
-	unknown := map[string]int{}
-	for _, ch := range changes {
-		parts := strings.Split(ch.Path, "/")
-		for i := 0; i < len(parts)-1; i++ {
-			parent := ""
-			if i > 0 {
-				parent = strings.Join(parts[:i], "/")
-			}
-			if !roots[parent] {
-				continue
-			}
-			dir := strings.Join(parts[:i+1], "/")
-			total[dir]++
-			if ch.Kind == ChangeUnknown {
-				unknown[dir]++
-			}
-		}
-	}
-	out := map[string]bool{}
-	for dir, n := range total {
-		if n > 0 && unknown[dir] == n {
-			out[dir] = true
-		}
-	}
-	return out
+	return leaves
 }
 
 // CreateAssetFromFolder creates a profile-owned asset whose content is copied
@@ -276,8 +252,12 @@ func (s *Service) CreateAssetFromFolder(profileRef, projectID string, manifest a
 	if planErr != nil {
 		return "", planErr
 	}
-	if !RegisterableDirs(previewFromSync(syncPreview).Changes)[dirKey] {
-		return "", FolderNotRegisterableError{DirKey: dirKey}
+	leaves := leavesFromChanges(previewFromSync(syncPreview).Changes)
+	if !surfaces.RegisterableFolders(leaves)[dirKey] {
+		return "", FolderNotRegisterableError{
+			DirKey: dirKey,
+			Reason: surfaces.ClassifyFolderRejection(dirKey, leaves),
+		}
 	}
 	if manifest.ID == "" {
 		manifest.ID = utils.Slug(manifest.Name, config.DefaultAssetSlug)
@@ -471,14 +451,18 @@ func (s *Service) assertIgnoredRegisterable(syncPreview *llmsync.Preview, ignore
 	if syncPreview.ManagedState != nil {
 		prior = syncPreview.ManagedState.IgnoredPaths
 	}
-	registerable := RegisterableDirs(previewFromSync(syncPreview).Changes)
+	leaves := leavesFromChanges(previewFromSync(syncPreview).Changes)
+	registerable := surfaces.RegisterableFolders(leaves)
 	var failures errs.Errors
 	for _, p := range ignoredPaths {
 		if slices.Contains(prior, p) {
 			continue
 		}
 		if !registerable[p] {
-			failures = append(failures, FolderNotRegisterableError{DirKey: p})
+			failures = append(failures, FolderNotRegisterableError{
+				DirKey: p,
+				Reason: surfaces.ClassifyFolderRejection(p, leaves),
+			})
 		}
 	}
 	if len(failures) == 0 {

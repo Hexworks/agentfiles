@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/hexworks/agentfiles/internal/errs"
+	"github.com/hexworks/agentfiles/internal/surfaces"
 )
 
 // AssetNotFoundError reports an asset id passed to AddProject that is not
@@ -36,16 +37,44 @@ func (AssetExistsError) Severity() errs.Severity {
 	return errs.SeverityError
 }
 
-// FolderNotRegisterableError reports a CreateAssetFromFolder call whose
-// dirKey is not an all-unknown folder in the freshly computed plan. The
-// service re-asserts eligibility rather than trusting the TUI button gate, so
-// a stale or tampered key cannot register a partly-managed folder.
+// FolderNotRegisterableError reports a CreateAssetFromFolder (or
+// Apply → ignored_paths) call whose dirKey does not pass the
+// registration rule in the freshly computed plan. Reason distinguishes
+// the three rejection modes so the TUI can render a corrective
+// message specific to the failure:
+//
+//   - surfaces.ReasonNotUnderContainerRoot — dirKey's parent is not a
+//     known asset-container root (see surfaces.AssetContainerRoots).
+//     Either dirKey sits above a container root, is nested deeper than
+//     a direct child of one, or lives outside every asset root.
+//   - surfaces.ReasonHasManagedDescendants — dirKey is a valid direct
+//     child of a container root but at least one leaf under it is
+//     already managed; registering the folder would clobber managed
+//     files.
+//   - surfaces.ReasonAbsentFromPlan — dirKey is a valid direct child of
+//     a container root but no leaf under it appears in the plan (the
+//     folder is empty, was deleted between the TUI listing and apply,
+//     or the caller invented a stale key).
+//
+// The service re-asserts eligibility rather than trusting the TUI
+// button gate, so a stale or tampered key cannot register a
+// partly-managed folder.
 type FolderNotRegisterableError struct {
 	DirKey string
+	Reason surfaces.FolderRejectionReason
 }
 
 func (e FolderNotRegisterableError) Error() string {
-	return fmt.Sprintf("folder is not registerable as an asset: %s", e.DirKey)
+	switch e.Reason {
+	case surfaces.ReasonNotUnderContainerRoot:
+		return fmt.Sprintf("folder is not directly under an asset-container root: %s", e.DirKey)
+	case surfaces.ReasonHasManagedDescendants:
+		return fmt.Sprintf("folder contains files already managed by agentfiles: %s", e.DirKey)
+	case surfaces.ReasonAbsentFromPlan:
+		return fmt.Sprintf("folder is not present in the current plan: %s", e.DirKey)
+	default:
+		return fmt.Sprintf("folder is not registerable as an asset: %s", e.DirKey)
+	}
 }
 
 func (FolderNotRegisterableError) Severity() errs.Severity {

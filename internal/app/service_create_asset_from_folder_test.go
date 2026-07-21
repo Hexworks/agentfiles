@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/hexworks/agentfiles/internal/asset"
+	"github.com/hexworks/agentfiles/internal/surfaces"
 )
 
 // seedFolderRegisterProject builds a profile with one project whose repo
@@ -65,22 +66,26 @@ func TestRegisterableDirs(t *testing.T) {
 	}
 	got := RegisterableDirs(changes)
 
-	for _, dir := range []string{".claude/skills/foo", ".claude/skills/nest"} {
-		if !got[dir] {
-			t.Errorf("dir %q should be registerable", dir)
-		}
+	cases := []struct {
+		name   string
+		dir    string
+		wantOK bool
+	}{
+		{"direct child all-unknown", ".claude/skills/foo", true},
+		{"direct child with a deep leaf", ".claude/skills/nest", true},
+		{"direct child partly-managed", ".claude/skills/bar", false},
+		{"nested one level deeper", ".claude/skills/nest/deep", false},
+		{"container root itself", ".claude/skills", false},
+		{"above container root", ".claude", false},
+		{"outside any container root leaf-dir", "docs/whatever", false},
+		{"outside any container root parent", "docs", false},
 	}
-	for _, dir := range []string{
-		".claude/skills/bar",
-		".claude/skills/nest/deep",
-		".claude/skills",
-		".claude",
-		"docs/whatever",
-		"docs",
-	} {
-		if got[dir] {
-			t.Errorf("dir %q must NOT be registerable", dir)
-		}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got[tc.dir] != tc.wantOK {
+				t.Errorf("RegisterableDirs()[%q] = %v, want %v", tc.dir, got[tc.dir], tc.wantOK)
+			}
+		})
 	}
 }
 
@@ -218,12 +223,81 @@ func TestCreateAssetFromFolder_NestedFolderRejected(t *testing.T) {
 	if typed.DirKey != ".claude/skills/foo/bar" {
 		t.Errorf("DirKey = %q, want %q", typed.DirKey, ".claude/skills/foo/bar")
 	}
+	if typed.Reason != surfaces.ReasonNotUnderContainerRoot {
+		t.Errorf("Reason = %q, want %q", typed.Reason, surfaces.ReasonNotUnderContainerRoot)
+	}
 	prof, loadErr := svc.LoadProfile(profileID)
 	if loadErr != nil {
 		t.Fatalf("reload profile: %v", loadErr)
 	}
 	if len(prof.Profile.Assets) != 0 {
 		t.Fatalf("expected zero assets after rejected registration, got %v", prof.Profile.Assets)
+	}
+	p, _ := svc.LoadProject(profileID, projectID)
+	if slices.Contains(p.SelectedAssetIDs, "nested") {
+		t.Fatal("asset selected despite rejection")
+	}
+}
+
+func TestCreateAssetFromFolder_ContainerRootRejected(t *testing.T) {
+	// The container root itself (".claude/skills") is not a registerable
+	// candidate — only its direct children are.
+	svc, profileID, projectID, _ := seedFolderRegisterProject(t, map[string]string{
+		".claude/skills/foo/SKILL.md": "child\n",
+	})
+
+	_, err := svc.CreateAssetFromFolder(profileID, projectID, asset.Manifest{
+		Name: "root", Type: asset.TypeSkill,
+	}, ".claude/skills")
+
+	var typed FolderNotRegisterableError
+	if !errors.As(err, &typed) {
+		t.Fatalf("expected FolderNotRegisterableError for container-root dirKey, got %T: %v", err, err)
+	}
+	if typed.DirKey != ".claude/skills" {
+		t.Errorf("DirKey = %q, want %q", typed.DirKey, ".claude/skills")
+	}
+	if typed.Reason != surfaces.ReasonNotUnderContainerRoot {
+		t.Errorf("Reason = %q, want %q", typed.Reason, surfaces.ReasonNotUnderContainerRoot)
+	}
+	prof, _ := svc.LoadProfile(profileID)
+	if len(prof.Profile.Assets) != 0 {
+		t.Fatalf("expected zero assets after rejected registration, got %v", prof.Profile.Assets)
+	}
+	p, _ := svc.LoadProject(profileID, projectID)
+	if slices.Contains(p.SelectedAssetIDs, "root") {
+		t.Fatal("asset selected despite rejection")
+	}
+}
+
+func TestCreateAssetFromFolder_AboveContainerRootRejected(t *testing.T) {
+	// A top-level managed surface (".claude") is above every container
+	// root and cannot be registered as an asset.
+	svc, profileID, projectID, _ := seedFolderRegisterProject(t, map[string]string{
+		".claude/skills/foo/SKILL.md": "child\n",
+	})
+
+	_, err := svc.CreateAssetFromFolder(profileID, projectID, asset.Manifest{
+		Name: "above", Type: asset.TypeSkill,
+	}, ".claude")
+
+	var typed FolderNotRegisterableError
+	if !errors.As(err, &typed) {
+		t.Fatalf("expected FolderNotRegisterableError for above-root dirKey, got %T: %v", err, err)
+	}
+	if typed.DirKey != ".claude" {
+		t.Errorf("DirKey = %q, want %q", typed.DirKey, ".claude")
+	}
+	if typed.Reason != surfaces.ReasonNotUnderContainerRoot {
+		t.Errorf("Reason = %q, want %q", typed.Reason, surfaces.ReasonNotUnderContainerRoot)
+	}
+	prof, _ := svc.LoadProfile(profileID)
+	if len(prof.Profile.Assets) != 0 {
+		t.Fatalf("expected zero assets after rejected registration, got %v", prof.Profile.Assets)
+	}
+	p, _ := svc.LoadProject(profileID, projectID)
+	if slices.Contains(p.SelectedAssetIDs, "above") {
+		t.Fatal("asset selected despite rejection")
 	}
 }
 

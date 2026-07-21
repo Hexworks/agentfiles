@@ -10,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/hexworks/agentfiles/internal/asset"
@@ -204,41 +203,10 @@ func addRenderedFilesFor(files map[string]RenderedFile, a *asset.Asset, enabledA
 	}
 }
 
-// skillRoots maps each supported agent to its skill container directory —
-// the folder under which one child folder per skill is projected. Kept at
-// package scope so AssetContainerRoots can derive from it without
-// duplicating strings.
-var skillRoots = map[string]string{
-	"codex":       ".codex/skills",
-	"claude-code": ".claude/skills",
-	"opencode":    ".opencode/skills",
-}
-
-// cursorCommandsRoot is Cursor's folder-shaped asset container. Cursor
-// flattens each skill to a single .md file inside it, but the container
-// itself still acts as a root for folder-registration purposes.
-const cursorCommandsRoot = ".cursor/commands"
-
-// AssetContainerRoots returns the fixed set of managed-surface paths under
-// which a direct child folder is eligible for asset registration. These
-// are the only folder-shaped asset containers; agents_doc/settings render
-// to single files and have no child folder to register.
-//
-// Consumed by app.RegisterableDirs as the single source of truth so no
-// duplicated hard-coded list drifts. Returns a fresh sorted slice; the
-// caller may mutate it.
-func AssetContainerRoots() []string {
-	out := make([]string, 0, len(skillRoots)+1)
-	for _, root := range skillRoots {
-		out = append(out, root)
-	}
-	out = append(out, cursorCommandsRoot)
-	sort.Strings(out)
-	return out
-}
-
 // addSkillOutputs expands a single skill asset into each enabled agent's
-// expected directory or file structure.
+// expected directory or file structure. Per-agent container roots and
+// the Cursor flat-file layout come from internal/surfaces so the same
+// paths back both rendering and folder-registration eligibility.
 func addSkillOutputs(files map[string]RenderedFile, a *asset.Asset, enabledAgents []string) []errs.DomainError {
 	body, err := readAssetFile(a, config.SkillStarterFileName, "read")
 	if err != nil {
@@ -253,7 +221,7 @@ func addSkillOutputs(files map[string]RenderedFile, a *asset.Asset, enabledAgent
 		if !asset.SupportsAgent(a, agent) {
 			continue
 		}
-		if root, ok := skillRoots[agent]; ok {
+		if root, ok := surfaces.SkillRoot(agent); ok {
 			for _, rel := range relFiles {
 				data, readErr := readAssetFile(a, rel, "read")
 				if readErr != nil {
@@ -266,7 +234,7 @@ func addSkillOutputs(files map[string]RenderedFile, a *asset.Asset, enabledAgent
 			continue
 		}
 		if agent == "cursor" {
-			target := filepath.ToSlash(filepath.Join(cursorCommandsRoot, a.ID+".md"))
+			target := filepath.ToSlash(filepath.Join(surfaces.CursorCommandsRoot(), a.ID+".md"))
 			files[target] = RenderedFile{Path: target, Body: body, Mode: 0o644, AssetID: a.ID}
 		}
 	}

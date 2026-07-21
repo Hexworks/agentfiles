@@ -169,6 +169,33 @@ drift, and delete candidates.
 
 The limited set of output locations that `agentfiles` is allowed to manage:
 `AGENTS.md`, `.claude/`, `.cursor/`, `.codex/`, `.opencode/`, and `.mcp.json`.
+The tighter inner fence is the [Asset Container Root](#asset-container-root)
+set — a strict subset whose direct child folders are eligible for
+folder-based asset registration.
+
+## Asset Container Root
+
+The strict subset of [Managed Surfaces](#managed-surfaces) whose direct
+child folders are eligible for folder-based asset registration:
+`.claude/skills`, `.codex/skills`, `.opencode/skills`, and
+`.cursor/commands`. These are the only folder-shaped asset containers;
+`agents_doc` and `settings` render to single files and have no child
+folder to register. The set is exposed as
+`surfaces.AssetContainerRoots()` (and its O(1) predicate
+`surfaces.IsAssetContainerRoot`) so no caller duplicates the list.
+
+## Registerable Folder
+
+A directory key in a plan whose parent path is an
+[Asset Container Root](#asset-container-root) and whose every
+descendant leaf is a [ChangeUnknown](#changeunknown) — i.e. a
+top-level, all-unknown skill or command folder that the user can
+adopt as a new asset through the Plan Project screen's "Register as
+asset" action. Ancestors above a container root and folders nested
+deeper than a direct child are never registerable. Enforced by
+`surfaces.RegisterableFolders` and re-asserted at the service
+boundary in `app.Service.CreateAssetFromFolder`; a stale or nested
+`dirKey` is rejected with `app.FolderNotRegisterableError`.
 
 ## Managed State
 
