@@ -482,11 +482,12 @@ func TestPlanProjectScreen_OnApplyEmptyPreviewDoesNotCallSyncProject(t *testing.
 	}
 }
 
-// TestPlanProjectScreen_OnApplyEmptyMapEmitsExplicitKeepResolutions pins
-// the rule that drift/unknown rows always produce an explicit decision
-// in the sync input. Without it, a future change to the domain's default
-// (DriftKeep / UnknownKeep) would silently change the TUI's behavior.
-func TestPlanProjectScreen_OnApplyEmptyMapEmitsExplicitKeepResolutions(t *testing.T) {
+// TestPlanProjectScreen_OnApplyEmptyMapOmitsDriftKeepAndKeepsUnknown pins
+// the post-ADR-0015 contract: an untouched drift row emits no resolution
+// (absence == DriftKeep, so sync preserves the prior baseline instead of
+// silently rebaselining — bug 0033). Unknown rows still emit an explicit
+// UnknownKeep for every row because that default is a state no-op.
+func TestPlanProjectScreen_OnApplyEmptyMapOmitsDriftKeepAndKeepsUnknown(t *testing.T) {
 	changes := []app.FileChange{
 		{Path: "create.md", Kind: app.ChangeCreate},
 		{Path: "drift.md", Kind: app.ChangeDrift},
@@ -511,8 +512,8 @@ func TestPlanProjectScreen_OnApplyEmptyMapEmitsExplicitKeepResolutions(t *testin
 		t.Fatalf("syncInputs len = %d, want 1", len(f.syncInputs))
 	}
 	in := f.syncInputs[0]
-	if len(in.Drift) != 1 || in.Drift[0].Path != "drift.md" || in.Drift[0].Decision != app.DriftKeep {
-		t.Errorf("Drift = %+v, want [{drift.md keep}]", in.Drift)
+	if len(in.Drift) != 0 {
+		t.Errorf("Drift = %+v, want [] (untouched drift must not emit a resolution)", in.Drift)
 	}
 	if len(in.Unknown) != 1 || in.Unknown[0].Path != "unknown.md" || in.Unknown[0].Decision != app.UnknownKeep {
 		t.Errorf("Unknown = %+v, want [{unknown.md keep}]", in.Unknown)

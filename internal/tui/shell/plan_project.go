@@ -810,10 +810,11 @@ func (s *planProjectScreen) handleRegisterAssetDone(m registerAssetDoneMsg) (Scr
 }
 
 // onApply iterates preview.Changes (not the resolution maps) so the
-// output order is deterministic and emits an explicit decision for every
-// drift/unknown row. The domain remains the single source of the default
-// — DriftKeep / UnknownKeep — so a future change to that default needs
-// no follow-up here.
+// output order is deterministic. Drift rows only emit a resolution when
+// the user picked DriftOverwrite; the DriftKeep default is expressed by
+// absence so an untouched drift row cannot silently rebaseline (ADR
+// 0015, bug 0033). Unknown rows still emit an explicit UnknownKeep for
+// every row because that default is a no-op on state.
 func (s *planProjectScreen) onApply() tea.Cmd {
 	if s.preview == nil {
 		return nil
@@ -830,11 +831,9 @@ func (s *planProjectScreen) onApply() tea.Cmd {
 	for _, ch := range s.preview.Changes {
 		switch ch.Kind {
 		case app.ChangeDrift:
-			decision := app.DriftKeep
 			if s.driftResolutions[ch.Path] == app.DriftOverwrite {
-				decision = app.DriftOverwrite
+				drift = append(drift, app.DriftResolution{Path: ch.Path, Decision: app.DriftOverwrite})
 			}
-			drift = append(drift, app.DriftResolution{Path: ch.Path, Decision: decision})
 		case app.ChangeUnknown:
 			decision := app.UnknownKeep
 			if s.unknownResolutions[ch.Path] == app.UnknownDelete {

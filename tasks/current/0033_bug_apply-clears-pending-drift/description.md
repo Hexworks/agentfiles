@@ -1,7 +1,7 @@
 ---
 id: 0033
 type: bug
-status: in-progress
+status: in-review
 topics: sync_and_safety, tui, charm, go
 ---
 

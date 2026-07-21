@@ -444,10 +444,11 @@ func TestApply_StateRewritten(t *testing.T) {
 	}
 }
 
-// TestApply_DriftKeep_AdoptsCurrentAsBaseline pins the issue #1 semantics:
-// keeping a drift records the on-disk hash in ManagedState so the next
-// Plan no longer classifies the path as drift.
-func TestApply_DriftKeep_AdoptsCurrentAsBaseline(t *testing.T) {
+// TestApply_DriftKeep_PreservesPriorBaseline pins the ADR 0015 contract:
+// keeping a drift leaves the prior managed baseline untouched (neither the
+// on-disk hash nor the rendered hash is adopted), so the next Plan still
+// classifies the path as ChangeDrift.
+func TestApply_DriftKeep_PreservesPriorBaseline(t *testing.T) {
 	projectRoot := t.TempDir()
 	loaded, proj := setupProfileAndProject(t, projectRoot)
 	if err := os.WriteFile(filepath.Join(projectRoot, "AGENTS.md"), []byte("drifted"), 0o644); err != nil {
@@ -464,24 +465,24 @@ func TestApply_DriftKeep_AdoptsCurrentAsBaseline(t *testing.T) {
 	}
 
 	state := readState(t, projectRoot)
-	if got, want := state.ManagedFiles["AGENTS.md"], hashOf("drifted"); got != want {
-		t.Fatalf("baseline hash = %q, want on-disk %q", got, want)
+	if got, want := state.ManagedFiles["AGENTS.md"], "previous"; got != want {
+		t.Fatalf("baseline hash = %q, want prior %q (Keep must not adopt on-disk hash)", got, want)
 	}
 
 	nextPreview, err := Plan(loaded, proj)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, change := range nextPreview.Changes {
-		if change.Path == "AGENTS.md" && change.Kind == ChangeDrift {
-			t.Fatalf("expected AGENTS.md no longer ChangeDrift after keep+adopt; got %+v", nextPreview.Changes)
-		}
+	next := findChange(t, nextPreview.Changes, "AGENTS.md")
+	if next.Kind != ChangeDrift {
+		t.Fatalf("AGENTS.md kind after Keep = %q, want %q (kept drift must stay drift)", next.Kind, ChangeDrift)
 	}
 }
 
 // TestApply_DefaultDrift_LeavesAlone is the symmetric counterpart to the
 // default-unknown test: nil drift resolutions must default to DriftKeep,
-// so the on-disk file remains untouched even without an explicit entry.
+// so the on-disk file remains untouched, the prior baseline is preserved,
+// and the next Plan still classifies the path as ChangeDrift.
 func TestApply_DefaultDrift_LeavesAlone(t *testing.T) {
 	projectRoot := t.TempDir()
 	loaded, proj := setupProfileAndProject(t, projectRoot)
@@ -504,6 +505,61 @@ func TestApply_DefaultDrift_LeavesAlone(t *testing.T) {
 	}
 	if string(got) != "drifted" {
 		t.Fatalf("AGENTS.md = %q, want unchanged \"drifted\" (default drift = keep)", string(got))
+	}
+
+	state := readState(t, projectRoot)
+	if got, want := state.ManagedFiles["AGENTS.md"], "previous"; got != want {
+		t.Fatalf("baseline hash = %q, want prior %q (default Keep must preserve baseline)", got, want)
+	}
+
+	nextPreview, err := Plan(loaded, proj)
+	if err != nil {
+		t.Fatal(err)
+	}
+	next := findChange(t, nextPreview.Changes, "AGENTS.md")
+	if next.Kind != ChangeDrift {
+		t.Fatalf("AGENTS.md kind after default Keep = %q, want %q (kept drift must stay drift)", next.Kind, ChangeDrift)
+	}
+}
+
+// TestApply_PureIgnoreSetChange_LeavesDriftBaselineUntouched pins the
+// bug-0033 regression: an Apply whose only real change is the ignored
+// set must not silently rebaseline unrelated pending drift. The drifted
+// file's baseline stays at its prior recorded hash, so the next Plan
+// still classifies it as ChangeDrift.
+func TestApply_PureIgnoreSetChange_LeavesDriftBaselineUntouched(t *testing.T) {
+	projectRoot := t.TempDir()
+	loaded, proj := setupProfileAndProject(t, projectRoot)
+	if err := os.WriteFile(filepath.Join(projectRoot, "AGENTS.md"), []byte("drifted"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeStateWithIgnored(t, projectRoot, map[string]string{"AGENTS.md": "previous"}, []string{".codex/ask-matt"})
+	preview, err := Plan(loaded, proj)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Un-ignore the persisted folder by sending an empty ignored set; drift
+	// row gets no resolution, so it must fall through to the preserve default.
+	if err := Apply(preview, Resolutions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	state := readState(t, projectRoot)
+	if got, want := state.ManagedFiles["AGENTS.md"], "previous"; got != want {
+		t.Fatalf("baseline hash = %q, want prior %q (pure ignore-set change must not touch drift baseline)", got, want)
+	}
+	if state.IgnoredPaths != nil {
+		t.Fatalf("ignored_paths = %v, want nil (un-ignore must drop the persisted key)", state.IgnoredPaths)
+	}
+
+	nextPreview, err := Plan(loaded, proj)
+	if err != nil {
+		t.Fatal(err)
+	}
+	next := findChange(t, nextPreview.Changes, "AGENTS.md")
+	if next.Kind != ChangeDrift {
+		t.Fatalf("AGENTS.md kind after ignore-only Apply = %q, want %q (drift must survive)", next.Kind, ChangeDrift)
 	}
 }
 
