@@ -1,11 +1,19 @@
 ---
 name: Implement Task [Agentfiles]
-description: Use when the user invokes /implement-task <task-number> (e.g. /implement-task 0001) to plan and implement a task from the project's tasks/ folder. Locates the task directory, validates frontmatter, asks clarifying questions, writes a plan inside the task directory, awaits approval, implements the work, then writes a changelog entry. Project-specific to repos that follow the tasks/{backlog,current,done}/ convention with directory-per-task layout.
+description: Use when the user invokes /implement-task <task-number> (e.g. /implement-task 0001) to implement a task whose plan has already been approved by `af.task.plan`. Re-locates the task, validates that status is `in-progress` and `plan.md` exists, checks out the task branch, rebuilds context, implements the plan, runs the mandatory build/test/lint gate, sets status to `in-review`, and writes a changelog entry. Assumes /plan-task has already produced plan.md and set status to `in-progress`. Project-specific to repos that follow the tasks/{backlog,current,done}/ convention with directory-per-task layout.
 ---
 
 # Implement Task
 
-End-to-end workflow that takes a task id (e.g. `0001`), locates it in `tasks/`, validates it, plans the work inside the task directory, gets human approval, implements it, and records a changelog in `docs/changelog/`.
+Executes the plan produced by `af.task.plan`. Takes a task id (e.g. `0001`), validates it is in `in-progress` with an approved `plan.md`, rebuilds context in a clean session, implements per the plan, gates on build/test/lint, moves the task to `in-review`, and records a changelog in `docs/changelog/`.
+
+This skill is the second half of the plan/implement workflow. Planning is done first by `af.task.plan` (via `/plan-task <id>`); this skill executes the approved plan.
+
+> [!IMPORTANT]
+> This skill **must be run with a clean context**. Do not chain it after other long-running work in the same session.
+
+> [!IMPORTANT]
+> Follow the steps **in order**. Do not skip a step.
 
 ## Task Layout
 
@@ -14,8 +22,8 @@ Each task is a directory:
 ```
 tasks/{backlog|current|done}/{task-id}_{task-type}_{short-description}/
     description.md   # task body + frontmatter
-    plan.md          # optional, written by this skill
-    review.md        # optional, written by review-task skill
+    plan.md          # written by af.task.plan
+    review.md        # written later by af.task.review
 ```
 
 ## Input
@@ -29,160 +37,86 @@ Search `tasks/backlog/`, `tasks/current/`, `tasks/done/` for **directories** mat
 | Found in         | Action                                    |
 | ---------------- | ----------------------------------------- |
 | `tasks/done/`    | Tell user task already done. **Stop.**    |
-| `tasks/backlog/` | Tell user to refine task first. **Stop.** |
+| `tasks/backlog/` | Tell user to run `/plan-task {id}` first. **Stop.** |
 | (none)           | Tell user task not found. **Stop.**       |
 | `tasks/current/` | Continue to Step 2.                       |
 
 Extract `{task-type}` and `{short-description}` from the directory name: `{task-number}_{task-type}_{short-description}`.
 
-The task body lives in `description.md` inside that directory.
+## Step 2 — Validate Handoff From /plan-task
 
-## Step 2 — Validate Frontmatter
-
-Read `description.md` inside the task directory. It must start with frontmatter:
+Read `description.md`. Frontmatter must look like:
 
 ```yaml
 ---
 id: 0006
 type: feature
-status: pending
+status: in-progress
 topics: research, go
 ---
 ```
 
-If frontmatter missing → tell user, stop, let them fix.
+Then verify plan artefacts and working tree:
 
-Validate each field:
+| Check                       | On failure                      |
+| --------------------------- | ------------------------------- |
+| Frontmatter present         | Signal error to user, **stop**. |
+| `id` equals `{task-number}` | Signal error to user, **stop**. |
+| `status` equals `in-progress` | Signal error to user, **stop**. Tell user to run `/plan-task {id}` first if status is `pending`. |
+| `topics` non-empty          | Signal error to user, **stop**. |
+| `plan.md` present in task dir | Tell user to run `/plan-task {id}` first. **Stop.** |
+| Current git branch equals `{task-type}/{short-description}` | Tell user to `git checkout {task-type}/{short-description}`. **Stop.** |
+| `git status --porcelain` empty | Tell user to commit or stash first. **Stop.** |
 
-| Field    | Rule                                                                            | On failure         |
-| -------- | ------------------------------------------------------------------------------- | ------------------ |
-| `id`     | Equals `{task-number}` from directory name                                      | Signal error, stop |
-| `type`   | One of `feature`, `bug`, `task`, `docs` AND equals `{task-type}` from dir name  | Signal error, stop |
-| `status` | One of `pending`, `in-progress`, `blocked`, `in-review`, `done`                 | Signal error, stop |
-| `topics` | Non-empty                                                                       | Signal error, stop |
+If `status` is anything other than `in-progress`, signal the error explicitly: e.g. _"Task 0004 is in `pending`, not `in-progress`. Run `/plan-task 0004` first to produce and approve a plan."_
 
-## Step 2.5 — Body-sections Gate (Mandatory)
+## Step 3 — Rebuild Context
 
-Before entering plan mode, verify the description body carries the three
-required sections that `af.create-task` mandates. This mirrors
-`af.task.review` Step 6.5a so the pipeline enforces the same contract at
-every stage — a task whose sections were removed by hand never reaches
-implementation.
+You are in a clean context, so re-gather what you need to implement correctly:
 
-Read `description.md` body (post-frontmatter) and check:
+1. Read `description.md` full body, including any `## Clarification` Q&A.
+2. Read `plan.md` full body.
+3. For each entry in the task's `topics` field, read `docs/guidelines/{topic}.md`. **Always** also read the "must read" set: `clean_architecture.md`, `clean_code.md`, `domain_model.md`, `solid.md`, `testing.md`.
+4. Read every doc the plan references or touches (ADRs under `docs/adr/`, arc42 sections under `docs/architecture/`, glossary entries).
+5. Read in full each source file the plan will edit, so you understand surrounding context, naming, and existing abstractions.
 
-| Check                              | On failure                                                                                                                                        |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `## Acceptance Criteria` present   | Signal `LegacyTask` — task is missing the required `## Acceptance Criteria` section (see task-workflow contract in `af.create-task` Step 7). Stop. |
-| `## Acceptance Criteria` non-empty | Same message. Stop.                                                                                                                               |
-| `## Out of scope` present          | Signal `LegacyTask` — task is missing `## Out of scope`. Stop.                                                                                    |
-| `## Verification` present          | Signal `LegacyTask` — task is missing `## Verification`. Stop.                                                                                    |
+## Step 4 — Implement
 
-## Step 3 — Enter Plan Mode
-
-Before any further work, if not already in plan mode, **enter plan mode** (`EnterPlanMode` tool). Planning happens in plan mode; implementation happens after the user approves the plan.
-
-## Step 4 — Read Relevant Guidelines
-
-For each entry in `topics`, read `docs/guidelines/{topic}.md`. **Always follow** this "must read" list of guidelines in the `docs/guidelines` folder: `clean_architecture.md`, `clean_code.md`, `domain_model.md`, `solid.md`, `testing.md`.
-**Do not** read guideline files for topics that are not listed and aren't in the "must read" list. Apply that knowledge to the plan.
-**Make sure** that you write tests too, not just application code.
-
-## Step 5 — Branch + Clean Working Tree
-
-Run `git status --porcelain`. If output non-empty → signal error, ask user to clean up, stop.
-
-Create branch from directory name: `{task-type}/{short-description}`. Example: `0004_task_create-this-and-that` → branch `task/create-this-and-that`.
-
-```bash
-git checkout -b {task-type}/{short-description}
-```
-
-## Step 6 — Build Context
-
-Before asking clarifying questions:
-
-1. Read `docs/architecture/` to understand current architecture.
-2. Read source files relevant to the task. **Important:** **You must** search for links to the task at hand in the source files. These links exist in documentation comments such as `// FIX: fix this thing @see task#0003`. The part you should look for is `@see {task-type}#{task-id}`, example: `@see feature#0017`
-3. Note coding patterns relevant to the task.
-4. If context sufficient → record what was learned. If not → list specific gaps for Step 7.
-
-## Step 7 — Clarifying Questions
-
-Only if real gaps exist after Step 6.
-
-Rules:
-
-- **One question at a time.**
-- Wait for user's satisfactory response before asking the next.
-- Only ask what you **need** to implement the task.
-- Don't ask what the task or docs already answer.
-
-## Step 8 — Record Q&A in description.md
-
-Append every question + answer pair to `description.md` under a `## Clarification` section (create if absent):
-
-```md
-## Clarification
-
-### Question
-
-{question text}
-
-### Answer
-
-{answer text}
-```
-
-## Step 9 — Set Status to in-progress
-
-Edit `description.md` frontmatter: `status: in-progress`.
-
-## Step 10 — Write the Plan
-
-Plan file path: `tasks/current/{task-id}_{task-type}_{short-description}/plan.md`.
-
-**Important**: if `plan.md` already exists ask the user to review it.
-
-1. If the user approves continue with the next step and skip to step 12 (Implementation)
-
-Use subagents wherever applicable (especially `type: spike` or `topics: research`).
-
-The plan file must:
-
-- Cross-link to `description.md` with a relative link (`./description.md`).
-- Cross-link to the relevant docs file (for example if an ADR was implemented in a task)
-- Include a step-by-step execution plan.
-- Note any ADRs that will be created/updated.
-- Note any documentation that will be updated.
-- Note any new/updated files in `docs/guidelines/`.
-
-In `description.md`, add a link to `plan.md` (e.g. under a `## Plan` section with `[plan.md](./plan.md)`).
-
-## Step 11 — Request Approval, Iterate
-
-Present the plan and ask the user to review. Loop:
-
-1. User asks for changes → update `plan.md` → ask for confirmation.
-2. Repeat until user **approves**.
-
-Do not implement until explicit approval.
-
-## Step 12 — Implement
-
-After approval, exit plan mode and implement per the plan. Follow the plan's step order; don't skip.
-
-While implementing:
+Follow the plan's step order; don't skip. While implementing:
 
 - **Architecture changes** → create or update an ADR in `docs/adr/` **if applicable**.
 - **Doc-affecting changes** → update relevant files under `docs/`.
 - **New patterns or explicit user request** → create/modify `docs/guidelines/{topic}.md`.
+- Update tests alongside production code; add new tests where a change alters observable behavior.
+- If you discover the plan is wrong or a step is infeasible, **stop and tell the user** before deviating. Do not silently improvise.
 
-## Step 13 — Set Status to in-review
+## Step 5 — Quality Gate (Mandatory)
+
+This gate is **mandatory**. If any check fails or produces a new warning, **stop** and report the failure to the user — do not touch status, do not write the changelog.
+
+Run, in order:
+
+```bash
+make fmt
+make lint
+make build
+make test
+```
+
+The gate validates four checklist items at once:
+
+- _My changes generate no new warnings_
+- _I have added/updated tests where necessary_
+- _New and existing tests pass locally_
+- _Static analysis / linters pass_
+
+Only after **all four** items pass may you proceed to Step 6.
+
+## Step 6 — Set Status to in-review
 
 Edit `description.md` frontmatter: `status: in-review`.
 
-## Step 14 — Write Changelog
+## Step 7 — Write Changelog
 
 Path: `docs/changelog/{YYYY-MM-DD}_{task-id}-{short-description}.md`.
 
@@ -190,7 +124,7 @@ Path: `docs/changelog/{YYYY-MM-DD}_{task-id}-{short-description}.md`.
 
 Use the template at [`./changelog-template.md`](./changelog-template.md). Read it, fill in placeholders, write to the path above.
 
-## Step 15 — Conclusion
+## Step 8 — Conclusion
 
 Summarize work done. Provide links to:
 
@@ -199,7 +133,7 @@ Summarize work done. Provide links to:
 - The changelog file (`docs/changelog/{YYYY-MM-DD}_{task-id}-{short-description}.md`)
 - Any new/updated ADRs, guidelines, or architecture docs.
 
-Tell user the task is complete.
+Do **not** auto-commit. Leave staging to the user so they can group commits as they prefer. Tell the user the task is ready for review.
 
 ## Notes on Task Body Conventions
 
@@ -209,20 +143,21 @@ Tell user the task is complete.
 | ---------------- | ------------------------------------------------ |
 | `> [!NOTE]`      | Useful info — read but don't act on it as a step |
 | `> [!TIP]`       | Optimization advice — apply if reasonable        |
-| `> [!IMPORTANT]` | **Must** incorporate into the plan               |
-| `> [!WARNING]`   | Flag in plan, plan around it                     |
-| `> [!CAUTION]`   | Risk — call out in plan and confirm with user    |
-
-Sections under `##` headings in the task body are **steps**. Execute them in file order; never skip; pause at any step requiring human input until the human responds.
+| `> [!IMPORTANT]` | **Must** incorporate into the implementation     |
+| `> [!WARNING]`   | Flag and work around it                          |
+| `> [!CAUTION]`   | Risk — call out and confirm with user            |
 
 ## Stopping Conditions Summary
 
-| Condition                 | Response                            |
-| ------------------------- | ----------------------------------- |
-| Task in `done/`           | Inform user, stop                   |
-| Task in `backlog/`        | Tell user to refine first, stop     |
-| Task not found            | Inform user, stop                   |
-| Missing frontmatter       | Tell user to fix, stop              |
-| Invalid frontmatter field | Signal specific error, stop         |
-| Dirty working tree        | Tell user to clean up, stop         |
-| Plan not yet approved     | Wait for approval, do not implement |
+| Condition                     | Response                                              |
+| ----------------------------- | ----------------------------------------------------- |
+| Task in `done/`               | Inform user, stop                                     |
+| Task in `backlog/`            | Tell user to run `/plan-task {id}`, stop              |
+| Task not found                | Inform user, stop                                     |
+| Missing frontmatter           | Tell user to fix, stop                                |
+| Invalid frontmatter field     | Signal specific error, stop                           |
+| Status not `in-progress`      | Signal specific error, stop                           |
+| `plan.md` missing             | Tell user to run `/plan-task {id}`, stop              |
+| Wrong branch checked out      | Tell user to `git checkout` the task branch, stop     |
+| Dirty working tree            | Tell user to commit or stash, stop                    |
+| Quality gate fails            | Report failure, stop — do not touch status or write changelog |
