@@ -1,7 +1,7 @@
 ---
 id: 0033
 type: bug
-status: in-review
+status: done
 topics: sync_and_safety, tui, charm, go
 ---
 
@@ -64,7 +64,7 @@ entirely.
 - **`DriftOverwrite`**: unchanged — writes the rendered body, records the
   rendered hash.
 
-Promoting local edits *into the profile* ("Adopt") is a **separate future
+Promoting local edits _into the profile_ ("Adopt") is a **separate future
 feature**, tracked as task **0035**, not this fix. Adopt reverses the
 source-of-truth flow (repo → profile) and gets its own enum value + UI button.
 
