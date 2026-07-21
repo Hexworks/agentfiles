@@ -1,7 +1,7 @@
 ---
 id: 0030
 type: feature
-status: in-review
+status: done
 topics: tui, profile, asset
 depends_on: 0029
 ---

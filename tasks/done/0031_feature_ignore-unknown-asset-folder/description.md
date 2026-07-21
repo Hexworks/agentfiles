@@ -1,7 +1,7 @@
 ---
 id: 0031
 type: feature
-status: in-review
+status: done
 topics: tui, asset_authoring, charm
 ---
 

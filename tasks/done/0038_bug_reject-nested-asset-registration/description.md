@@ -1,7 +1,7 @@
 ---
 id: 0038
 type: bug
-status: in-review
+status: done
 topics: asset_authoring, errors
 ---
 
