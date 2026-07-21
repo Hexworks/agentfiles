@@ -810,11 +810,10 @@ func (s *planProjectScreen) handleRegisterAssetDone(m registerAssetDoneMsg) (Scr
 }
 
 // onApply iterates preview.Changes (not the resolution maps) so the
-// output order is deterministic. Drift rows only emit a resolution when
-// the user picked DriftOverwrite; the DriftKeep default is expressed by
-// absence so an untouched drift row cannot silently rebaseline (ADR
-// 0015, bug 0033). Unknown rows still emit an explicit UnknownKeep for
-// every row because that default is a no-op on state.
+// output order is deterministic. Drift emission delegates to
+// app.DriftResolutionsFromMap so the ADR 0015 "emit only Overwrite" rule
+// lives next to the domain. Unknown rows still emit an explicit
+// UnknownKeep for every row because that default is a no-op on state.
 func (s *planProjectScreen) onApply() tea.Cmd {
 	if s.preview == nil {
 		return nil
@@ -826,21 +825,17 @@ func (s *planProjectScreen) onApply() tea.Cmd {
 	if len(s.preview.Changes) == 0 && !hasIgnoreChange {
 		return nil
 	}
-	var drift []app.DriftResolution
+	drift := app.DriftResolutionsFromMap(s.preview.Changes, s.driftResolutions)
 	var unknown []app.UnknownResolution
 	for _, ch := range s.preview.Changes {
-		switch ch.Kind {
-		case app.ChangeDrift:
-			if s.driftResolutions[ch.Path] == app.DriftOverwrite {
-				drift = append(drift, app.DriftResolution{Path: ch.Path, Decision: app.DriftOverwrite})
-			}
-		case app.ChangeUnknown:
-			decision := app.UnknownKeep
-			if s.unknownResolutions[ch.Path] == app.UnknownDelete {
-				decision = app.UnknownDelete
-			}
-			unknown = append(unknown, app.UnknownResolution{Path: ch.Path, Decision: decision})
+		if ch.Kind != app.ChangeUnknown {
+			continue
 		}
+		decision := app.UnknownKeep
+		if s.unknownResolutions[ch.Path] == app.UnknownDelete {
+			decision = app.UnknownDelete
+		}
+		unknown = append(unknown, app.UnknownResolution{Path: ch.Path, Decision: decision})
 	}
 	// Desired ignored set = (persisted − unignored) ∪ live-ignored, computed by
 	// the app layer. sync writes it verbatim (replace semantics), so dropping a

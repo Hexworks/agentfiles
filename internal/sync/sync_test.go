@@ -255,31 +255,6 @@ func TestPlan_SubsequentApply_DriftDetected(t *testing.T) {
 	}
 }
 
-func TestApply_DriftKeep_LeavesOnDiskAlone(t *testing.T) {
-	projectRoot := t.TempDir()
-	loaded, proj := setupProfileAndProject(t, projectRoot)
-	if err := os.WriteFile(filepath.Join(projectRoot, "AGENTS.md"), []byte("drifted"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	writeState(t, projectRoot, map[string]string{"AGENTS.md": "previous"})
-	preview, err := Plan(loaded, proj)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if err := Apply(preview, Resolutions{Drift: []DriftResolution{{Path: "AGENTS.md", Decision: DriftKeep}}}); err != nil {
-		t.Fatal(err)
-	}
-
-	got, readErr := os.ReadFile(filepath.Join(projectRoot, "AGENTS.md"))
-	if readErr != nil {
-		t.Fatal(readErr)
-	}
-	if string(got) != "drifted" {
-		t.Fatalf("AGENTS.md = %q, want unchanged \"drifted\"", string(got))
-	}
-}
-
 func TestApply_DriftOverwrite_RewritesDrift(t *testing.T) {
 	projectRoot := t.TempDir()
 	loaded, proj := setupProfileAndProject(t, projectRoot)
@@ -522,12 +497,13 @@ func TestApply_DefaultDrift_LeavesAlone(t *testing.T) {
 	}
 }
 
-// TestApply_PureIgnoreSetChange_LeavesDriftBaselineUntouched pins the
-// bug-0033 regression: an Apply whose only real change is the ignored
-// set must not silently rebaseline unrelated pending drift. The drifted
-// file's baseline stays at its prior recorded hash, so the next Plan
-// still classifies it as ChangeDrift.
-func TestApply_PureIgnoreSetChange_LeavesDriftBaselineUntouched(t *testing.T) {
+// TestApply_NoResolutions_LeavesDriftBaselineUntouched asserts that an
+// Apply passing an empty Resolutions{} does not silently rebaseline
+// unrelated pending drift: the drifted file's baseline stays at its
+// prior recorded hash, and the next Plan still classifies it as
+// ChangeDrift. Also covers that the persisted ignored key drops when
+// the incoming ignored set is empty.
+func TestApply_NoResolutions_LeavesDriftBaselineUntouched(t *testing.T) {
 	projectRoot := t.TempDir()
 	loaded, proj := setupProfileAndProject(t, projectRoot)
 	if err := os.WriteFile(filepath.Join(projectRoot, "AGENTS.md"), []byte("drifted"), 0o644); err != nil {

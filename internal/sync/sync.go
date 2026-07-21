@@ -95,22 +95,15 @@ const (
 )
 
 // DriftDecision is the user's per-file choice for a ChangeDrift entry.
-// The zero value (empty string) means "no explicit choice, keep the
-// local edits" and is what Apply assumes when a path is missing from
-// the resolutions slice.
+// The zero value (empty string) is identical to DriftKeep: leave the
+// on-disk content and the prior baseline alone.
 type DriftDecision string
 
 // Possible DriftDecision values.
 const (
 	// DriftKeep leaves the on-disk content untouched and preserves the
-	// prior managed baseline, so a kept drift stays classified as drift
-	// on every subsequent plan until the user overwrites it or the
-	// profile/file converge. Adopting the on-disk hash as the new
-	// baseline is intentionally not supported: doing so silently flips
-	// drift to update on unrelated Applies (bug 0033). "No decision"
-	// (path absent from Resolutions.Drift) is identical to DriftKeep.
-	// Promoting local edits into the profile is a separate future
-	// operation (Adopt, task 0035). See ADR 0015.
+	// prior managed baseline. "No decision" (path absent from
+	// Resolutions.Drift) is identical. See ADR 0015.
 	DriftKeep DriftDecision = "keep"
 	// DriftOverwrite writes the rendered body over the drifted file.
 	DriftOverwrite DriftDecision = "overwrite"
@@ -303,11 +296,9 @@ func Apply(preview *Preview, r Resolutions) errs.DomainError {
 	}
 	bodiesByPath := map[string]render.RenderedFile{}
 	// Pre-fill the state baseline with the rendered hash of every
-	// desired file. The switch below only needs to overwrite paths
-	// where the on-disk content diverges (kept drift preserves the
-	// prior baseline per ADR 0015); clean files (not in Changes)
-	// retain their rendered hash so drift detection still works on
-	// the next plan.
+	// desired file. This is the correct baseline for clean, created,
+	// updated, and overwritten paths; only the ChangeDrift branch
+	// below overrides it with the prior baseline (ADR 0015).
 	recordedHashes := map[string]string{}
 	for _, f := range preview.Files {
 		bodiesByPath[f.Path] = f
@@ -335,12 +326,21 @@ func Apply(preview *Preview, r Resolutions) errs.DomainError {
 			}
 			// DriftKeep (default): preserve the prior managed baseline
 			// so the path stays classified as drift on the next plan
-			// (ADR 0015). The pre-filled rendered hash would otherwise
-			// flip drift to update on the next Plan (bug 0033). A
-			// ChangeDrift row implies state != nil today per
-			// classifyDesired; the nil guard defends the invariant.
-			if preview.ManagedState != nil {
-				recordedHashes[change.Path] = preview.ManagedState.ManagedFiles[change.Path]
+			// (ADR 0015). Invariants a ChangeDrift row carries per
+			// classifyDesired: state != nil, and the prior baseline is
+			// non-empty. Guard both: a broken invariant surfaces as a
+			// typed error or degrades to "missing entry" rather than
+			// silently poisoning recordedHashes with "".
+			if preview.ManagedState == nil {
+				domainErrs = append(domainErrs, PreviewInvariantError{
+					Kind:   "ChangeDrift",
+					Reason: "ManagedState nil",
+				})
+				delete(recordedHashes, change.Path)
+				continue
+			}
+			if prior := preview.ManagedState.ManagedFiles[change.Path]; prior != "" {
+				recordedHashes[change.Path] = prior
 			} else {
 				delete(recordedHashes, change.Path)
 			}

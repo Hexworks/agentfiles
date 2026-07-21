@@ -504,6 +504,27 @@ func DesiredIgnored(persisted, unignored, newlyIgnored []string) []string {
 	return out
 }
 
+// DriftResolutionsFromMap encodes the ADR 0015 emission contract: a
+// drift row emits a resolution only when the user picked DriftOverwrite;
+// DriftKeep (and "no choice") stays absent so sync preserves the prior
+// baseline. Callers assembling the Apply resolutions from a change list
+// and a path→decision map use this instead of open-coding the rule so
+// the domain contract lives one hop from sync rather than in each UI.
+// Returns nil when no row would emit.
+func DriftResolutionsFromMap(changes []FileChange, decisions map[string]DriftDecision) []DriftResolution {
+	var out []DriftResolution
+	for _, ch := range changes {
+		if ch.Kind != ChangeDrift {
+			continue
+		}
+		if decisions[ch.Path] != DriftOverwrite {
+			continue
+		}
+		out = append(out, DriftResolution{Path: ch.Path, Decision: DriftOverwrite})
+	}
+	return out
+}
+
 func toSyncDriftResolutions(in []DriftResolution) []llmsync.DriftResolution {
 	if len(in) == 0 {
 		return nil

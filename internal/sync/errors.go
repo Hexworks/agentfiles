@@ -161,3 +161,20 @@ func (e OutsideSurfaceError) Error() string {
 func (OutsideSurfaceError) Severity() errs.Severity {
 	return errs.SeverityError
 }
+
+// PreviewInvariantError reports that Apply encountered a preview whose
+// shape violates an invariant proven by Plan (e.g. a ChangeDrift row
+// paired with a nil ManagedState). Emitting a typed error surfaces the
+// invariant break loudly instead of silently dropping state.
+type PreviewInvariantError struct {
+	Kind   string
+	Reason string
+}
+
+func (e PreviewInvariantError) Error() string {
+	return fmt.Sprintf("preview invariant violated (%s): %s", e.Kind, e.Reason)
+}
+
+func (PreviewInvariantError) Severity() errs.Severity {
+	return errs.SeverityError
+}

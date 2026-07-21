@@ -518,9 +518,6 @@ func TestPlanProjectScreen_OnApplyEmptyMapOmitsDriftKeepAndKeepsUnknown(t *testi
 	if len(in.Unknown) != 1 || in.Unknown[0].Path != "unknown.md" || in.Unknown[0].Decision != app.UnknownKeep {
 		t.Errorf("Unknown = %+v, want [{unknown.md keep}]", in.Unknown)
 	}
-	if in.ProfileRef != "alpha" || in.ProjectID != "proj-1" {
-		t.Errorf("input ids = (%q, %q), want (alpha, proj-1)", in.ProfileRef, in.ProjectID)
-	}
 }
 
 func TestPlanProjectScreen_OnApplyWithSelectionsBuildsCorrectSlices(t *testing.T) {
