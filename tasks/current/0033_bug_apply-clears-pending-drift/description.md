@@ -1,7 +1,7 @@
 ---
 id: 0033
 type: bug
-status: active
+status: in-progress
 topics: sync_and_safety, tui, charm, go
 ---
 
@@ -168,3 +168,7 @@ make build && make test && make lint
            # ignored folder → un-ignore the folder → Apply →
            # reopen Plan → the drifting files are STILL "drift", not "update"
 ```
+
+## Plan
+
+[plan.md](./plan.md)
