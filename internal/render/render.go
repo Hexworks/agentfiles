@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strings"
 
 	"github.com/hexworks/agentfiles/internal/asset"
@@ -203,6 +204,39 @@ func addRenderedFilesFor(files map[string]RenderedFile, a *asset.Asset, enabledA
 	}
 }
 
+// skillRoots maps each supported agent to its skill container directory —
+// the folder under which one child folder per skill is projected. Kept at
+// package scope so AssetContainerRoots can derive from it without
+// duplicating strings.
+var skillRoots = map[string]string{
+	"codex":       ".codex/skills",
+	"claude-code": ".claude/skills",
+	"opencode":    ".opencode/skills",
+}
+
+// cursorCommandsRoot is Cursor's folder-shaped asset container. Cursor
+// flattens each skill to a single .md file inside it, but the container
+// itself still acts as a root for folder-registration purposes.
+const cursorCommandsRoot = ".cursor/commands"
+
+// AssetContainerRoots returns the fixed set of managed-surface paths under
+// which a direct child folder is eligible for asset registration. These
+// are the only folder-shaped asset containers; agents_doc/settings render
+// to single files and have no child folder to register.
+//
+// Consumed by app.RegisterableDirs as the single source of truth so no
+// duplicated hard-coded list drifts. Returns a fresh sorted slice; the
+// caller may mutate it.
+func AssetContainerRoots() []string {
+	out := make([]string, 0, len(skillRoots)+1)
+	for _, root := range skillRoots {
+		out = append(out, root)
+	}
+	out = append(out, cursorCommandsRoot)
+	sort.Strings(out)
+	return out
+}
+
 // addSkillOutputs expands a single skill asset into each enabled agent's
 // expected directory or file structure.
 func addSkillOutputs(files map[string]RenderedFile, a *asset.Asset, enabledAgents []string) []errs.DomainError {
@@ -213,11 +247,6 @@ func addSkillOutputs(files map[string]RenderedFile, a *asset.Asset, enabledAgent
 	relFiles, listErr := asset.RelativeFiles(a.Dir)
 	if listErr != nil {
 		return []errs.DomainError{listErr}
-	}
-	skillRoots := map[string]string{
-		"codex":       ".codex/skills",
-		"claude-code": ".claude/skills",
-		"opencode":    ".opencode/skills",
 	}
 	var domainErrs []errs.DomainError
 	for _, agent := range enabledAgents {
@@ -237,7 +266,7 @@ func addSkillOutputs(files map[string]RenderedFile, a *asset.Asset, enabledAgent
 			continue
 		}
 		if agent == "cursor" {
-			target := filepath.ToSlash(filepath.Join(".cursor/commands", a.ID+".md"))
+			target := filepath.ToSlash(filepath.Join(cursorCommandsRoot, a.ID+".md"))
 			files[target] = RenderedFile{Path: target, Body: body, Mode: 0o644, AssetID: a.ID}
 		}
 	}

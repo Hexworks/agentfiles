@@ -51,20 +51,36 @@ func seedFolderRegisterProject(t *testing.T, files map[string]string) (svc *Serv
 
 func TestRegisterableDirs(t *testing.T) {
 	changes := []FileChange{
-		{Path: "a/x.md", Kind: ChangeUnknown},
-		{Path: "a/y.md", Kind: ChangeUnknown},
-		{Path: "b/z.md", Kind: ChangeUnknown},
-		{Path: "b/w.md", Kind: ChangeCreate},
-		{Path: "c/deep/i.md", Kind: ChangeUnknown},
+		// .claude/skills/foo — all-unknown, direct child of a container root → OK
+		{Path: ".claude/skills/foo/SKILL.md", Kind: ChangeUnknown},
+		{Path: ".claude/skills/foo/helper.md", Kind: ChangeUnknown},
+		// .claude/skills/bar — partly-managed → excluded
+		{Path: ".claude/skills/bar/SKILL.md", Kind: ChangeUnknown},
+		{Path: ".claude/skills/bar/managed.md", Kind: ChangeCreate},
+		// nested — .claude/skills/nest is a direct child of root (OK);
+		// .claude/skills/nest/deep is nested one level deeper (NOT OK).
+		{Path: ".claude/skills/nest/deep/f.md", Kind: ChangeUnknown},
+		// outside any container root → excluded
+		{Path: "docs/whatever/notes.md", Kind: ChangeUnknown},
 	}
 	got := RegisterableDirs(changes)
-	for _, dir := range []string{"a", "c", "c/deep"} {
+
+	for _, dir := range []string{".claude/skills/foo", ".claude/skills/nest"} {
 		if !got[dir] {
 			t.Errorf("dir %q should be registerable", dir)
 		}
 	}
-	if got["b"] {
-		t.Errorf("dir %q has a managed leaf and must not be registerable", "b")
+	for _, dir := range []string{
+		".claude/skills/bar",
+		".claude/skills/nest/deep",
+		".claude/skills",
+		".claude",
+		"docs/whatever",
+		"docs",
+	} {
+		if got[dir] {
+			t.Errorf("dir %q must NOT be registerable", dir)
+		}
 	}
 }
 
@@ -181,6 +197,33 @@ func TestCreateAssetFromFolder_NonRegisterableFolderRejected(t *testing.T) {
 	var typed FolderNotRegisterableError
 	if !errors.As(err, &typed) {
 		t.Fatalf("expected FolderNotRegisterableError, got %T: %v", err, err)
+	}
+}
+
+func TestCreateAssetFromFolder_NestedFolderRejected(t *testing.T) {
+	// Direct child .claude/skills/foo is registerable; the nested
+	// .claude/skills/foo/bar (parent is not a container root) is not.
+	svc, profileID, projectID, _ := seedFolderRegisterProject(t, map[string]string{
+		".claude/skills/foo/bar/SKILL.md": "nested\n",
+	})
+
+	_, err := svc.CreateAssetFromFolder(profileID, projectID, asset.Manifest{
+		Name: "nested", Type: asset.TypeSkill,
+	}, ".claude/skills/foo/bar")
+
+	var typed FolderNotRegisterableError
+	if !errors.As(err, &typed) {
+		t.Fatalf("expected FolderNotRegisterableError for nested dirKey, got %T: %v", err, err)
+	}
+	if typed.DirKey != ".claude/skills/foo/bar" {
+		t.Errorf("DirKey = %q, want %q", typed.DirKey, ".claude/skills/foo/bar")
+	}
+	prof, loadErr := svc.LoadProfile(profileID)
+	if loadErr != nil {
+		t.Fatalf("reload profile: %v", loadErr)
+	}
+	if len(prof.Profile.Assets) != 0 {
+		t.Fatalf("expected zero assets after rejected registration, got %v", prof.Profile.Assets)
 	}
 }
 

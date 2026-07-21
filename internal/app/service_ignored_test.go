@@ -29,18 +29,19 @@ func TestDesiredIgnored(t *testing.T) {
 // TestAssertIgnoredRegisterable_ValidatesOnlyIncomingMinusPrior pins the
 // replace-semantics gate: an already-persisted key is exempt (its folder is
 // suppressed, no longer registerable), while a newly-added key must still be an
-// all-unknown folder in the fresh plan.
+// all-unknown folder in the fresh plan whose parent is an asset-container root.
 func TestAssertIgnoredRegisterable_ValidatesOnlyIncomingMinusPrior(t *testing.T) {
 	syncPreview := &llmsync.Preview{
-		Changes: []llmsync.FileChange{{Path: "newdir/a.md", Kind: llmsync.ChangeUnknown}},
+		Changes: []llmsync.FileChange{{Path: ".claude/skills/newdir/a.md", Kind: llmsync.ChangeUnknown}},
 		ManagedState: &llmsync.ManagedState{
 			IgnoredPaths: []string{"oldkey"},
 		},
 	}
 	s := &Service{}
 
-	// oldkey is persisted (exempt) and newdir is an all-unknown folder → ok.
-	if err := s.assertIgnoredRegisterable(syncPreview, []string{"oldkey", "newdir"}); err != nil {
+	// oldkey is persisted (exempt) and .claude/skills/newdir is a
+	// direct-child, all-unknown folder → ok.
+	if err := s.assertIgnoredRegisterable(syncPreview, []string{"oldkey", ".claude/skills/newdir"}); err != nil {
 		t.Fatalf("assertIgnoredRegisterable rejected a valid set: %v", err)
 	}
 

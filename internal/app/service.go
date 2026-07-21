@@ -19,6 +19,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/project"
 	"github.com/hexworks/agentfiles/internal/projectstore"
 	"github.com/hexworks/agentfiles/internal/registry"
+	"github.com/hexworks/agentfiles/internal/render"
 	llmsync "github.com/hexworks/agentfiles/internal/sync"
 	"github.com/hexworks/agentfiles/internal/utils"
 )
@@ -210,28 +211,36 @@ func (s *Service) InitAsset(profileRef string, manifest asset.Manifest) (string,
 	return asset.Init(loaded.Profile.Root, manifest)
 }
 
-// RegisterableDirs returns the set of directory keys in changes whose every
-// descendant file is an unknown/unmanaged change (and there is at least one).
-// Only such folders may be registered as an asset: a directory with managed
-// (create/update/drift/delete) leaves is partly owned already, so offering to
-// register the whole folder would be misleading. Ancestor directories of an
-// all-unknown subtree qualify too. This is the domain eligibility rule the TUI
-// renders against and CreateAssetFromFolder re-asserts.
+// RegisterableDirs returns the set of directory keys in changes that are
+// eligible for asset registration: the directory's parent path is a known
+// asset-container root (render.AssetContainerRoots) and every descendant
+// leaf under it is unknown. Ancestors above a container root and folders
+// nested deeper than a direct child are never returned — the "register
+// folder as asset" flow only makes sense for a direct child of a container
+// root. CreateAssetFromFolder re-asserts on this set so a stale or nested
+// dirKey is rejected with FolderNotRegisterableError.
 func RegisterableDirs(changes []FileChange) map[string]bool {
+	rootList := render.AssetContainerRoots()
+	roots := make(map[string]bool, len(rootList))
+	for _, r := range rootList {
+		roots[r] = true
+	}
 	total := map[string]int{}
 	unknown := map[string]int{}
 	for _, ch := range changes {
 		parts := strings.Split(ch.Path, "/")
-		acc := ""
 		for i := 0; i < len(parts)-1; i++ {
-			if acc == "" {
-				acc = parts[i]
-			} else {
-				acc = acc + "/" + parts[i]
+			parent := ""
+			if i > 0 {
+				parent = strings.Join(parts[:i], "/")
 			}
-			total[acc]++
+			if !roots[parent] {
+				continue
+			}
+			dir := strings.Join(parts[:i+1], "/")
+			total[dir]++
 			if ch.Kind == ChangeUnknown {
-				unknown[acc]++
+				unknown[dir]++
 			}
 		}
 	}

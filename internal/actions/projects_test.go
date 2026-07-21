@@ -241,7 +241,7 @@ func TestActions_SyncProject_PersistsIgnoredPaths(t *testing.T) {
 	if _, err := f.A.SyncProject(actions.SyncProjectInput{ProfileRef: "personal", ProjectID: "repo"}); err != nil {
 		t.Fatalf("initial sync: %v", err)
 	}
-	legacy := filepath.Join(repo, ".codex", "legacy")
+	legacy := filepath.Join(repo, ".codex", "skills", "legacy")
 	if err := os.MkdirAll(legacy, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -252,7 +252,7 @@ func TestActions_SyncProject_PersistsIgnoredPaths(t *testing.T) {
 	if _, err := f.A.SyncProject(actions.SyncProjectInput{
 		ProfileRef:   "personal",
 		ProjectID:    "repo",
-		IgnoredPaths: []string{".codex/legacy"},
+		IgnoredPaths: []string{".codex/skills/legacy"},
 	}); err != nil {
 		t.Fatalf("SyncProject: %v", err)
 	}
@@ -261,7 +261,7 @@ func TestActions_SyncProject_PersistsIgnoredPaths(t *testing.T) {
 	if readErr != nil {
 		t.Fatalf("read state: %v", readErr)
 	}
-	if !strings.Contains(string(data), `".codex/legacy"`) {
+	if !strings.Contains(string(data), `".codex/skills/legacy"`) {
 		t.Fatalf("state.json missing ignored path, got: %s", data)
 	}
 }

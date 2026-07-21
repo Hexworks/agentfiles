@@ -1,7 +1,7 @@
 ---
 id: 0038
 type: bug
-status: pending
+status: in-review
 topics: asset_authoring, errors
 ---
 
@@ -72,3 +72,7 @@ offered with no TUI change.
 - Smoke: `./bin/af` → project with unknown `.claude/skills/foo/bar/` → the
   register-asset list offers `.claude/skills/foo` only (not `bar`, not
   `.claude/skills`).
+
+## Plan
+
+[plan.md](./plan.md)
