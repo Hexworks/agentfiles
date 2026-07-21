@@ -2,6 +2,7 @@ package shell
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/table"
@@ -19,6 +20,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/tui/components/modal"
 	"github.com/hexworks/agentfiles/internal/tui/components/panel"
 	"github.com/hexworks/agentfiles/internal/tui/modals"
+	"github.com/hexworks/agentfiles/internal/tui/modals/pathselector"
 )
 
 // editProfileOwnActions is the slice the Edit Profile screen invokes
@@ -58,6 +60,11 @@ const (
 	modalKindCreateAsset
 	modalKindRegisterProject
 	modalKindEditProject
+	// modalKindRegisterProjectPath tags the pathselector step of the two-step
+	// Register Project flow introduced by task 0039. The follow-on form is
+	// still tagged modalKindRegisterProject so the confirmation branch stays
+	// on the existing add-project path.
+	modalKindRegisterProjectPath
 )
 
 // editProfileScreen is the Edit Profile management screen reached from
@@ -97,6 +104,13 @@ type editProfileScreen struct {
 	modalKind              modalKind
 	pendingDeleteAssetID   string
 	pendingDeleteProjectID string
+	// pendingRegisterProjectName + pendingRegisterProjectAgents carry the
+	// non-path inputs across a Register Project retry (task 0039). When the
+	// AddProject action fails, the pathselector re-opens seeded at the
+	// parent folder; the follow-on form must show the Name / EnabledAgents
+	// the user already picked so they don't type them again.
+	pendingRegisterProjectName   string
+	pendingRegisterProjectAgents []string
 
 	width, height int
 }
@@ -106,6 +120,18 @@ type editProfileScreen struct {
 type editProfileLoadedMsg struct {
 	prof *app.LoadedProfile
 	err  errs.DomainError
+}
+
+// registerProjectFailedMsg is dispatched when AddProject fails inside the
+// two-step Register Project flow (task 0039). It carries the picked path
+// so the retry can seed the pathselector at filepath.Dir(path); the
+// non-path inputs live on the screen struct instead of in the message so
+// the flow can survive multiple retries without re-encoding them each
+// time.
+type registerProjectFailedMsg struct {
+	path     string
+	text     string
+	severity errs.Severity
 }
 
 func newEditProfileScreen(a editProfileActions, profileID string) *editProfileScreen {
@@ -214,7 +240,7 @@ func (s *editProfileScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 	// so it has its own branch below.
 	if s.modal != nil {
 		switch msg.(type) {
-		case modal.ResolvedMsg, tea.WindowSizeMsg, editProfileLoadedMsg, mutationDoneMsg:
+		case modal.ResolvedMsg, tea.WindowSizeMsg, editProfileLoadedMsg, mutationDoneMsg, registerProjectFailedMsg:
 			// fall through to type-specific handling
 		default:
 			return s.forwardToModal(msg)
@@ -228,6 +254,11 @@ func (s *editProfileScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 		return s.handleLoaded(m)
 	case mutationDoneMsg:
 		return s, tea.Batch(notificationCmd(m.severity, m.text), s.loadCmd())
+	case registerProjectFailedMsg:
+		return s, tea.Batch(
+			notificationCmd(m.severity, m.text),
+			s.openRegisterProjectPathselectorCmd(filepath.Dir(m.path)),
+		)
 	case modal.ResolvedMsg:
 		return s, s.handleResolved(m)
 	case tea.KeyPressMsg:
@@ -609,8 +640,32 @@ func (s *editProfileScreen) onCreateAsset() tea.Cmd {
 	return s.modal.Init()
 }
 
+// onRegisterProject starts the two-step Register Project flow (task
+// 0039): open the pathselector first, then open the Register Project form
+// seeded with the picked path once "register-project-path" resolves. Any
+// stashed non-path input from a prior flow is cleared so a fresh press of
+// `r` starts empty.
 func (s *editProfileScreen) onRegisterProject() tea.Cmd {
-	s.openModal(modals.NewRegisterProject(modals.RegisterProjectInput{}), modalKindRegisterProject)
+	s.pendingRegisterProjectName = ""
+	s.pendingRegisterProjectAgents = nil
+	return s.openRegisterProjectPathselectorCmd("")
+}
+
+// openRegisterProjectPathselectorCmd builds and mounts the folder picker
+// for the Register Project flow. startFolder is "" on the first open
+// (defaults to $HOME) and set to filepath.Dir(previousPath) on retry after
+// a failure. A build failure surfaces as a notification instead of a
+// silent no-op.
+func (s *editProfileScreen) openRegisterProjectPathselectorCmd(startFolder string) tea.Cmd {
+	m, err := modals.NewSelectPath("register-project-path", pathselector.Options{
+		Caption:     "Select project root",
+		ShowFiles:   false,
+		StartFolder: startFolder,
+	})
+	if err != nil {
+		return notificationCmd(err.Severity(), err.Error())
+	}
+	s.openModal(m, modalKindRegisterProjectPath)
 	return s.modal.Init()
 }
 
@@ -644,10 +699,31 @@ func (s *editProfileScreen) handleResolved(msg modal.ResolvedMsg) tea.Cmd {
 		return s.afterCreateAsset(msg)
 	case modalKindRegisterProject:
 		return s.afterRegisterProject(msg)
+	case modalKindRegisterProjectPath:
+		return s.afterRegisterProjectPath(msg)
 	case modalKindEditProject:
 		return s.afterEditProject(msg)
 	}
 	return nil
+}
+
+// afterRegisterProjectPath opens the Register Project form seeded with
+// the picked path and the stashed Name / EnabledAgents (empty on the
+// first open, populated on retry). Cancelling the pathselector aborts
+// the flow and clears the stash so a subsequent `r` starts fresh.
+func (s *editProfileScreen) afterRegisterProjectPath(msg modal.ResolvedMsg) tea.Cmd {
+	result, ok := pathselector.ResultFromMsg(msg)
+	if !ok {
+		s.pendingRegisterProjectName = ""
+		s.pendingRegisterProjectAgents = nil
+		return nil
+	}
+	s.openModal(modals.NewRegisterProject(modals.RegisterProjectInput{
+		Name:          s.pendingRegisterProjectName,
+		Path:          result.Path,
+		EnabledAgents: append([]string(nil), s.pendingRegisterProjectAgents...),
+	}), modalKindRegisterProject)
+	return s.modal.Init()
 }
 
 func (s *editProfileScreen) afterDeleteAsset(msg modal.ResolvedMsg, id string) tea.Cmd {
@@ -702,27 +778,38 @@ func (s *editProfileScreen) afterCreateAsset(msg modal.ResolvedMsg) tea.Cmd {
 	)
 }
 
+// afterRegisterProject runs AddProject. On success it returns a
+// mutationDoneMsg so the shared refresh path fires; on failure it returns
+// a registerProjectFailedMsg carrying the picked path so the two-step
+// flow can re-open the pathselector seeded at the parent folder. Name +
+// EnabledAgents are stashed on the screen struct so the follow-on form
+// after retry shows the same values the user already entered.
 func (s *editProfileScreen) afterRegisterProject(msg modal.ResolvedMsg) tea.Cmd {
 	if !msg.Confirmed {
+		s.pendingRegisterProjectName = ""
+		s.pendingRegisterProjectAgents = nil
 		return nil
 	}
 	draft, ok := msg.Value.(*project.Manifest)
 	if !ok || draft == nil {
 		return nil
 	}
-	name := draft.Name
-	return mutationCmd(
-		func() errs.DomainError {
-			_, err := s.actions.AddProject(actions.AddProjectInput{
-				ProfileRef:    s.profileID,
-				Name:          draft.Name,
-				Path:          draft.Path,
-				EnabledAgents: draft.EnabledAgents,
-			})
-			return err
-		},
-		fmt.Sprintf("Project %q registered", name),
-	)
+	s.pendingRegisterProjectName = draft.Name
+	s.pendingRegisterProjectAgents = append([]string(nil), draft.EnabledAgents...)
+	profileID := s.profileID
+	successText := fmt.Sprintf("Project %q registered", draft.Name)
+	return func() tea.Msg {
+		_, err := s.actions.AddProject(actions.AddProjectInput{
+			ProfileRef:    profileID,
+			Name:          draft.Name,
+			Path:          draft.Path,
+			EnabledAgents: draft.EnabledAgents,
+		})
+		if err != nil {
+			return registerProjectFailedMsg{path: draft.Path, text: err.Error(), severity: err.Severity()}
+		}
+		return mutationDoneMsg{text: successText, severity: errs.SeverityInfo}
+	}
 }
 
 func (s *editProfileScreen) afterEditProject(msg modal.ResolvedMsg) tea.Cmd {

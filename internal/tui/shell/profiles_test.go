@@ -19,6 +19,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
 	"github.com/hexworks/agentfiles/internal/tui/components/modal"
 	"github.com/hexworks/agentfiles/internal/tui/modals"
+	"github.com/hexworks/agentfiles/internal/tui/modals/pathselector"
 	"github.com/hexworks/agentfiles/internal/tui/notifications"
 )
 
@@ -227,7 +228,10 @@ func TestProfilesScreen_EscWithModalForwardsToModal(t *testing.T) {
 	}
 }
 
-func TestProfilesScreen_CKeyOpensCreateProfileModal(t *testing.T) {
+// Two-step Create Profile flow (task 0039): pressing 'c' opens the
+// pathselector first, not the form. The form only appears after a path
+// is confirmed.
+func TestProfilesScreen_CKeyOpensCreateProfilePathselector(t *testing.T) {
 	f := newProfilesFixture(t)
 	s := newProfilesScreen(f.Actions)
 	withProfiles(s, nil)
@@ -237,12 +241,12 @@ func TestProfilesScreen_CKeyOpensCreateProfileModal(t *testing.T) {
 	if s.modal == nil {
 		t.Fatalf("modal nil after 'c'")
 	}
-	if got := s.modal.ID(); got != "create-profile" {
-		t.Errorf("modal id = %q, want create-profile", got)
+	if got := s.modal.ID(); got != "create-profile-path" {
+		t.Errorf("modal id = %q, want create-profile-path", got)
 	}
 }
 
-func TestProfilesScreen_RKeyOpensRegisterProfileModal(t *testing.T) {
+func TestProfilesScreen_RKeyOpensRegisterProfilePathselector(t *testing.T) {
 	f := newProfilesFixture(t)
 	s := newProfilesScreen(f.Actions)
 	withProfiles(s, nil)
@@ -252,8 +256,173 @@ func TestProfilesScreen_RKeyOpensRegisterProfileModal(t *testing.T) {
 	if s.modal == nil {
 		t.Fatalf("modal nil after 'r'")
 	}
+	if got := s.modal.ID(); got != "register-profile-path" {
+		t.Errorf("modal id = %q, want register-profile-path", got)
+	}
+}
+
+// Confirming a path in the pathselector opens the Create Profile form
+// seeded with that path.
+func TestProfilesScreen_CreateProfilePathselectorConfirmOpensForm(t *testing.T) {
+	f := newProfilesFixture(t)
+	s := newProfilesScreen(f.Actions)
+	withProfiles(s, nil)
+
+	// Simulate the pathselector confirming a folder without mounting it —
+	// the screen's handleResolved switch is the whole contract under test.
+	_, _ = s.Update(modal.ResolvedMsg{
+		ID:        "create-profile-path",
+		Confirmed: true,
+		Value:     pathselector.Result{Path: "/tmp/x", IsDir: true},
+	})
+
+	if s.modal == nil {
+		t.Fatalf("modal nil after path confirm")
+	}
+	if got := s.modal.ID(); got != "create-profile" {
+		t.Errorf("modal id = %q, want create-profile", got)
+	}
+}
+
+// Cancelling the pathselector aborts the flow — no follow-on form
+// opens.
+func TestProfilesScreen_CreateProfilePathselectorCancelClearsModal(t *testing.T) {
+	f := newProfilesFixture(t)
+	s := newProfilesScreen(f.Actions)
+	withProfiles(s, nil)
+
+	_, _ = s.Update(modal.ResolvedMsg{ID: "create-profile-path", Confirmed: false})
+
+	if s.modal != nil {
+		t.Errorf("modal open after pathselector cancel; want cleared, got %q", s.modal.ID())
+	}
+}
+
+// createProfileFailedMsg re-opens the pathselector so the user can pick
+// a different folder — the retry loop that keeps them out of a dead-end
+// after a path-owned-by-another-profile / on-disk error. The retry seeds
+// the pathselector at filepath.Dir(previousPath), so the parent folder
+// must exist on disk for pathselector.probe to accept it.
+func TestProfilesScreen_CreateProfileFailureReopensPathselector(t *testing.T) {
+	f := newProfilesFixture(t)
+	s := newProfilesScreen(f.Actions)
+	withProfiles(s, nil)
+
+	parent := filepath.Join(f.Root, "nested")
+	if err := os.MkdirAll(parent, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	_, _ = s.Update(createProfileFailedMsg{
+		path:     filepath.Join(parent, "picked"),
+		text:     "path already owned",
+		severity: errs.SeverityError,
+	})
+
+	if s.modal == nil {
+		t.Fatalf("modal nil after failure; want pathselector re-opened")
+	}
+	if got := s.modal.ID(); got != "create-profile-path" {
+		t.Errorf("modal id = %q, want create-profile-path", got)
+	}
+}
+
+func TestProfilesScreen_RegisterProfilePathselectorConfirmOpensForm(t *testing.T) {
+	f := newProfilesFixture(t)
+	s := newProfilesScreen(f.Actions)
+	withProfiles(s, nil)
+
+	_, _ = s.Update(modal.ResolvedMsg{
+		ID:        "register-profile-path",
+		Confirmed: true,
+		Value:     pathselector.Result{Path: "/tmp/x", IsDir: true},
+	})
+
+	if s.modal == nil {
+		t.Fatalf("modal nil after path confirm")
+	}
 	if got := s.modal.ID(); got != "register-profile" {
 		t.Errorf("modal id = %q, want register-profile", got)
+	}
+}
+
+func TestProfilesScreen_RegisterProfilePathselectorCancelClearsModal(t *testing.T) {
+	f := newProfilesFixture(t)
+	s := newProfilesScreen(f.Actions)
+	withProfiles(s, nil)
+
+	_, _ = s.Update(modal.ResolvedMsg{ID: "register-profile-path", Confirmed: false})
+
+	if s.modal != nil {
+		t.Errorf("modal open after pathselector cancel; want cleared, got %q", s.modal.ID())
+	}
+}
+
+func TestProfilesScreen_RegisterProfileFailureReopensPathselector(t *testing.T) {
+	f := newProfilesFixture(t)
+	s := newProfilesScreen(f.Actions)
+	withProfiles(s, nil)
+
+	parent := filepath.Join(f.Root, "nested")
+	if err := os.MkdirAll(parent, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	_, _ = s.Update(registerProfileFailedMsg{
+		path:     filepath.Join(parent, "picked"),
+		text:     "path already owned",
+		severity: errs.SeverityError,
+	})
+
+	if s.modal == nil {
+		t.Fatalf("modal nil after failure; want pathselector re-opened")
+	}
+	if got := s.modal.ID(); got != "register-profile-path" {
+		t.Errorf("modal id = %q, want register-profile-path", got)
+	}
+}
+
+// Name typed into the Create Profile form survives a failure — the
+// pathselector re-opens, and confirming a new path re-seeds the form
+// with the same name so the user does not re-type it.
+func TestProfilesScreen_CreateProfileFailureRetryPreservesName(t *testing.T) {
+	f := newProfilesFixture(t)
+	s := newProfilesScreen(f.Actions)
+	withProfiles(s, nil)
+
+	// afterCreate stashes the name before returning its failure-or-done
+	// cmd; drive it through the form ResolvedMsg path so the stash is
+	// populated by production code, not by the test.
+	in := modals.CreateProfileInput{Name: "SecondTry", Path: filepath.Join(f.Root, "second")}
+	// First: an existing profile at that path so CreateProfile fails.
+	if _, err := f.Service.CreateProfile("SecondTry", in.Path); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	// Now the form ResolvedMsg triggers CreateProfile which returns an
+	// ownership conflict → createProfileFailedMsg.
+	_, cmd := s.Update(modal.ResolvedMsg{ID: "create-profile", Confirmed: true, Value: in})
+	failMsg := drainCmd(t, cmd)
+	if _, ok := failMsg.(createProfileFailedMsg); !ok {
+		t.Fatalf("cmd produced %T, want createProfileFailedMsg", failMsg)
+	}
+	// Pump the failure through Update — pathselector should re-open.
+	_, _ = s.Update(failMsg)
+	if s.modal == nil || s.modal.ID() != "create-profile-path" {
+		t.Fatalf("modal after failure = %v, want create-profile-path", s.modal)
+	}
+
+	// User picks a new path — the form must be re-seeded with the stashed
+	// Name so they don't retype it.
+	_, _ = s.Update(modal.ResolvedMsg{
+		ID:        "create-profile-path",
+		Confirmed: true,
+		Value:     pathselector.Result{Path: "/tmp/y", IsDir: true},
+	})
+	if s.pendingCreateName != "SecondTry" {
+		t.Errorf("pendingCreateName = %q, want SecondTry", s.pendingCreateName)
+	}
+	if s.modal == nil || s.modal.ID() != "create-profile" {
+		t.Fatalf("form modal not opened after retry; got %v", s.modal)
 	}
 }
 

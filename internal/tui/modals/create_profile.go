@@ -27,7 +27,7 @@ func buildCreateProfile(initial CreateProfileInput) (*huh.Form, *CreateProfileIn
 	form := huh.NewForm(
 		huh.NewGroup(
 			nameInput(&state.Name, "Display name for the profile"),
-			pathInput(&state.Path, "Profile directory path. ~ is expanded."),
+			readOnlyPathInput(&state.Path, "Profile directory picked in the previous step"),
 		),
 	).WithTheme(styles.HuhTheme())
 	return form, state, func(*huh.Form) any { return *state }

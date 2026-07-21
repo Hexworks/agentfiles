@@ -21,6 +21,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/registry"
 	"github.com/hexworks/agentfiles/internal/tui/components/modal"
 	"github.com/hexworks/agentfiles/internal/tui/modals"
+	"github.com/hexworks/agentfiles/internal/tui/modals/pathselector"
 	"github.com/hexworks/agentfiles/internal/tui/notifications"
 )
 
@@ -501,7 +502,9 @@ func TestEditProfileScreen_CKeyOpensCreateAssetModal(t *testing.T) {
 	}
 }
 
-func TestEditProfileScreen_RKeyOpensRegisterProjectModal(t *testing.T) {
+// Two-step Register Project flow (task 0039): pressing 'r' opens the
+// pathselector first (modalKindRegisterProjectPath), not the form.
+func TestEditProfileScreen_RKeyOpensRegisterProjectPathselector(t *testing.T) {
 	f := newEditProfileFixture(t)
 	s := newEditProfileScreen(f.Actions, f.Profile.ID)
 	withProfile(s, fakeLoadedProfile(t, "/tmp/x", nil, nil))
@@ -511,8 +514,152 @@ func TestEditProfileScreen_RKeyOpensRegisterProjectModal(t *testing.T) {
 	if s.modal == nil {
 		t.Fatalf("modal nil after 'r'")
 	}
+	if got := s.modalKind; got != modalKindRegisterProjectPath {
+		t.Errorf("modalKind = %v, want modalKindRegisterProjectPath", got)
+	}
+	if got := s.modal.ID(); got != "register-project-path" {
+		t.Errorf("modal id = %q, want register-project-path", got)
+	}
+}
+
+// Confirming a path in the pathselector opens the Register Project form
+// under modalKindRegisterProject.
+func TestEditProfileScreen_RegisterProjectPathselectorConfirmOpensForm(t *testing.T) {
+	f := newEditProfileFixture(t)
+	s := newEditProfileScreen(f.Actions, f.Profile.ID)
+	withProfile(s, fakeLoadedProfile(t, "/tmp/x", nil, nil))
+
+	// Simulate the shell mounting the pathselector so handleResolved
+	// dispatches by the tagged modalKind, not by the id.
+	s.modalKind = modalKindRegisterProjectPath
+	_, _ = s.Update(modal.ResolvedMsg{
+		ID:        "register-project-path",
+		Confirmed: true,
+		Value:     pathselector.Result{Path: "/tmp/proj", IsDir: true},
+	})
+
+	if s.modal == nil {
+		t.Fatalf("modal nil after path confirm")
+	}
 	if got := s.modalKind; got != modalKindRegisterProject {
 		t.Errorf("modalKind = %v, want modalKindRegisterProject", got)
+	}
+	if got := s.modal.ID(); got != "register-project" {
+		t.Errorf("modal id = %q, want register-project", got)
+	}
+}
+
+// Cancelling the pathselector aborts the flow — no follow-on form
+// opens and stashed inputs are cleared.
+func TestEditProfileScreen_RegisterProjectPathselectorCancelClearsModal(t *testing.T) {
+	f := newEditProfileFixture(t)
+	s := newEditProfileScreen(f.Actions, f.Profile.ID)
+	withProfile(s, fakeLoadedProfile(t, "/tmp/x", nil, nil))
+
+	s.modalKind = modalKindRegisterProjectPath
+	s.pendingRegisterProjectName = "stale"
+	s.pendingRegisterProjectAgents = []string{"codex"}
+
+	_, _ = s.Update(modal.ResolvedMsg{ID: "register-project-path", Confirmed: false})
+
+	if s.modal != nil {
+		t.Errorf("modal open after cancel; want cleared")
+	}
+	if s.pendingRegisterProjectName != "" {
+		t.Errorf("pendingRegisterProjectName = %q, want cleared on cancel", s.pendingRegisterProjectName)
+	}
+	if s.pendingRegisterProjectAgents != nil {
+		t.Errorf("pendingRegisterProjectAgents = %v, want nil on cancel", s.pendingRegisterProjectAgents)
+	}
+}
+
+// registerProjectFailedMsg re-opens the pathselector so the user can
+// pick a different folder.
+func TestEditProfileScreen_RegisterProjectFailureReopensPathselector(t *testing.T) {
+	f := newEditProfileFixture(t)
+	s := newEditProfileScreen(f.Actions, f.Profile.ID)
+	withProfile(s, fakeLoadedProfile(t, "/tmp/x", nil, nil))
+
+	parent := filepath.Join(f.Root, "nested")
+	if err := os.MkdirAll(parent, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	_, _ = s.Update(registerProjectFailedMsg{
+		path:     filepath.Join(parent, "picked"),
+		text:     "path already owned",
+		severity: errs.SeverityError,
+	})
+
+	if s.modal == nil {
+		t.Fatalf("modal nil after failure; want pathselector re-opened")
+	}
+	if got := s.modalKind; got != modalKindRegisterProjectPath {
+		t.Errorf("modalKind = %v, want modalKindRegisterProjectPath", got)
+	}
+	if got := s.modal.ID(); got != "register-project-path" {
+		t.Errorf("modal id = %q, want register-project-path", got)
+	}
+}
+
+// Name + EnabledAgents typed into the Register Project form survive a
+// failure — the pathselector re-opens, and confirming a new path
+// re-seeds the form with the same values so the user does not re-type
+// them.
+func TestEditProfileScreen_RegisterProjectFailureRetryPreservesInputs(t *testing.T) {
+	f := newEditProfileFixture(t)
+	s := newEditProfileScreen(f.Actions, f.Profile.ID)
+	loaded := drainCmd(t, s.Init()).(editProfileLoadedMsg)
+	_, _ = s.Update(loaded)
+
+	// Register the same path once so a second AddProject at the same
+	// path returns an ownership conflict — the exact retry trigger.
+	firstPath := filepath.Join(f.Root, "collide")
+	if err := os.MkdirAll(firstPath, 0o755); err != nil {
+		t.Fatalf("mkdir first: %v", err)
+	}
+	if _, addErrs := f.Service.AddProject(f.Profile.ID, "First", firstPath, []string{"codex"}, nil); len(addErrs) > 0 {
+		t.Fatalf("seed AddProject: %v", addErrs)
+	}
+
+	// Drive the form ResolvedMsg — afterRegisterProject stashes Name +
+	// EnabledAgents and returns a cmd whose failure branch fires because
+	// firstPath is now owned.
+	s.modalKind = modalKindRegisterProject
+	draftManifest := project.NewDraft("Retry", firstPath, []string{"codex"})
+	_, cmd := s.Update(modal.ResolvedMsg{
+		ID:        "register-project",
+		Confirmed: true,
+		Value:     draftManifest,
+	})
+	failMsg := drainCmd(t, cmd)
+	if _, ok := failMsg.(registerProjectFailedMsg); !ok {
+		t.Fatalf("cmd produced %T, want registerProjectFailedMsg", failMsg)
+	}
+	_, _ = s.Update(failMsg)
+	if s.modal == nil || s.modal.ID() != "register-project-path" {
+		t.Fatalf("modal after failure = %v, want register-project-path", s.modal)
+	}
+
+	// User picks a fresh path; the follow-on form must see the stashed
+	// Name + EnabledAgents.
+	freshPath := filepath.Join(f.Root, "fresh")
+	if err := os.MkdirAll(freshPath, 0o755); err != nil {
+		t.Fatalf("mkdir fresh: %v", err)
+	}
+	_, _ = s.Update(modal.ResolvedMsg{
+		ID:        "register-project-path",
+		Confirmed: true,
+		Value:     pathselector.Result{Path: freshPath, IsDir: true},
+	})
+	if s.pendingRegisterProjectName != "Retry" {
+		t.Errorf("pendingRegisterProjectName = %q, want Retry", s.pendingRegisterProjectName)
+	}
+	if !slices.Equal(s.pendingRegisterProjectAgents, []string{"codex"}) {
+		t.Errorf("pendingRegisterProjectAgents = %v, want [codex]", s.pendingRegisterProjectAgents)
+	}
+	if s.modal == nil || s.modal.ID() != "register-project" {
+		t.Fatalf("form modal not opened after retry; got %v", s.modal)
 	}
 }
 

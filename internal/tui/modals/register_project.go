@@ -36,7 +36,7 @@ func buildRegisterProject(initial RegisterProjectInput) (*huh.Form, *RegisterPro
 	form := huh.NewForm(
 		huh.NewGroup(
 			nameInput(&state.Name, "The name of the project"),
-			pathInput(&state.Path, "The path of the project"),
+			readOnlyPathInput(&state.Path, "Project root picked in the previous step"),
 			enabledAgentsSelect(&state.EnabledAgents, "Multi-select of agents to enable for this project. At least one required."),
 		),
 	).WithTheme(styles.HuhTheme())

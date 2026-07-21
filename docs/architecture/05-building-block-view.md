@@ -274,9 +274,13 @@ they escape the constraint — an error `notifications.NotificationMsg`
 is emitted in that case. Read failures on `os.ReadDir` (permission
 denied, folder disappeared) surface through the same notification path
 without changing the current folder; the modal never resolves on an
-I/O error. This task adds the modal component only; wiring it into
-existing screens (register project, register asset, edit profile,
-…) is a follow-up.
+I/O error. The Create Profile, Register Profile, and Register Project
+flows now open this modal as their first step: the picker collects the
+directory, the follow-on form shows the picked path as a read-only
+field and only collects the remaining inputs (Name, EnabledAgents).
+Cancelling the picker aborts the flow; a failing action re-opens the
+picker seeded at the parent of the previously-picked folder so the
+retry stays close to the user's chosen location.
 
 ### `cmd/af`
 

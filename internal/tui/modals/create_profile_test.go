@@ -1,6 +1,7 @@
 package modals
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -54,5 +55,23 @@ func TestNewCreateProfile_UsesStableID(t *testing.T) {
 	m := NewCreateProfile(CreateProfileInput{})
 	if got := m.ID(); got != "create-profile" {
 		t.Errorf("ID = %q, want %q", got, "create-profile")
+	}
+}
+
+// TestBuildCreateProfile_PathReadOnly locks in the two-step flow contract
+// (task 0039): the pathselector step supplies the path and the form step
+// only displays it. The seeded path must reach the shared state pointer,
+// and the field's description must carry the "(read-only)" marker so the
+// user recognizes the field as non-editable — huh has no runtime read-only
+// mode, so the marker is the only signal.
+func TestBuildCreateProfile_PathReadOnly(t *testing.T) {
+	form, state, _ := buildCreateProfile(CreateProfileInput{Path: "/tmp/seed"})
+
+	if state.Path != "/tmp/seed" {
+		t.Errorf("state.Path = %q, want %q", state.Path, "/tmp/seed")
+	}
+	form.Init()
+	if view := form.View(); !strings.Contains(view, "read-only") {
+		t.Errorf("form view missing %q marker; got:\n%s", "read-only", view)
 	}
 }

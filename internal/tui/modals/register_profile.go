@@ -23,7 +23,7 @@ func buildRegisterProfile(initial RegisterProfileInput) (*huh.Form, *RegisterPro
 	state := &RegisterProfileInput{Path: initial.Path}
 	form := huh.NewForm(
 		huh.NewGroup(
-			pathInput(&state.Path, "Profile directory path. ~ is expanded."),
+			readOnlyPathInput(&state.Path, "Profile directory picked in the previous step"),
 		),
 	).WithTheme(styles.HuhTheme())
 	return form, state, func(*huh.Form) any { return *state }

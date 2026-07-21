@@ -17,6 +17,12 @@ import (
 // folder, start outside constraint) is returned as a typed [errs.DomainError]
 // so the caller can surface it through the standard notification path.
 //
+// The id parameter is the modal id the runtime tags on the resulting
+// [modal.ResolvedMsg]. Callers pass a flow-specific id (e.g.
+// `"create-profile-path"`) so their `handleResolved` switch can route the
+// message through the same table as every other modal instead of tracking
+// hidden state.
+//
 // Runtime errors emitted by the modal (constraint violation, folder-read
 // failure) leave the pathselector package as its own message types
 // ([pathselector.ConstraintViolationMsg] / [pathselector.ReadDirErrorMsg])
@@ -27,7 +33,7 @@ import (
 // The returned [modal.Modal] is passed to the shell exactly like any other
 // modal. Read the selection with [pathselector.ResultFromMsg] on the
 // [modal.ResolvedMsg] the runtime dispatches when the user confirms.
-func NewSelectPath(opts pathselector.Options) (*modal.Modal, errs.DomainError) {
+func NewSelectPath(id string, opts pathselector.Options) (*modal.Modal, errs.DomainError) {
 	content, err := pathselector.New(opts)
 	if err != nil {
 		return nil, err
@@ -36,7 +42,7 @@ func NewSelectPath(opts pathselector.Options) (*modal.Modal, errs.DomainError) {
 	if caption == "" {
 		caption = "Select path"
 	}
-	return modal.New("select-path", &notificationTranslator{inner: content}, modal.WithCaption(caption)), nil
+	return modal.New(id, &notificationTranslator{inner: content}, modal.WithCaption(caption)), nil
 }
 
 // notificationTranslator wraps a [pathselector.Content] and rewrites the

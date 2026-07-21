@@ -2,6 +2,7 @@ package shell
 
 import (
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"charm.land/bubbles/v2/key"
@@ -17,6 +18,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/tui/components/modal"
 	"github.com/hexworks/agentfiles/internal/tui/components/panel"
 	"github.com/hexworks/agentfiles/internal/tui/modals"
+	"github.com/hexworks/agentfiles/internal/tui/modals/pathselector"
 	"github.com/hexworks/agentfiles/internal/tui/notifications"
 	"github.com/hexworks/agentfiles/internal/tui/styles"
 )
@@ -34,6 +36,11 @@ type profilesScreen struct {
 	modal             *modal.Modal
 	pendingDeleteID   string
 	pendingDeleteName string
+	// pendingCreateName carries the Name the user typed into the Create
+	// Profile form across a retry: when CreateProfile fails, the flow re-
+	// opens the pathselector, and the follow-on form must be re-seeded with
+	// the same Name so the user doesn't type it again (plan for task 0039).
+	pendingCreateName string
 
 	edit     *mnemonic.Button
 	delete   *mnemonic.Button
@@ -54,6 +61,27 @@ type profilesScreen struct {
 type profilesLoadedMsg struct {
 	profiles []*app.LoadedProfile
 	err      errs.DomainError
+}
+
+// createProfileFailedMsg is dispatched when CreateProfile returns a domain
+// error inside the two-step pathselector → form flow. It carries the
+// user-selected path and the failure severity/text so the Update handler
+// can notify the user and re-open the pathselector seeded at the parent
+// folder — the follow-on form is re-seeded with pendingCreateName so the
+// user does not re-type the Name they already entered.
+type createProfileFailedMsg struct {
+	path     string
+	text     string
+	severity errs.Severity
+}
+
+// registerProfileFailedMsg is the RegisterProfile analogue of
+// createProfileFailedMsg. Register Profile has no editable non-path
+// field, so there is no stashed input to re-seed on the retry.
+type registerProfileFailedMsg struct {
+	path     string
+	text     string
+	severity errs.Severity
 }
 
 func newProfilesScreen(a *actions.Actions) *profilesScreen {
@@ -142,6 +170,18 @@ func (s *profilesScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 
 	case mutationDoneMsg:
 		return s, tea.Batch(notificationCmd(m.severity, m.text), s.loadCmd())
+
+	case createProfileFailedMsg:
+		return s, tea.Batch(
+			notificationCmd(m.severity, m.text),
+			s.openCreateProfilePathselectorCmd(filepath.Dir(m.path)),
+		)
+
+	case registerProfileFailedMsg:
+		return s, tea.Batch(
+			notificationCmd(m.severity, m.text),
+			s.openRegisterProfilePathselectorCmd(filepath.Dir(m.path)),
+		)
 
 	case modal.ResolvedMsg:
 		return s, s.handleResolved(m)
@@ -302,13 +342,50 @@ func (s *profilesScreen) onDelete() tea.Cmd {
 	return s.modal.Init()
 }
 
+// onCreate starts the two-step Create Profile flow (task 0039): open the
+// pathselector first, then open the Create Profile form seeded with the
+// chosen path once "create-profile-path" resolves. Any prior stashed name
+// is cleared so a fresh flow starts empty.
 func (s *profilesScreen) onCreate() tea.Cmd {
-	s.openModal(modals.NewCreateProfile(modals.CreateProfileInput{}))
+	s.pendingCreateName = ""
+	return s.openCreateProfilePathselectorCmd("")
+}
+
+// onRegister mirrors onCreate for Register Profile. Register Profile has
+// no editable field other than the path, so nothing is stashed here.
+func (s *profilesScreen) onRegister() tea.Cmd {
+	return s.openRegisterProfilePathselectorCmd("")
+}
+
+// openCreateProfilePathselectorCmd opens the folder picker for the Create
+// Profile flow. startFolder is empty on the first open (defaults to $HOME
+// through pathselector.probe) and set to filepath.Dir(previousPath) on
+// retry after a failure. A pathselector build failure (e.g. unreadable
+// $HOME) is surfaced as a notification so the flow degrades to a visible
+// error instead of a silent no-op.
+func (s *profilesScreen) openCreateProfilePathselectorCmd(startFolder string) tea.Cmd {
+	m, err := modals.NewSelectPath("create-profile-path", pathselector.Options{
+		Caption:     "Select profile folder",
+		ShowFiles:   false,
+		StartFolder: startFolder,
+	})
+	if err != nil {
+		return notificationCmd(err.Severity(), err.Error())
+	}
+	s.openModal(m)
 	return s.modal.Init()
 }
 
-func (s *profilesScreen) onRegister() tea.Cmd {
-	s.openModal(modals.NewRegisterProfile(modals.RegisterProfileInput{}))
+func (s *profilesScreen) openRegisterProfilePathselectorCmd(startFolder string) tea.Cmd {
+	m, err := modals.NewSelectPath("register-profile-path", pathselector.Options{
+		Caption:     "Select existing profile folder",
+		ShowFiles:   false,
+		StartFolder: startFolder,
+	})
+	if err != nil {
+		return notificationCmd(err.Severity(), err.Error())
+	}
+	s.openModal(m)
 	return s.modal.Init()
 }
 
@@ -329,6 +406,10 @@ func (s *profilesScreen) openModal(m *modal.Modal) {
 func (s *profilesScreen) handleResolved(msg modal.ResolvedMsg) tea.Cmd {
 	s.modal = nil
 	switch msg.ID {
+	case "create-profile-path":
+		return s.afterCreatePath(msg)
+	case "register-profile-path":
+		return s.afterRegisterPath(msg)
 	case "create-profile":
 		return s.afterCreate(msg)
 	case "register-profile":
@@ -341,21 +422,56 @@ func (s *profilesScreen) handleResolved(msg modal.ResolvedMsg) tea.Cmd {
 	return nil
 }
 
+// afterCreatePath opens the Create Profile form seeded with the picked
+// path and the stashed name (empty on the first open, non-empty on retry).
+// Cancelling the pathselector aborts the flow.
+func (s *profilesScreen) afterCreatePath(msg modal.ResolvedMsg) tea.Cmd {
+	result, ok := pathselector.ResultFromMsg(msg)
+	if !ok {
+		s.pendingCreateName = ""
+		return nil
+	}
+	s.openModal(modals.NewCreateProfile(modals.CreateProfileInput{
+		Name: s.pendingCreateName,
+		Path: result.Path,
+	}))
+	return s.modal.Init()
+}
+
+// afterRegisterPath is the Register Profile analogue. No stashed input to
+// re-seed — the form has only the path.
+func (s *profilesScreen) afterRegisterPath(msg modal.ResolvedMsg) tea.Cmd {
+	result, ok := pathselector.ResultFromMsg(msg)
+	if !ok {
+		return nil
+	}
+	s.openModal(modals.NewRegisterProfile(modals.RegisterProfileInput{Path: result.Path}))
+	return s.modal.Init()
+}
+
+// afterCreate runs the CreateProfile action. On success it returns a
+// mutationDoneMsg so the shared refresh path fires; on failure it returns
+// the per-flow createProfileFailedMsg so the retry re-opens the
+// pathselector seeded at filepath.Dir(path). The stashed name survives the
+// retry so the follow-on form is re-seeded with it.
 func (s *profilesScreen) afterCreate(msg modal.ResolvedMsg) tea.Cmd {
 	if !msg.Confirmed {
+		s.pendingCreateName = ""
 		return nil
 	}
 	in, ok := msg.Value.(modals.CreateProfileInput)
 	if !ok {
 		return nil
 	}
-	return mutationCmd(
-		func() errs.DomainError {
-			_, err := s.actions.CreateProfile(actions.CreateProfileInput{Name: in.Name, Path: in.Path})
-			return err
-		},
-		fmt.Sprintf("Profile %q created", in.Name),
-	)
+	s.pendingCreateName = in.Name
+	successText := fmt.Sprintf("Profile %q created", in.Name)
+	return func() tea.Msg {
+		_, err := s.actions.CreateProfile(actions.CreateProfileInput{Name: in.Name, Path: in.Path})
+		if err != nil {
+			return createProfileFailedMsg{path: in.Path, text: err.Error(), severity: err.Severity()}
+		}
+		return mutationDoneMsg{text: successText, severity: errs.SeverityInfo}
+	}
 }
 
 func (s *profilesScreen) afterRegister(msg modal.ResolvedMsg) tea.Cmd {
@@ -366,13 +482,13 @@ func (s *profilesScreen) afterRegister(msg modal.ResolvedMsg) tea.Cmd {
 	if !ok {
 		return nil
 	}
-	return mutationCmd(
-		func() errs.DomainError {
-			_, err := s.actions.RegisterProfile(actions.RegisterProfileInput{Path: in.Path})
-			return err
-		},
-		"Profile registered",
-	)
+	return func() tea.Msg {
+		_, err := s.actions.RegisterProfile(actions.RegisterProfileInput{Path: in.Path})
+		if err != nil {
+			return registerProfileFailedMsg{path: in.Path, text: err.Error(), severity: err.Severity()}
+		}
+		return mutationDoneMsg{text: "Profile registered", severity: errs.SeverityInfo}
+	}
 }
 
 func (s *profilesScreen) afterDeleteStep1(msg modal.ResolvedMsg) tea.Cmd {

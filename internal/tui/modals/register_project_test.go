@@ -2,6 +2,7 @@ package modals
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/hexworks/agentfiles/internal/project"
@@ -85,5 +86,22 @@ func TestNewRegisterProject_UsesStableID(t *testing.T) {
 	m := NewRegisterProject(RegisterProjectInput{})
 	if got := m.ID(); got != "register-project" {
 		t.Errorf("ID = %q, want %q", got, "register-project")
+	}
+}
+
+// TestBuildRegisterProject_PathReadOnly — two-step flow contract (task
+// 0039). The pathselector step supplies the project root and the
+// register-project form only displays it. Name + EnabledAgents remain
+// editable; the rendered view must carry the "(read-only)" marker on the
+// path so the user recognizes it as non-editable.
+func TestBuildRegisterProject_PathReadOnly(t *testing.T) {
+	form, state, _ := buildRegisterProject(RegisterProjectInput{Path: "/repos/seed"})
+
+	if state.Path != "/repos/seed" {
+		t.Errorf("state.Path = %q, want %q", state.Path, "/repos/seed")
+	}
+	form.Init()
+	if view := form.View(); !strings.Contains(view, "read-only") {
+		t.Errorf("form view missing %q marker; got:\n%s", "read-only", view)
 	}
 }
