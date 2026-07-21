@@ -1,7 +1,7 @@
 ---
 id: 0039
 type: feature
-status: pending
+status: in-progress
 topics: tui, go
 depends_on: 0037
 ---
@@ -38,6 +38,10 @@ pathselector seeded with `StartFolder = filepath.Dir(previousPath)`.
 - `internal/tui/modals/edit_project.go` — project path should not be editable at all; tracked separately as a bug task.
 - `internal/tui/modals/create_file.go` — path there is an asset-relative slug, not a filesystem path.
 - Changes to `internal/tui/modals/pathselector` (owned by task 0037).
+
+## Plan
+
+[plan.md](./plan.md)
 
 ## Verification
 
