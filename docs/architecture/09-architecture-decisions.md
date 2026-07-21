@@ -18,6 +18,8 @@ durable rationale is recorded as ADRs in [`../adr/`](../adr/README.md).
 - `0014`: project scripting with single-file Go via gorun
 - `0015`: drift-keep preserves the baseline; Adopt is the explicit promote
 - `0016`: Definition-of-Done gate for the task workflow
+- `0017`: split projects out of the profile folder
+- `0018`: license under AGPL-3.0 with copyright-assignment CLA
 
 ## Usage
 

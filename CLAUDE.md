@@ -26,7 +26,7 @@ Run a single test: `go test ./internal/sync -run TestName` (or any package path)
 Domain packages are kept separable by design — do not blur them:
 
 - `config` — package-level constants for filenames and default profile metadata. No internal deps; sits at the bottom of the import graph and is the single edit-point for those values.
-- `surfaces` — owns the managed-surface root list and the `IsAllowed(target)` matcher. Render and sync both consume it; the data and the rule live together.
+- `surfaces` — owns two nested fences: the outer managed-surface root list (`IsAllowed(target)`, `Roots()`) consumed by render/sync, and the inner asset-container-root set (`AssetContainerRoots`, `IsAssetContainerRoot`, `SkillRoot`, `CursorCommandsRoot`) plus the `RegisterableFolders` eligibility predicate and `ClassifyFolderRejection` helper consumed by `app.RegisterableDirs` and `render.addSkillOutputs`. The data and the rules live together.
 - `registry` — global profile index at `~/.agentfiles/profiles.json` (discovery only, no asset content).
 - `projectstore` — centralized per-user project selection file at `~/.agentfiles/projects.json`. Owns Load/Save + typed CRUD (`Add`, `Update`, `Remove`, `ListByProfile`, `RemoveByProfile`, `AllProjects`). Introduced by ADR 0017 so profile folders can be shared without leaking per-machine selections.
 - `migrate` — one-shot v1→v2 user-config migration invoked from `cmd/af/main.go` before the TUI opens. Idempotent, presence-based; injectable logger surfaces non-fatal warnings. See ADR 0017.

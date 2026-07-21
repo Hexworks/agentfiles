@@ -71,11 +71,29 @@ here so a single edit changes behavior everywhere.
 
 ### `surfaces`
 
-Owns the managed-surface root list and the `IsAllowed(target)` matcher that
-gates writes into a target repository. Render consults it to refuse
-projection targets outside the fence; sync iterates `Roots()` to find
-delete candidates. Co-locates the data and the rule so both halves of the
-safety fence stay in one package.
+Owns two nested safety fences and the matchers that enforce them.
+
+The **outer fence** is the managed-surface root list: the set of top-level
+paths render is allowed to project into and sync is allowed to walk for
+delete candidates. Render consults `IsAllowed(target)` to refuse projection
+targets outside the fence; sync iterates `Roots()` to find delete candidates.
+
+The **inner fence** is the tighter asset-container-root set — the strict
+subset of the outer fence (`.claude/skills`, `.codex/skills`,
+`.opencode/skills`, `.cursor/commands`) whose direct child folders are
+eligible for folder-based asset registration. `AssetContainerRoots()` and
+its O(1) `IsAssetContainerRoot` predicate expose the set; `RegisterableFolders`
+implements the eligibility rule (parent-must-be-root + every descendant
+leaf unknown); and `ClassifyFolderRejection` returns a `FolderRejectionReason`
+so `app.FolderNotRegisterableError` can carry a typed reason
+(`ReasonNotUnderContainerRoot` / `ReasonHasManagedDescendants` /
+`ReasonAbsentFromPlan`) that the TUI renders as a targeted message.
+
+The per-agent `SkillRoot(agent)` accessor and `CursorCommandsRoot()` also
+live here so `render.addSkillOutputs` reads its container roots from the
+same source `app.RegisterableDirs` uses — no caller duplicates the list.
+Co-locating both fences in one package keeps every safety rule next to the
+data it fences.
 
 ### `registry`
 

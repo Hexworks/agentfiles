@@ -45,4 +45,6 @@ Each ADR uses a small Michael Nygard style structure:
 - 0014 — Project scripting with single-file Go via gorun
 - 0015 — Drift Keep preserves the baseline; Adopt is the explicit promote
 - 0016 — Definition-of-Done gate for the task workflow
+- 0017 — Split projects out of the profile folder
+- 0018 — License under AGPL-3.0 with copyright-assignment CLA
 
