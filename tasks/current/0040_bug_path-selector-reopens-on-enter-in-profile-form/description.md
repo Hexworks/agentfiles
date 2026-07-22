@@ -1,7 +1,7 @@
 ---
 id: 0040
 type: bug
-status: pending
+status: in-progress
 topics: tui, charm
 depends_on: 0039, 0037
 notes: |
@@ -83,6 +83,10 @@ call site.
   follow-up if the affordance is judged unclear later.
 - Any pathselector modal internals — the bug is entirely in the
   follow-on form, not in the picker.
+
+## Plan
+
+[plan.md](./plan.md)
 
 ## Verification
 
