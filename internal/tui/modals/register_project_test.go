@@ -5,11 +5,14 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
+	"charm.land/huh/v2"
+
 	"github.com/hexworks/agentfiles/internal/project"
 )
 
 func TestRegisterProject_PrefillSeedsState(t *testing.T) {
-	_, state, _ := buildRegisterProject(RegisterProjectInput{
+	_, state, _, _ := buildRegisterProject(RegisterProjectInput{
 		Name:          "Demo",
 		Path:          "/repos/demo",
 		EnabledAgents: []string{AgentClaudeCode},
@@ -21,7 +24,7 @@ func TestRegisterProject_PrefillSeedsState(t *testing.T) {
 }
 
 func TestRegisterProject_PumpResolvesAsValidManifest(t *testing.T) {
-	form, _, extract := buildRegisterProject(RegisterProjectInput{
+	form, _, extract, _ := buildRegisterProject(RegisterProjectInput{
 		Name:          "Demo",
 		Path:          "/repos/demo",
 		EnabledAgents: []string{AgentClaudeCode, AgentCodex},
@@ -57,12 +60,12 @@ func TestRegisterProject_PumpResolvesAsValidManifest(t *testing.T) {
 }
 
 func TestRegisterProject_RejectsEmptyRequiredFields(t *testing.T) {
-	form, _, _ := buildRegisterProject(RegisterProjectInput{})
+	form, _, _, _ := buildRegisterProject(RegisterProjectInput{})
 	expectFormStuck(t, form)
 }
 
 func TestRegisterProject_RejectsEmptyEnabledAgents(t *testing.T) {
-	form, _, _ := buildRegisterProject(RegisterProjectInput{
+	form, _, _, _ := buildRegisterProject(RegisterProjectInput{
 		Name: "Demo",
 		Path: "/repos/demo",
 	})
@@ -70,7 +73,7 @@ func TestRegisterProject_RejectsEmptyEnabledAgents(t *testing.T) {
 }
 
 func TestRegisterProject_CancelResolvesEmpty(t *testing.T) {
-	form, _, extract := buildRegisterProject(RegisterProjectInput{
+	form, _, extract, _ := buildRegisterProject(RegisterProjectInput{
 		Name: "x", Path: "/p", EnabledAgents: []string{AgentCodex},
 	})
 	abortForm(form)
@@ -89,19 +92,70 @@ func TestNewRegisterProject_UsesStableID(t *testing.T) {
 	}
 }
 
-// TestBuildRegisterProject_PathReadOnly — two-step flow contract (task
-// 0039). The pathselector step supplies the project root and the
-// register-project form only displays it. Name + EnabledAgents remain
-// editable; the rendered view must carry the "(read-only)" marker on the
-// path so the user recognizes it as non-editable.
-func TestBuildRegisterProject_PathReadOnly(t *testing.T) {
-	form, state, _ := buildRegisterProject(RegisterProjectInput{Path: "/repos/seed"})
+// TestBuildRegisterProject_PathFieldIsNote — two-step flow contract
+// (tasks 0039, 0040): the project root renders as a huh.Note between
+// Name and EnabledAgents, not as an editable Input. The rendered view
+// must include the picked path so the user can confirm it.
+func TestBuildRegisterProject_PathFieldIsNote(t *testing.T) {
+	form, _, _, fields := buildRegisterProject(RegisterProjectInput{
+		Name:          "Demo",
+		Path:          "/repos/seed",
+		EnabledAgents: []string{AgentClaudeCode},
+	})
 
-	if state.Path != "/repos/seed" {
-		t.Errorf("state.Path = %q, want %q", state.Path, "/repos/seed")
+	if _, ok := fields[1].(*huh.Note); !ok {
+		t.Fatalf("fields[1] type = %T, want *huh.Note", fields[1])
+	}
+	if _, ok := fields[1].(*huh.Input); ok {
+		t.Fatalf("fields[1] is *huh.Input; task 0040 requires *huh.Note")
 	}
 	form.Init()
-	if view := form.View(); !strings.Contains(view, "read-only") {
-		t.Errorf("form view missing %q marker; got:\n%s", "read-only", view)
+	if view := form.View(); !strings.Contains(view, "/repos/seed") {
+		t.Errorf("form view missing picked path %q; got:\n%s", "/repos/seed", view)
+	}
+}
+
+// TestBuildRegisterProject_RuneKeyLeavesStateUnchanged — task 0040:
+// with a huh.Input the picked path was mutated by any keypress. Note
+// has no value binding, so runes fed to the focused form must leave
+// state.Path AND state.EnabledAgents untouched (no key bleed-through in
+// the multi-field case either).
+func TestBuildRegisterProject_RuneKeyLeavesStateUnchanged(t *testing.T) {
+	seedAgents := []string{AgentClaudeCode}
+	form, state, _, _ := buildRegisterProject(RegisterProjectInput{
+		Name:          "Demo",
+		Path:          "/repos/seed",
+		EnabledAgents: seedAgents,
+	})
+	form.Init()
+
+	drainCmd(form, func() tea.Cmd {
+		_, cmd := form.Update(tea.KeyPressMsg{Text: "x", Code: 'x'})
+		return cmd
+	}())
+
+	if state.Path != "/repos/seed" {
+		t.Errorf("state.Path = %q, want %q (rune must not mutate a Note)", state.Path, "/repos/seed")
+	}
+	if !reflect.DeepEqual(state.EnabledAgents, seedAgents) {
+		t.Errorf("state.EnabledAgents = %v, want %v (rune must not leak into MultiSelect)", state.EnabledAgents, seedAgents)
+	}
+}
+
+// TestBuildRegisterProject_EnterCompletesForm — task 0040: with a
+// valid Name + EnabledAgents seed, driving the form through submitForm
+// must reach StateCompleted. The Note is not the sole field so
+// Note.Skip() is true; the group walks Name → (skip Note) →
+// EnabledAgents → nextGroup and completes.
+func TestBuildRegisterProject_EnterCompletesForm(t *testing.T) {
+	form, _, _, _ := buildRegisterProject(RegisterProjectInput{
+		Name:          "Demo",
+		Path:          "/repos/seed",
+		EnabledAgents: []string{AgentClaudeCode},
+	})
+	submitForm(t, form)
+
+	if form.State != huh.StateCompleted {
+		t.Fatalf("form.State = %v, want StateCompleted", form.State)
 	}
 }

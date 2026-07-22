@@ -1,7 +1,7 @@
 ---
 id: 0040
 type: bug
-status: in-progress
+status: in-review
 topics: tui, charm
 depends_on: 0039, 0037
 notes: |

@@ -36,18 +36,16 @@ func pathInput(value *string, description string) *huh.Input {
 		Validate(requiredString)
 }
 
-// readOnlyPathInput builds the Path input in its read-only variant used by
-// the two-step pathselector → form flows: the pathselector step supplies the
-// value and the form step only displays it. Skipping the validator matches
-// the display-only role; the trailing marker on the description string is
-// how tests assert the field is intentionally non-editable (huh has no
-// runtime read-only mode).
-func readOnlyPathInput(value *string, description string) *huh.Input {
-	return huh.NewInput().
-		Key("path").
+// pathDisplayNote renders the pre-picked path from the pathselector step as a
+// non-editable Note in the follow-on form. huh.Note has no value binding so
+// nothing can mutate the path; on any key press it returns NextField, so
+// Enter (or any rune) advances the group without letting the keystroke leak
+// back to the shell — the leak that let step-1's picker re-open on Enter
+// before this swap.
+func pathDisplayNote(value *string, description string) *huh.Note {
+	return huh.NewNote().
 		Title("Path").
-		Description(description + " (read-only)").
-		Value(value)
+		Description(description + "\n" + *value)
 }
 
 func enabledAgentsSelect(value *[]string, description string) *huh.MultiSelect[string] {

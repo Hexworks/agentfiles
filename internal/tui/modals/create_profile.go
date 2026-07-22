@@ -18,17 +18,16 @@ type CreateProfileInput struct {
 // preload the input fields (useful for testing and for "retry after error"
 // flows); a zero value starts the form empty.
 func NewCreateProfile(initial CreateProfileInput) *modal.Modal {
-	form, _, extract := buildCreateProfile(initial)
+	form, _, extract, _ := buildCreateProfile(initial)
 	return modal.NewForm("create-profile", form, extract, modal.WithCaption("Creating Profile"))
 }
 
-func buildCreateProfile(initial CreateProfileInput) (*huh.Form, *CreateProfileInput, func(*huh.Form) any) {
+func buildCreateProfile(initial CreateProfileInput) (*huh.Form, *CreateProfileInput, func(*huh.Form) any, []huh.Field) {
 	state := &CreateProfileInput{Name: initial.Name, Path: initial.Path}
-	form := huh.NewForm(
-		huh.NewGroup(
-			nameInput(&state.Name, "Display name for the profile"),
-			readOnlyPathInput(&state.Path, "Profile directory picked in the previous step"),
-		),
-	).WithTheme(styles.HuhTheme())
-	return form, state, func(*huh.Form) any { return *state }
+	fields := []huh.Field{
+		nameInput(&state.Name, "Display name for the profile"),
+		pathDisplayNote(&state.Path, "Profile directory picked in the previous step"),
+	}
+	form := huh.NewForm(huh.NewGroup(fields...)).WithTheme(styles.HuhTheme())
+	return form, state, func(*huh.Form) any { return *state }, fields
 }

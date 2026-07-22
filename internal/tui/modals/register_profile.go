@@ -15,16 +15,15 @@ type RegisterProfileInput struct {
 
 // NewRegisterProfile builds the Register Profile modal.
 func NewRegisterProfile(initial RegisterProfileInput) *modal.Modal {
-	form, _, extract := buildRegisterProfile(initial)
+	form, _, extract, _ := buildRegisterProfile(initial)
 	return modal.NewForm("register-profile", form, extract, modal.WithCaption("Registering Profile"))
 }
 
-func buildRegisterProfile(initial RegisterProfileInput) (*huh.Form, *RegisterProfileInput, func(*huh.Form) any) {
+func buildRegisterProfile(initial RegisterProfileInput) (*huh.Form, *RegisterProfileInput, func(*huh.Form) any, []huh.Field) {
 	state := &RegisterProfileInput{Path: initial.Path}
-	form := huh.NewForm(
-		huh.NewGroup(
-			readOnlyPathInput(&state.Path, "Profile directory picked in the previous step"),
-		),
-	).WithTheme(styles.HuhTheme())
-	return form, state, func(*huh.Form) any { return *state }
+	fields := []huh.Field{
+		pathDisplayNote(&state.Path, "Profile directory picked in the previous step"),
+	}
+	form := huh.NewForm(huh.NewGroup(fields...)).WithTheme(styles.HuhTheme())
+	return form, state, func(*huh.Form) any { return *state }, fields
 }

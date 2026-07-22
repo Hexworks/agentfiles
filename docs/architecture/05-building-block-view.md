@@ -276,8 +276,9 @@ denied, folder disappeared) surface through the same notification path
 without changing the current folder; the modal never resolves on an
 I/O error. The Create Profile, Register Profile, and Register Project
 flows now open this modal as their first step: the picker collects the
-directory, the follow-on form shows the picked path as a read-only
-field and only collects the remaining inputs (Name, EnabledAgents).
+directory, the follow-on form shows the picked path as a display-only
+`huh.Note` row (no runtime edits, Enter advances the form) and only
+collects the remaining inputs (Name, EnabledAgents).
 Cancelling the picker aborts the flow; a failing action re-opens the
 picker seeded at the parent of the previously-picked folder so the
 retry stays close to the user's chosen location.
