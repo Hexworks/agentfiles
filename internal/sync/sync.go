@@ -434,10 +434,16 @@ func Apply(preview *Preview, r Resolutions) (ApplyResult, errs.DomainError) {
 			delete(recordedHashes, path)
 			return
 		}
-		if prior := preview.ManagedState.ManagedFiles[path]; prior.Hash != "" {
-			recordedHashes[path] = prior
-		} else {
+		prior := preview.ManagedState.ManagedFiles[path]
+		if prior.Hash == "" {
 			delete(recordedHashes, path)
+			return
+		}
+		fresh := recordedHashes[path]
+		recordedHashes[path] = ManagedFileEntry{
+			Hash:      prior.Hash,
+			AssetID:   fresh.AssetID,
+			SourceRel: fresh.SourceRel,
 		}
 	}
 	for _, change := range preview.Changes {

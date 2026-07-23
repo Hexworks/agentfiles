@@ -1202,3 +1202,53 @@ func TestState_WriteV3_IncludesAssetIDAndSourceRel(t *testing.T) {
 		t.Errorf("Hash empty")
 	}
 }
+
+// TestApply_DriftKeep_UpgradesV2LegacyProvenance pins the schema
+// migration path for a drifted-and-kept managed file. A v2 legacy entry
+// (bare hash, no AssetID/SourceRel) must gain fresh v3 provenance from
+// the current rendered plan on the next Apply, while the prior baseline
+// Hash is preserved so the file stays classified as drift. Regression
+// for the bug where preserveDriftBaseline copied the whole prior entry,
+// freezing v2 legacy state forever and blocking Adopt on the following
+// plan. See ADR 0020 + task 0043.
+func TestApply_DriftKeep_UpgradesV2LegacyProvenance(t *testing.T) {
+	projectRoot := t.TempDir()
+	loaded, proj := setupProfileAndProject(t, projectRoot)
+	if err := os.WriteFile(filepath.Join(projectRoot, "AGENTS.md"), []byte("drifted"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeStateV2Legacy(t, projectRoot, map[string]string{"AGENTS.md": "previous"}, nil)
+
+	preview, err := Plan(loaded, proj)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Apply(preview, Resolutions{Drift: []DriftResolution{{Path: "AGENTS.md", Decision: DriftKeep}}}); err != nil {
+		t.Fatal(err)
+	}
+
+	state := readState(t, projectRoot)
+	entry := state.ManagedFiles["AGENTS.md"]
+	if entry.Hash != "previous" {
+		t.Fatalf("Hash = %q, want prior %q (Keep must preserve baseline)", entry.Hash, "previous")
+	}
+	if entry.AssetID != "base" {
+		t.Fatalf("AssetID = %q, want %q (Keep must upgrade legacy v2 provenance)", entry.AssetID, "base")
+	}
+	if entry.SourceRel != "AGENTS.md" {
+		t.Fatalf("SourceRel = %q, want %q (Keep must upgrade legacy v2 provenance)", entry.SourceRel, "AGENTS.md")
+	}
+
+	nextPreview, planErr := Plan(loaded, proj)
+	if planErr != nil {
+		t.Fatal(planErr)
+	}
+	if _, adoptErr := Apply(nextPreview, Resolutions{Drift: []DriftResolution{{Path: "AGENTS.md", Decision: DriftAdopt}}}); adoptErr != nil {
+		var unavailable AdoptUnavailableError
+		if errors.As(adoptErr, &unavailable) {
+			t.Fatalf("DriftAdopt still unavailable after Keep-upgrade: %v", adoptErr)
+		}
+		t.Fatalf("Apply(DriftAdopt): %v", adoptErr)
+	}
+}
