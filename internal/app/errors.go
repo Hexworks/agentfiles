@@ -163,6 +163,26 @@ func (SettingsUnavailableError) Severity() errs.Severity {
 	return errs.SeverityError
 }
 
+// AdoptTargetMissingError reports that an Adopt request from
+// sync.Apply named an AssetID the loaded profile no longer has (asset
+// was deleted between Plan and Apply). Distinct from
+// sync.AdoptUnavailableError, which covers sync-layer failure modes
+// (legacy v2 entry, orphan unknown, provenance mismatch). Keeping the
+// app-layer condition in its own type lets the TUI branch on the
+// specific error via errors.As.
+type AdoptTargetMissingError struct {
+	Path    string
+	AssetID string
+}
+
+func (e AdoptTargetMissingError) Error() string {
+	return fmt.Sprintf("adopt target asset %q missing for %s", e.AssetID, e.Path)
+}
+
+func (AdoptTargetMissingError) Severity() errs.Severity {
+	return errs.SeverityError
+}
+
 // AdoptReadError reports a failure to read the repo-side file whose
 // body an Adopt request wants to write back into the profile. Wraps
 // the underlying os error so the TUI can render a specific message

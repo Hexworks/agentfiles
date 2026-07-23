@@ -29,10 +29,12 @@ Settings TUI screen. See ADR 0019.
 
 ## Commit Trigger
 
-One of the three points where `af` records an automated
+One of the four points where `af` records an automated
 [Git-Aware Commit](#git-aware-commit): asset-manifest save (Save button
-on Edit Asset), asset-files edit (return from the external editor), and
-plan-apply. Each has a distinct pathspec and Conventional-Commits
+on Edit Asset), asset-files edit (return from the external editor),
+plan-apply on the target repo, and the ADR 0020 [Adopt](#adopt) commit
+on the profile repo (`chore(agentfiles): adopt N file(s) into
+profile`). Each has a distinct pathspec and Conventional-Commits
 subject; the trigger fires only when git integration is enabled in the
 [Settings Store](#settings-store) and the mutated folder is a git
 repository.
@@ -293,6 +295,28 @@ never reads the repo as input). When git integration is enabled, a
 second commit is recorded on the profile repo (`chore(agentfiles):
 adopt N file(s) into profile`). See ADR 0020.
 
+## Adopt Request
+
+The value object `sync.Apply` emits per adopted path so
+`app.Service.Apply` can execute the profile-side write. Carries the
+repo-relative source `Path`, the target asset's `AssetID`, the
+asset-relative `SourceRel` (used to resolve
+`<profile>/assets/<type>/<AssetID>/<SourceRel>`), and the file `Mode`
+so an executable bit is not silently normalized away on the reverse
+write. Crosses the `sync → app` seam; the app layer never assembles
+one itself.
+
+## Managed File Entry
+
+The row shape at each key of `ManagedState.ManagedFiles`. Schema v3
+carries `{hash, asset_id, source_rel}`; schema v2 carried the bare
+hash string. `loadState` accepts both — a v2 legacy entry leaves
+[Adopt](#adopt) disabled until the next apply re-writes the entry
+under v3. A half-populated v3 entry (only one of `asset_id`/
+`source_rel` set) is rejected as `StateCorruptError`: v2 rows carry
+neither, v3 rows carry both, anything in between is a wiring bug worth
+surfacing loudly. See ADR 0020.
+
 ## First-Apply Clean Slate
 
 A project with no `.agentfiles/state.json` is treated as fresh: every desired
@@ -365,6 +389,9 @@ persisting fresh managed state.
 
 The authoritative location for reusable content and selection state. In
 `agentfiles`, this is the profile folder, not the generated project files.
+[Adopt](#adopt) is the single sanctioned exception (ADR 0020): the user
+may promote a local edit into the owning profile asset. Render itself
+still never reads the repo as input.
 
 ## Project Ownership
 
@@ -379,7 +406,10 @@ layer as `sync.ChangeKind`.
 ## File Change
 
 The sync-layer entry that pairs a target path with its `ChangeKind` and
-a `ReasonKind` constant. Produced inside `sync.Preview.Changes`.
+a `ReasonKind` constant. Produced inside `sync.Preview.Changes`. A
+`ChangeUnknown` row additionally carries `OwningAssetID`: non-empty
+when the unknown path sits inside a known asset's rendered projection
+dir, so the TUI may offer [Adopt](#adopt) on it (ADR 0020).
 
 ## Reason Kind
 

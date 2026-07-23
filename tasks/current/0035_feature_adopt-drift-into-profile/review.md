@@ -8,12 +8,14 @@ in `sync` and the profile write + commit in `app.Service`. Layering,
 loader tolerance are all correct.
 
 Substantive issues centre on **two real security holes** (symlink-follow
-read, state-file provenance trust) plus **one silent regression risk**
-(hardcoded `0o644` mode drops executability). The rest are quality-of-code
-items: `sync.Apply` mixes writes and Adopt classification, `Service.Apply`
-returns two positional `CommitOutcome` values, the string-composition in
-`syncCommitOutcomeCmd` is fragile and untested, and the glossary lags the
-new domain vocabulary.
+read, state-file provenance trust), **one silent regression risk**
+(hardcoded `0o644` mode drops executability), and **one commit-noise
+bug** (empty apply still records a project-repo commit whose only
+content is the `last_applied_at` timestamp bump). The rest are
+quality-of-code items: `sync.Apply` mixes writes and Adopt
+classification, `Service.Apply` returns two positional `CommitOutcome`
+values, the string-composition in `syncCommitOutcomeCmd` is fragile and
+untested, and the glossary lags the new domain vocabulary.
 
 Pick one solution per block below by ticking a checkbox, then run
 `af.task.review-apply 35` in a fresh session.
@@ -21,6 +23,7 @@ Pick one solution per block below by ticking a checkbox, then run
 ## Symlink-follow in `executeAdoptRequests` read (data exfiltration)
 
 > [!WARNING]
+>
 > - [docs/guidelines/security.md](../../../docs/guidelines/security.md) — Keep File Access Inside Intended Roots
 > - [docs/guidelines/sync_and_safety.md](../../../docs/guidelines/sync_and_safety.md)
 
@@ -51,12 +54,13 @@ if writeErr := asset.WriteFile(target.Dir, req.SourceRel, body, 0o644); writeErr
 
 Pick one:
 
-- [ ] `Lstat` the abs path in `executeAdoptRequests`; refuse Adopt with a typed `UnsafeSymlinkError` (mirror `sync.UnsafeSymlinkError`) when `Mode()&os.ModeSymlink != 0`. Also add the same guard in `sync.classifyDesired` so a symlinked managed file never reaches drift classification in the first place.
+- [x] `Lstat` the abs path in `executeAdoptRequests`; refuse Adopt with a typed `UnsafeSymlinkError` (mirror `sync.UnsafeSymlinkError`) when `Mode()&os.ModeSymlink != 0`. Also add the same guard in `sync.classifyDesired` so a symlinked managed file never reaches drift classification in the first place.
 - [ ] Open the repo file with `O_RDONLY|O_NOFOLLOW` (same approach `writeRendered` uses for `safeWriteFlags`) and reject the request when the syscall reports `ELOOP`; guard `classifyDesired` in the same commit.
 
 ## `state.json` can redirect a `DriftAdopt` into a different asset
 
 > [!WARNING]
+>
 > - [docs/guidelines/security.md](../../../docs/guidelines/security.md) — Treat External Input As Untrusted
 > - [docs/guidelines/sync_and_safety.md](../../../docs/guidelines/sync_and_safety.md)
 
@@ -69,7 +73,7 @@ an existing asset. `executeAdoptRequests` then reads the drifted body and
 writes it into `<profile>/assets/<type>/<other_asset>/<sourceRel>`,
 silently corrupting an unrelated asset. `asset.ResolveRelative` keeps the
 write inside `target.Dir`, so the blast radius is one asset — but the
-*choice* of asset is attacker-controlled. `UnknownAdopt` does not have this
+_choice_ of asset is attacker-controlled. `UnknownAdopt` does not have this
 issue because it recomputes the mapping from the rendered plan
 (`assetProjectionDirs`).
 
@@ -89,12 +93,13 @@ adoptRequests = append(adoptRequests, AdoptRequest{
 
 Pick one:
 
-- [ ] At Apply time compute `assetProjectionDirs(preview.Files)` (already done for `UnknownAdopt`) and, for each `DriftAdopt` row, assert `owningAssetSourceRelFor(change.Path, assetDirs)` returns the same `(AssetID, SourceRel)` the state carries; on mismatch surface `AdoptUnavailableError` with reason `"state provenance stale, re-plan"`.
+- [x] At Apply time compute `assetProjectionDirs(preview.Files)` (already done for `UnknownAdopt`) and, for each `DriftAdopt` row, assert `owningAssetSourceRelFor(change.Path, assetDirs)` returns the same `(AssetID, SourceRel)` the state carries; on mismatch surface `AdoptUnavailableError` with reason `"state provenance stale, re-plan"`.
 - [ ] Use the state-recorded `(AssetID, SourceRel)` only as a hint and derive the authoritative pair from the current render plan (source of truth), keeping state as fallback only when the render mapping is ambiguous.
 
 ## `loadState` skips validation of `AssetID` / `SourceRel`
 
 > [!WARNING]
+>
 > - [docs/guidelines/security.md](../../../docs/guidelines/security.md) — Treat External Input As Untrusted
 
 `sync.loadState` validates `ManagedFiles` **keys** with `validatePathKey`
@@ -104,7 +109,7 @@ hand-crafted `state.json` can set `SourceRel: "../../../etc/passwd"` or
 `SourceRel: "asset.json"`. `asset.ResolveRelative` catches the write, but:
 
 - Failure is deferred to the write site (`FilePathError`), well past the boundary where untrusted input should be normalized.
-- The pathspec entry `filepath.Join(target.Dir, filepath.FromSlash(req.SourceRel))` is computed *before* the write check and only bounces on git's own containment. Defense-in-depth is thin.
+- The pathspec entry `filepath.Join(target.Dir, filepath.FromSlash(req.SourceRel))` is computed _before_ the write check and only bounces on git's own containment. Defense-in-depth is thin.
 - Whitespace-only `AssetID` / `SourceRel` slip past the `""` check.
 
 ```go
@@ -118,12 +123,13 @@ for key, entry := range state.ManagedFiles {
 
 Pick one:
 
-- [ ] Extend the `loadState` loop: call `validatePathKey(entry.SourceRel)` when non-empty and reject with `StateCorruptError`. Trim + reject whitespace-only `AssetID` / `SourceRel`. Add a test that stamps `SourceRel: "../evil"` into `state.json` and asserts `Plan` returns `StateCorruptError`.
+- [x] Extend the `loadState` loop: call `validatePathKey(entry.SourceRel)` when non-empty and reject with `StateCorruptError`. Trim + reject whitespace-only `AssetID` / `SourceRel`. Add a test that stamps `SourceRel: "../evil"` into `state.json` and asserts `Plan` returns `StateCorruptError`.
 - [ ] Same validation plus validate `AssetID` against the profile's known asset ids at Plan time (surface `StateCorruptError` for unknown ids rather than deferring to `AdoptUnavailableError` in Apply).
 
 ## `AdoptRequest` drops `Mode`; profile-side write hardcodes `0o644`
 
 > [!WARNING]
+>
 > - [docs/guidelines/go.md](../../../docs/guidelines/go.md) — Prefer Explicit Types Over Loose Maps (the value type should carry the value it needs)
 > - [docs/guidelines/domain_model.md](../../../docs/guidelines/domain_model.md) — value objects
 
@@ -141,12 +147,13 @@ if writeErr := asset.WriteFile(target.Dir, req.SourceRel, body, 0o644); writeErr
 
 Pick one:
 
-- [ ] Add `Mode os.FileMode` to `sync.AdoptRequest`. Populate it from the matching `preview.Files[i].Mode` for drift and from the source file's `os.Stat` mode for unknown. Thread it into `asset.WriteFile`.
+- [x] Add `Mode os.FileMode` to `sync.AdoptRequest`. Populate it from the matching `preview.Files[i].Mode` for drift and from the source file's `os.Stat` mode for unknown. Thread it into `asset.WriteFile`.
 - [ ] Declare `const AdoptFileMode os.FileMode = 0o644` next to `asset.WriteFile` with a comment saying mode fidelity is deferred (link to a follow-up task); replace the magic literal at the call site.
 
 ## `Service.Apply` returns two positional `CommitOutcome` values
 
 > [!WARNING]
+>
 > - [docs/guidelines/solid.md](../../../docs/guidelines/solid.md) — Interface Segregation
 > - [docs/guidelines/go.md](../../../docs/guidelines/go.md) — return semantics explicit at the call site
 
@@ -167,13 +174,14 @@ func (s *Service) Apply(profileRef, projectID string, r appapi.Resolutions) (
 
 Pick one:
 
-- [ ] Introduce `appapi.ApplyOutcome { Preview *Preview; Sync, Adopt CommitOutcome }` and return `(ApplyOutcome, errs.DomainError)`. Update `actions/projects.go`, `tui/shell/plan_project.go`, and every test fake to destructure by name.
+- [x] Introduce `appapi.ApplyOutcome { Preview *Preview; Sync, Adopt CommitOutcome }` and return `(ApplyOutcome, errs.DomainError)`. Update `actions/projects.go`, `tui/shell/plan_project.go`, and every test fake to destructure by name.
 - [ ] Keep the signature; document the positional order once in a Godoc on `Service.Apply` and add a `//nolint:` note on each fake so a future swap is loud rather than silent.
 - [ ] Leave as-is — the interface is narrow, one call site behind it, and the plan explicitly chose this shape.
 
 ## `AdoptUnavailableError` is emitted by `internal/app` but declared in `internal/sync`
 
 > [!WARNING]
+>
 > - [docs/guidelines/errors.md](../../../docs/guidelines/errors.md) — Typed errors per package
 
 `internal/app/service.go:393` appends
@@ -196,12 +204,13 @@ failures = append(failures, llmsync.AdoptUnavailableError{
 
 Pick one:
 
-- [ ] Declare `app.AdoptTargetMissingError{Path, AssetID}` in `internal/app/errors.go` and emit that instead. Leave `sync.AdoptUnavailableError` scoped to the two Plan/Apply conditions it documents.
+- [x] Declare `app.AdoptTargetMissingError{Path, AssetID}` in `internal/app/errors.go` and emit that instead. Leave `sync.AdoptUnavailableError` scoped to the two Plan/Apply conditions it documents.
 - [ ] Rename `sync.AdoptUnavailableError` → `sync.AdoptProvenanceMissingError` (narrowing its meaning to reverse-mapping keys), then emit a new `app.AdoptTargetMissingError` for the app-layer case.
 
 ## `sync.Apply` mixes filesystem writes with Adopt classification
 
 > [!WARNING]
+>
 > - [docs/guidelines/solid.md](../../../docs/guidelines/solid.md) — Single Responsibility Principle
 > - [docs/guidelines/clean_code.md](../../../docs/guidelines/clean_code.md) — Functions
 
@@ -233,12 +242,13 @@ case DriftAdopt:
 Pick one:
 
 - [ ] Extract `classifyAdoptForDrift(change, state) (AdoptRequest, bool, DomainError)` and `classifyAdoptForUnknown(change, assetDirs) (AdoptRequest, bool, DomainError)` helpers so the outer switch is one line per branch and the Adopt-classification rules live next to each other (mirrors the existing `classifyDesired` split from Plan).
-- [ ] Extract one helper per `ChangeKind` branch (`applyCreateUpdate`, `applyDrift`, `applyDelete`, `applyUnknown`) so the outer switch becomes a five-line dispatcher and each per-kind function sits at one level of abstraction.
+- [x] Extract one helper per `ChangeKind` branch (`applyCreateUpdate`, `applyDrift`, `applyDelete`, `applyUnknown`) so the outer switch becomes a five-line dispatcher and each per-kind function sits at one level of abstraction.
 - [ ] Leave as-is — 180 lines is above the guideline but the invariants are dense with tests and further refactor risks obscuring the accumulator pattern.
 
 ## `preserveDriftBaseline` closure duplicates the open-coded reset in `DriftAdopt`
 
 > [!WARNING]
+>
 > - [docs/guidelines/clean_code.md](../../../docs/guidelines/clean_code.md) — Needless repetition
 
 The closure at `sync.go:428` and the `DriftAdopt` branch at `sync.go:472-479`
@@ -270,11 +280,12 @@ if preview.ManagedState == nil {
 Pick one:
 
 - [ ] Restructure `DriftAdopt` so it calls `preserveDriftBaseline(change.Path)` for both the nil-state and legacy-v2 failure cases (the closure already handles both; drop the inline duplicate).
-- [ ] Promote the closure to a named method on a helper struct and route both call sites through it.
+- [x] Promote the closure to a named method on a helper struct and route both call sites through it.
 
 ## `owningAssetIDFor` duplicates the parent-walk in `owningAssetSourceRelFor`
 
 > [!WARNING]
+>
 > - [docs/guidelines/clean_code.md](../../../docs/guidelines/clean_code.md) — Needless repetition
 
 `owningAssetIDFor` (sync.go:915) and `owningAssetSourceRelFor` (sync.go:939)
@@ -287,12 +298,13 @@ separate implementations.
 
 Pick one:
 
-- [ ] Delete `owningAssetIDFor` and have Plan call `owningAssetSourceRelFor`, discarding the `sourceRel` return. One walk, one place to change.
+- [x] Delete `owningAssetIDFor` and have Plan call `owningAssetSourceRelFor`, discarding the `sourceRel` return. One walk, one place to change.
 - [ ] Keep the split for documentation but factor the walk into a private `walkToAssetDir(path, assetDirs) (dir string, entry assetDirEntry, ok bool)` used by both.
 
 ## `syncCommitOutcomeCmd` string-composition is brittle and untested
 
 > [!WARNING]
+>
 > - [docs/guidelines/clean_code.md](../../../docs/guidelines/clean_code.md) — Fragility
 > - [docs/guidelines/testing.md](../../../docs/guidelines/testing.md) — Assert Behavior
 
@@ -319,11 +331,71 @@ if adoptCommitted, ok := adopt.(appapi.Committed); ok {
 Pick one:
 
 - [ ] Extract a pure `mergeCommitText(base string, sync, adopt appapi.CommitOutcome) string` helper that builds a `[]string` of committed-fragments (`"committed <sha>"`, `"profile <sha>"`) and joins them with `"; "` inside a single trailing `" ("+…+")"` wrapper. Add a table-driven `TestMergeCommitText` covering all four Committed combinations plus the two Failed cases.
-- [ ] Rewrite `syncCommitOutcomeCmd` to compute `syncSHA` and `adoptSHA` locals up front (empty on non-`Committed`) and build the final string once from those. Add a table-driven test for the six cases and assert the returned `tea.Cmd` batches the expected warn toasts.
+- [x] Rewrite `syncCommitOutcomeCmd` to compute `syncSHA` and `adoptSHA` locals up front (empty on non-`Committed`) and build the final string once from those. Add a table-driven test for the six cases and assert the returned `tea.Cmd` batches the expected warn toasts.
+
+## Empty-apply records a spurious project-repo commit whose only diff is `last_applied_at`
+
+> [!WARNING]
+>
+> - [docs/guidelines/sync_and_safety.md](../../../docs/guidelines/sync_and_safety.md) — Plan/Apply must not record noise the user did not ask for
+> - [docs/guidelines/clean_code.md](../../../docs/guidelines/clean_code.md) — Avoid Side Effects
+
+`sync.Apply` unconditionally sets `state.LastAppliedAt = time.Now().UTC()`
+and writes `state.json` on every call (`internal/sync/sync.go:553`). When
+Plan showed no `create`/`update`/`drift`/`delete`/`unknown` mutations —
+i.e. the user hit Apply on a clean project — `result.Mutated` is empty
+and `result.AdoptRequests` is empty, but `result.StatePath` still points
+at the freshly-rewritten `state.json` whose timestamp differs from disk.
+`triggerSyncProject.Pathspec` then appends the state path, so
+`Service.Apply` calls `runCommit` with a one-entry pathspec. The git
+committer sees a non-empty content diff (the timestamp changed) and
+records a commit whose only content is the `last_applied_at` bump —
+noise in the project's `git log` that the user never authored.
+`triggerAdoptIntoProfile` already guards against this (see
+`executeAdoptRequests:408` — no commit unless `writtenPathspec` is
+non-empty); the sync trigger has no equivalent guard.
+
+```go
+// internal/sync/sync.go:549-558 — LastAppliedAt is always fresh, state.json always rewritten
+state := &ManagedState{
+    ProfileID:        preview.ProfileID,
+    ProjectID:        preview.ProjectID,
+    GeneratorVersion: GeneratorVersion,
+    LastAppliedAt:    time.Now().UTC(),
+    ManagedFiles:     recordedHashes,
+    IgnoredPaths:     normalizeIgnoredPaths(r.IgnoredPaths),
+}
+statePath := filepath.Join(preview.ProjectPath, config.StateDirName, config.StateFileName)
+if err := utils.WriteJSON(statePath, state); err != nil {
+```
+
+```go
+// internal/app/service.go:354-358 — commit fires even when Mutated is empty
+syncOutcome := s.runCommit(triggerSyncProject, commitTriggerCtx{
+    ProjectName:  proj.Name,
+    MutatedFiles: result.Mutated,     // may be []
+    StatePath:    result.StatePath,   // pathspec still carries state.json
+}, proj.Path)
+```
+
+Note: the fix must cover the whole "only bookkeeping changed" case, not
+just the trivial no-changes-at-all case. `DriftKeep` and `UnknownKeep`
+resolutions both leave `result.Mutated` empty yet still cause
+`recordedHashes` / `IgnoredPaths` to diverge from the prior state file
+in ways that legitimately warrant persisting — those are not empty
+applies. The rule is "no _managed-file mutation_ → no project-repo
+commit", not "state.json unchanged → skip".
+
+Pick one:
+
+- [ ] Guard the trigger at the service level: in `Service.Apply`, only call `runCommit(triggerSyncProject, ...)` when `len(result.Mutated) > 0`; return `appapi.Skipped{Reason: appapi.SkipEmptyDiff}` otherwise. Mirrors the existing `executeAdoptRequests` guard (`len(writtenPathspec) == 0 → skip`). Add `TestService_Apply_NoMutations_SkipsSyncCommit` (fakeCommitter records zero calls when Plan is clean) and `TestService_Apply_DriftKeepOnly_SkipsSyncCommit`.
+- [ ] Guard inside the trigger definition: `triggerSyncProject.Pathspec` returns `nil` when `len(c.MutatedFiles) == 0`, and `runCommit` short-circuits an empty pathspec to `Skipped{SkipEmptyDiff}` before calling the committer. Same test coverage as option 1, plus a unit test on the pathspec function.
+- [x] Preserve `LastAppliedAt` from the prior state when `len(mutated) == 0 && len(adoptRequests) == 0 && recordedHashes` matches the prior `ManagedFiles` and ignored paths match — then `state.json` is byte-identical and the existing `git commit` empty-diff path (`git.go:57` → `SkipEmptyDiff`) catches it naturally. Adds behaviour to `sync.Apply` rather than the caller; more invariants to reason about, but keeps the guard in one place.
 
 ## Test coverage gaps in the Adopt boundary
 
 > [!WARNING]
+>
 > - [docs/guidelines/testing.md](../../../docs/guidelines/testing.md) — Cross-Boundary Integration, Smallest Useful Test
 
 Several new pieces lack direct coverage:
@@ -340,13 +412,14 @@ writtenPathspec = append(writtenPathspec,
 
 Pick one:
 
-- [ ] Add all three: `internal/asset/files_test.go` with table-driven negative cases for `WriteFile` (dotfile, `..`, `asset.json`, symlink); a peer test `TestService_Apply_AdoptRepoFileMissingSurfacesReadError` in `internal/app` that removes the repo file before Apply and asserts `errors.As(&AdoptReadError{})` plus peer-success in a two-request batch; `TestService_Apply_Adopt_RealGitRecordsProfileCommit` mirroring `TestApply_RealGitRecordsProjectCommit`.
+- [x] Add all three: `internal/asset/files_test.go` with table-driven negative cases for `WriteFile` (dotfile, `..`, `asset.json`, symlink); a peer test `TestService_Apply_AdoptRepoFileMissingSurfacesReadError` in `internal/app` that removes the repo file before Apply and asserts `errors.As(&AdoptReadError{})` plus peer-success in a two-request batch; `TestService_Apply_Adopt_RealGitRecordsProfileCommit` mirroring `TestApply_RealGitRecordsProjectCommit`.
 - [ ] Add only the real-git test (highest bug-catching value given ADR 0042 precedent); defer the other two to a follow-up test-hardening task.
 - [ ] Add only the `asset.WriteFile` negative tests plus the `AdoptReadError` peer test; defer the real-git test to a follow-up.
 
 ## `time` import is in the wrong group
 
 > [!WARNING]
+>
 > - [docs/guidelines/go.md](../../../docs/guidelines/go.md) — package cohesion / gofmt conventions
 
 `internal/app/service.go:26` places `"time"` in the module-path import
@@ -374,11 +447,12 @@ import (
 Pick one:
 
 - [ ] Move `"time"` into the stdlib group with `"errors"`, `"io/fs"`, etc.
-- [ ] Move it and wire `goimports` into `make lint` so this class of drift is caught automatically.
+- [x] Move it and wire `goimports` into `make lint` so this class of drift is caught automatically.
 
 ## `path` field name shadows imported `path` package in `plan_project.go`
 
 > [!WARNING]
+>
 > - [docs/guidelines/clean_code.md](../../../docs/guidelines/clean_code.md) — Naming, opacity
 
 `internal/tui/shell/plan_project.go:6` imports `"path"`, and `planNode`
@@ -391,11 +465,12 @@ error.
 Pick one:
 
 - [ ] Rename the local variable(s) to `dirPath` (matching the field's semantics: a directory key on dir rows).
-- [ ] Alias the import as `pathpkg "path"`, matching the convention already used in `internal/sync/sync.go`.
+- [x] Alias the import as `pathpkg "path"`, matching the convention already used in `internal/sync/sync.go`.
 
 ## Glossary and ADR lag the new Adopt vocabulary
 
 > [!WARNING]
+>
 > - [docs/guidelines/domain_model.md](../../../docs/guidelines/domain_model.md) — Use The Project Language
 > - [docs/guidelines/documentation.md](../../../docs/guidelines/documentation.md) — document current reality
 
@@ -410,5 +485,5 @@ consequence is not recorded:
 
 Pick one:
 
-- [ ] Update all five glossary entries above (add `## Adopt Request`, `## Managed File Entry`; extend Source Of Truth, Commit Trigger, File Change); also add the half-populated-v3-is-corruption invariant to ADR 0020's Consequences section.
+- [x] Update all five glossary entries above (add `## Adopt Request`, `## Managed File Entry`; extend Source Of Truth, Commit Trigger, File Change); also add the half-populated-v3-is-corruption invariant to ADR 0020's Consequences section.
 - [ ] Update the three highest-visibility items (Source Of Truth carve-out, Commit Trigger fourth point, new `## Adopt Request` entry); defer `Managed File Entry` and File Change tweaks to a follow-up docs task.

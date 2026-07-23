@@ -52,25 +52,49 @@ func commitOutcomeCmd(base string, outcome appapi.CommitOutcome) tea.Cmd {
 //   - adopt Committed only → "Project synced (profile <adopt>)"
 //   - neither Committed → base unchanged.
 func syncCommitOutcomeCmd(base string, sync, adopt appapi.CommitOutcome) tea.Cmd {
-	text := base
-	var warns []tea.Cmd
-	if syncCommitted, ok := sync.(appapi.Committed); ok {
-		text = base + " (committed " + syncCommitted.SHA + ")"
-	} else if failed, ok := sync.(appapi.Failed); ok {
-		warns = append(warns, notificationCmd(failed.Err.Severity(), failed.Err.Error()))
-	}
-	if adoptCommitted, ok := adopt.(appapi.Committed); ok {
-		if text == base {
-			text = base + " (profile " + adoptCommitted.SHA + ")"
-		} else {
-			text = text[:len(text)-1] + "; profile " + adoptCommitted.SHA + ")"
-		}
-	} else if failed, ok := adopt.(appapi.Failed); ok {
-		warns = append(warns, notificationCmd(failed.Err.Severity(), failed.Err.Error()))
-	}
+	text := mergeCommitText(base, sync, adopt)
+	warns := commitFailedCmds(sync, adopt)
 	info := notificationCmd(errs.SeverityInfo, text)
 	if len(warns) == 0 {
 		return info
 	}
 	return tea.Batch(append([]tea.Cmd{info}, warns...)...)
+}
+
+// mergeCommitText builds the merged success line from base plus any
+// committed SHAs. Compose from locals (syncSHA/adoptSHA) instead of
+// rewriting the trailing ")" so a future new outcome variant cannot
+// silently trim the wrong character. See task 0035 review issue #10.
+func mergeCommitText(base string, sync, adopt appapi.CommitOutcome) string {
+	var syncSHA, adoptSHA string
+	if c, ok := sync.(appapi.Committed); ok {
+		syncSHA = c.SHA
+	}
+	if c, ok := adopt.(appapi.Committed); ok {
+		adoptSHA = c.SHA
+	}
+	switch {
+	case syncSHA != "" && adoptSHA != "":
+		return base + " (committed " + syncSHA + "; profile " + adoptSHA + ")"
+	case syncSHA != "":
+		return base + " (committed " + syncSHA + ")"
+	case adoptSHA != "":
+		return base + " (profile " + adoptSHA + ")"
+	default:
+		return base
+	}
+}
+
+// commitFailedCmds collects notification commands for the Failed
+// variant of each outcome, in sync-then-adopt order so the batch is
+// deterministic.
+func commitFailedCmds(sync, adopt appapi.CommitOutcome) []tea.Cmd {
+	var warns []tea.Cmd
+	if failed, ok := sync.(appapi.Failed); ok {
+		warns = append(warns, notificationCmd(failed.Err.Severity(), failed.Err.Error()))
+	}
+	if failed, ok := adopt.(appapi.Failed); ok {
+		warns = append(warns, notificationCmd(failed.Err.Severity(), failed.Err.Error()))
+	}
+	return warns
 }

@@ -978,7 +978,7 @@ func TestPreview_ChangeUnknown_LeavesOwningAssetIDEmptyForAmbiguousDir(t *testin
 	if _, ok := dirs[".claude/skills/shared"]; ok {
 		t.Fatalf("assetProjectionDirs kept ambiguous dir: %+v", dirs)
 	}
-	if got := owningAssetIDFor(".claude/skills/shared/new.md", dirs); got != "" {
+	if got, _, _ := owningAssetSourceRelFor(".claude/skills/shared/new.md", dirs); got != "" {
 		t.Fatalf("OwningAssetID for ambiguous dir = %q, want empty", got)
 	}
 }
@@ -1250,5 +1250,63 @@ func TestApply_DriftKeep_UpgradesV2LegacyProvenance(t *testing.T) {
 			t.Fatalf("DriftAdopt still unavailable after Keep-upgrade: %v", adoptErr)
 		}
 		t.Fatalf("Apply(DriftAdopt): %v", adoptErr)
+	}
+}
+
+// TestPlan_CorruptStateSourceRel_ReturnsTypedError pins that a
+// hand-crafted state.json whose SourceRel escapes the asset folder
+// (via "..") is rejected at load time with StateCorruptError. Defense
+// in depth: asset.ResolveRelative would catch the write, but the load
+// gate stops the tampered entry before Adopt reaches for it. See task
+// 0035 review issue #3.
+func TestPlan_CorruptStateSourceRel_ReturnsTypedError(t *testing.T) {
+	projectRoot := t.TempDir()
+	loaded, proj := setupProfileAndProject(t, projectRoot)
+	writeStateEntries(t, projectRoot, map[string]ManagedFileEntry{
+		"AGENTS.md": {Hash: "previous", AssetID: "base", SourceRel: "../../etc/passwd"},
+	}, nil)
+
+	_, err := Plan(loaded, proj)
+	if err == nil {
+		t.Fatalf("expected StateCorruptError, got nil")
+	}
+	var corrupt StateCorruptError
+	if !errors.As(err, &corrupt) {
+		t.Fatalf("expected StateCorruptError, got %T: %v", err, err)
+	}
+}
+
+// TestPlan_CorruptStateHalfPopulatedV3_ReturnsTypedError covers the
+// "one of AssetID/SourceRel set, not both" wiring bug. A v2 legacy
+// entry carries neither; a v3 entry carries both; anything in between
+// is corruption.
+func TestPlan_CorruptStateHalfPopulatedV3_ReturnsTypedError(t *testing.T) {
+	projectRoot := t.TempDir()
+	loaded, proj := setupProfileAndProject(t, projectRoot)
+	writeStateEntries(t, projectRoot, map[string]ManagedFileEntry{
+		"AGENTS.md": {Hash: "previous", AssetID: "base"},
+	}, nil)
+
+	_, err := Plan(loaded, proj)
+	var corrupt StateCorruptError
+	if !errors.As(err, &corrupt) {
+		t.Fatalf("expected StateCorruptError, got %T: %v", err, err)
+	}
+}
+
+// TestPlan_CorruptStateWhitespaceOnlyAssetID_ReturnsTypedError covers
+// the whitespace-only-slip case: `" "` for AssetID must be rejected
+// like `""`.
+func TestPlan_CorruptStateWhitespaceOnlyAssetID_ReturnsTypedError(t *testing.T) {
+	projectRoot := t.TempDir()
+	loaded, proj := setupProfileAndProject(t, projectRoot)
+	writeStateEntries(t, projectRoot, map[string]ManagedFileEntry{
+		"AGENTS.md": {Hash: "previous", AssetID: " ", SourceRel: "AGENTS.md"},
+	}, nil)
+
+	_, err := Plan(loaded, proj)
+	var corrupt StateCorruptError
+	if !errors.As(err, &corrupt) {
+		t.Fatalf("expected StateCorruptError, got %T: %v", err, err)
 	}
 }

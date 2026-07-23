@@ -188,6 +188,18 @@ type Failed struct {
 
 func (Failed) isCommitOutcome() {}
 
+// ApplyOutcome bundles the results of one Apply call. Preview is the
+// boundary preview the caller renders; Sync is the target-repo commit
+// outcome; Adopt is the profile-repo commit outcome from the ADR 0020
+// reverse-flow (Skipped{SkipDisabled} when no Adopt requests happened).
+// Named fields eliminate the swap risk of two positional CommitOutcome
+// return values (see task 0035 review).
+type ApplyOutcome struct {
+	Preview *Preview
+	Sync    CommitOutcome
+	Adopt   CommitOutcome
+}
+
 // RegisterableDirs returns the set of directory keys in changes that
 // are eligible for asset registration. Thin adapter over
 // surfaces.RegisterableFolders: copies the change-kind classification

@@ -33,12 +33,11 @@ func (a *Actions) PlanProject(in PlanProjectInput) (*appapi.Preview, errs.Domain
 // honoring the per-file Drift and Unknown resolutions plus the ignored
 // folder keys in the input. When git integration is enabled and the
 // target repo is a git repository a single scoped commit is recorded
-// after the file writes succeed; the outcome rides on the first
-// returned CommitOutcome. When Adopt resolutions land, a second commit
-// is recorded on the profile repo and its outcome rides on the second
-// CommitOutcome (Skipped{SkipDisabled} when no Adopt requests
-// happened). See ADR 0020.
-func (a *Actions) SyncProject(in SyncProjectInput) (*appapi.Preview, appapi.CommitOutcome, appapi.CommitOutcome, errs.DomainError) {
+// after the file writes succeed; the outcome rides on ApplyOutcome.Sync.
+// When Adopt resolutions land, a second commit is recorded on the
+// profile repo and its outcome rides on ApplyOutcome.Adopt
+// (Skipped{SkipDisabled} when no Adopt requests happened). See ADR 0020.
+func (a *Actions) SyncProject(in SyncProjectInput) (appapi.ApplyOutcome, errs.DomainError) {
 	return a.svc.Apply(in.ProfileRef, in.ProjectID, appapi.Resolutions{
 		Drift:        in.Drift,
 		Unknown:      in.Unknown,

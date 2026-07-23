@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sync"
+	"time"
 
 	"github.com/hexworks/agentfiles/internal/appapi"
 	"github.com/hexworks/agentfiles/internal/asset"
@@ -23,7 +24,6 @@ import (
 	"github.com/hexworks/agentfiles/internal/surfaces"
 	llmsync "github.com/hexworks/agentfiles/internal/sync"
 	"github.com/hexworks/agentfiles/internal/utils"
-	"time"
 )
 
 // Service is the thin application layer used by the TUI.
@@ -326,18 +326,18 @@ func previewFromSync(p *llmsync.Preview) *appapi.Preview {
 // returned CommitOutcome carries the specific outcome (Committed,
 // Skipped, or Failed); a hard commit failure never rolls back the file
 // writes (they already happened).
-func (s *Service) Apply(profileRef, projectID string, r appapi.Resolutions) (*appapi.Preview, appapi.CommitOutcome, appapi.CommitOutcome, errs.DomainError) {
+func (s *Service) Apply(profileRef, projectID string, r appapi.Resolutions) (appapi.ApplyOutcome, errs.DomainError) {
 	skipDisabled := appapi.Skipped{Reason: appapi.SkipDisabled}
 	loaded, proj, projErr := s.resolveProject(profileRef, projectID)
 	if projErr != nil {
-		return nil, skipDisabled, skipDisabled, projErr
+		return appapi.ApplyOutcome{Sync: skipDisabled, Adopt: skipDisabled}, projErr
 	}
 	syncPreview, err := llmsync.Plan(loaded.Profile, proj)
 	if err != nil {
-		return nil, skipDisabled, skipDisabled, err
+		return appapi.ApplyOutcome{Sync: skipDisabled, Adopt: skipDisabled}, err
 	}
 	if eligErr := s.assertIgnoredRegisterable(syncPreview, r.IgnoredPaths); eligErr != nil {
-		return nil, skipDisabled, skipDisabled, eligErr
+		return appapi.ApplyOutcome{Sync: skipDisabled, Adopt: skipDisabled}, eligErr
 	}
 	syncResolutions := llmsync.Resolutions{
 		Drift:        toSyncDriftResolutions(r.Drift),
@@ -357,17 +357,21 @@ func (s *Service) Apply(profileRef, projectID string, r appapi.Resolutions) (*ap
 		StatePath:    result.StatePath,
 	}, proj.Path)
 	adoptOutcome, adoptErrs := s.executeAdoptRequests(loaded, proj, result.AdoptRequests)
-	preview := previewFromSync(syncPreview)
+	outcome := appapi.ApplyOutcome{
+		Preview: previewFromSync(syncPreview),
+		Sync:    syncOutcome,
+		Adopt:   adoptOutcome,
+	}
 	if applyErr != nil {
 		if len(adoptErrs) > 0 {
-			return preview, syncOutcome, adoptOutcome, errs.Errors(append([]errs.DomainError{applyErr}, adoptErrs...))
+			return outcome, errs.Errors(append([]errs.DomainError{applyErr}, adoptErrs...))
 		}
-		return preview, syncOutcome, adoptOutcome, applyErr
+		return outcome, applyErr
 	}
 	if len(adoptErrs) > 0 {
-		return preview, syncOutcome, adoptOutcome, errs.Errors(adoptErrs)
+		return outcome, errs.Errors(adoptErrs)
 	}
-	return preview, syncOutcome, adoptOutcome, nil
+	return outcome, nil
 }
 
 // executeAdoptRequests writes each adopt request's local body back
@@ -390,16 +394,30 @@ func (s *Service) executeAdoptRequests(loaded *appapi.LoadedProfile, proj *proje
 	for _, req := range requests {
 		target := loaded.Profile.Assets[req.AssetID]
 		if target == nil {
-			failures = append(failures, llmsync.AdoptUnavailableError{Path: req.Path, Reason: "profile asset missing"})
+			failures = append(failures, AdoptTargetMissingError{Path: req.Path, AssetID: req.AssetID})
 			continue
 		}
 		abs := filepath.Join(proj.Path, filepath.FromSlash(req.Path))
+		// Refuse to read through a symlink: an attacker who swaps a
+		// managed file for a symlink to /etc/passwd (or ~/.ssh/id_rsa,
+		// .env, etc.) would otherwise see the target bytes copied into
+		// the profile asset and — with git enabled — pushed to any
+		// remote. Mirrors the sync-side write guard on writeRendered.
+		// See task 0035 review issue #1.
+		if info, err := os.Lstat(abs); err == nil && info.Mode()&os.ModeSymlink != 0 {
+			failures = append(failures, llmsync.UnsafeSymlinkError{Path: abs})
+			continue
+		}
 		body, readErr := os.ReadFile(abs)
 		if readErr != nil {
 			failures = append(failures, AdoptReadError{Path: req.Path, Err: readErr})
 			continue
 		}
-		if writeErr := asset.WriteFile(target.Dir, req.SourceRel, body, 0o644); writeErr != nil {
+		mode := req.Mode
+		if mode == 0 {
+			mode = 0o644
+		}
+		if writeErr := asset.WriteFile(target.Dir, req.SourceRel, body, mode); writeErr != nil {
 			failures = append(failures, writeErr)
 			continue
 		}

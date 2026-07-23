@@ -77,13 +77,13 @@ func (f *fakeSelectActions) PlanProject(in actions.PlanProjectInput) (*appapi.Pr
 	return f.preview, nil
 }
 
-func (f *fakeSelectActions) SyncProject(in actions.SyncProjectInput) (*appapi.Preview, appapi.CommitOutcome, appapi.CommitOutcome, errs.DomainError) {
+func (f *fakeSelectActions) SyncProject(in actions.SyncProjectInput) (appapi.ApplyOutcome, errs.DomainError) {
 	f.syncInputs = append(f.syncInputs, in)
 	skip := appapi.Skipped{Reason: appapi.SkipDisabled}
 	if f.syncErr != nil {
-		return nil, skip, skip, f.syncErr
+		return appapi.ApplyOutcome{Sync: skip, Adopt: skip}, f.syncErr
 	}
-	return f.preview, skip, skip, nil
+	return appapi.ApplyOutcome{Preview: f.preview, Sync: skip, Adopt: skip}, nil
 }
 
 func (f *fakeSelectActions) CreateAssetFromFolder(in actions.CreateAssetFromFolderInput) (string, errs.DomainError) {

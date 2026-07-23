@@ -136,16 +136,28 @@ build:
 test:
 	go test ./...
 
-# lint: Run Go's built-in static analysis tool.
+# lint: Run Go's built-in static analysis tool plus a goimports drift check.
 #
 #   go vet checks for common mistakes that the compiler doesn't catch, such as
 #   unreachable code, incorrect format strings, or suspicious constructs.
 #   It's not a full linter (like golangci-lint) but catches many bugs.
 #
+#   The goimports gate rejects any file whose import block does not match the
+#   canonical stdlib-then-third-party layout so a stray import in the wrong
+#   group (see task 0035 review issue #13) fails CI instead of sailing through
+#   gofmt.
+#
 # Usage: make lint
 
 lint:
 	go vet ./...
+	@command -v goimports >/dev/null 2>&1 || { echo "goimports missing (go install golang.org/x/tools/cmd/goimports@latest)"; exit 1; }
+	@drift=$$(goimports -l .); \
+		if [ -n "$$drift" ]; then \
+			echo "goimports drift detected in:"; \
+			echo "$$drift"; \
+			exit 1; \
+		fi
 
 # fmt: Auto-format all Go source files.
 #

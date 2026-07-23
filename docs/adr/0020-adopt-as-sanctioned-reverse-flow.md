@@ -97,3 +97,9 @@ Adopt as the sole exception.
 - Documentation follows: glossary gains an **Adopt** entry, arc42
   building-block / runtime / concepts chapters describe the flow, the
   drift-decision chapter switches to a three-way cycle.
+- Schema v3 rows must carry `asset_id` and `source_rel` together or
+  not at all. A half-populated entry (only one of the two set) is a
+  wiring bug and `loadState` rejects the whole file with
+  `StateCorruptError` instead of silently disabling Adopt. Legacy v2
+  rows (both fields absent) remain valid input and load Adopt-disabled
+  until re-applied.

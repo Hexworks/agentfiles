@@ -285,11 +285,12 @@ func Plan(p *profile.Profile, proj *project.Manifest) (*Preview, errs.DomainErro
 			changes = append(changes, FileChange{Path: pth, Kind: ChangeDelete, Reason: ReasonStateRecordedDelete})
 		}
 		for _, pth := range unknowns {
+			assetID, _, _ := owningAssetSourceRelFor(pth, assetDirs)
 			changes = append(changes, FileChange{
 				Path:          pth,
 				Kind:          ChangeUnknown,
 				Reason:        ReasonUnknown,
-				OwningAssetID: owningAssetIDFor(pth, assetDirs),
+				OwningAssetID: assetID,
 			})
 		}
 	}
@@ -317,6 +318,14 @@ func classifyDesired(file render.RenderedFile, desiredHash, projectPath string, 
 		return FileChange{Path: file.Path, Kind: ChangeCreate, Reason: ReasonFirstApply}, false, nil
 	}
 	abs := filepath.Join(projectPath, filepath.FromSlash(file.Path))
+	// Reject a symlinked managed file: hashing follows the link, so a
+	// classified drift would let an attacker exfiltrate an arbitrary
+	// file through the Adopt reverse-write. Refuse at classify time so
+	// no downstream branch (drift/update/adopt) sees the symlinked
+	// entry. See task 0035 review issue #1.
+	if info, err := os.Lstat(abs); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		return FileChange{}, false, UnsafeSymlinkError{Path: abs}
+	}
 	if !utils.Exists(abs) {
 		return FileChange{Path: file.Path, Kind: ChangeCreate, Reason: ReasonFileMissing}, false, nil
 	}
@@ -357,11 +366,15 @@ type ApplyResult struct {
 // AdoptRequest names one repo-relative file whose local content should
 // replace the profile source it was rendered from. AssetID and
 // SourceRel identify the target asset file:
-// <profile>/assets/<asset.Type>/<AssetID>/<SourceRel>.
+// <profile>/assets/<asset.Type>/<AssetID>/<SourceRel>. Mode preserves
+// the on-disk mode of the source file (rendered mode for drift, actual
+// file mode for unknown) so the profile write is not silently
+// normalized to 0o644.
 type AdoptRequest struct {
 	Path      string
 	AssetID   string
 	SourceRel string
+	Mode      os.FileMode
 }
 
 // Apply materializes the preview into the repository using the user's
@@ -398,178 +411,267 @@ func Apply(preview *Preview, r Resolutions) (ApplyResult, errs.DomainError) {
 	if len(validationErrs) > 0 {
 		return ApplyResult{}, errs.Errors(validationErrs)
 	}
-	bodiesByPath := map[string]render.RenderedFile{}
-	// Pre-fill the state baseline with the rendered hash and provenance
-	// (AssetID + SourceRel) of every desired file. This is the correct
-	// baseline for clean, created, updated, and overwritten paths; only
-	// the ChangeDrift branch below overrides it with the prior baseline
-	// (ADR 0015).
-	recordedHashes := map[string]ManagedFileEntry{}
-	for _, f := range preview.Files {
-		bodiesByPath[f.Path] = f
-		recordedHashes[f.Path] = ManagedFileEntry{
-			Hash:      utils.HashBytes(f.Body),
-			AssetID:   f.AssetID,
-			SourceRel: f.SourceRel,
-		}
-	}
-	var (
-		domainErrs    []errs.DomainError
-		mutated       []string
-		adoptRequests []AdoptRequest
-	)
-	track := func(rel string) {
-		mutated = append(mutated, filepath.Join(preview.ProjectPath, filepath.FromSlash(rel)))
-	}
-	// Compute the reverse-mapping table from the rendered plan so
-	// unknown-Adopt can resolve owning asset id + source_rel without
-	// re-walking assets. Cheap: one pass over preview.Files.
-	assetDirs := assetProjectionDirs(preview.Files)
-	preserveDriftBaseline := func(path string) {
-		if preview.ManagedState == nil {
-			domainErrs = append(domainErrs, PreviewInvariantError{
-				Kind:   "ChangeDrift",
-				Reason: "ManagedState nil",
-			})
-			delete(recordedHashes, path)
-			return
-		}
-		prior := preview.ManagedState.ManagedFiles[path]
-		if prior.Hash == "" {
-			delete(recordedHashes, path)
-			return
-		}
-		fresh := recordedHashes[path]
-		recordedHashes[path] = ManagedFileEntry{
-			Hash:      prior.Hash,
-			AssetID:   fresh.AssetID,
-			SourceRel: fresh.SourceRel,
-		}
-	}
+	loop := newApplyLoop(preview, driftByPath, unknownByPath)
 	for _, change := range preview.Changes {
 		if !surfaces.IsAllowed(change.Path) {
-			domainErrs = append(domainErrs, OutsideSurfaceError{Path: change.Path})
+			loop.domainErrs = append(loop.domainErrs, OutsideSurfaceError{Path: change.Path})
 			continue
 		}
 		switch change.Kind {
 		case ChangeCreate, ChangeUpdate:
-			if err := writeRendered(preview.ProjectPath, bodiesByPath[change.Path]); err != nil {
-				domainErrs = append(domainErrs, err)
-				continue
-			}
-			track(change.Path)
-			// Hash already pre-filled with rendered body.
+			loop.applyCreateUpdate(change)
 		case ChangeDrift:
-			switch driftByPath[change.Path] {
-			case DriftOverwrite:
-				if err := writeRendered(preview.ProjectPath, bodiesByPath[change.Path]); err != nil {
-					domainErrs = append(domainErrs, err)
-					continue
-				}
-				track(change.Path)
-				// Pre-filled rendered hash is correct after overwrite.
-			case DriftAdopt:
-				// Adopt: the local body is authoritative. Look up the
-				// reverse-mapping keys from the prior baseline; a v2
-				// legacy entry (Hash only) means Adopt cannot resolve
-				// the profile-side target, so we surface a typed error
-				// and fall through to the preserve-baseline branch so
-				// the row stays classified as drift on the next plan.
-				if preview.ManagedState == nil {
-					domainErrs = append(domainErrs, PreviewInvariantError{
-						Kind:   "ChangeDrift",
-						Reason: "ManagedState nil",
-					})
-					delete(recordedHashes, change.Path)
-					continue
-				}
-				prior := preview.ManagedState.ManagedFiles[change.Path]
-				if prior.AssetID == "" || prior.SourceRel == "" {
-					domainErrs = append(domainErrs, AdoptUnavailableError{
-						Path:   change.Path,
-						Reason: "legacy v2 state entry missing asset provenance",
-					})
-					preserveDriftBaseline(change.Path)
-					continue
-				}
-				adoptRequests = append(adoptRequests, AdoptRequest{
-					Path:      change.Path,
-					AssetID:   prior.AssetID,
-					SourceRel: prior.SourceRel,
-				})
-				preserveDriftBaseline(change.Path)
-			default:
-				// DriftKeep (or unrecognized): preserve prior baseline
-				// so the path stays classified as drift on the next
-				// plan (ADR 0015).
-				preserveDriftBaseline(change.Path)
-			}
+			loop.applyDrift(change)
 		case ChangeDelete:
-			if err := removeFile(preview.ProjectPath, change.Path); err != nil {
-				domainErrs = append(domainErrs, err)
-				continue
-			}
-			track(change.Path)
-			// Deleted paths are never in preview.Files, so the
-			// pre-filled map already excludes them.
+			loop.applyDelete(change)
 		case ChangeUnknown:
-			switch unknownByPath[change.Path] {
-			case UnknownDelete:
-				if err := removeFile(preview.ProjectPath, change.Path); err != nil {
-					domainErrs = append(domainErrs, err)
-					continue
-				}
-				track(change.Path)
-			case UnknownAdopt:
-				if change.OwningAssetID == "" {
-					domainErrs = append(domainErrs, AdoptUnavailableError{
-						Path:   change.Path,
-						Reason: "unknown file has no owning asset",
-					})
-					continue
-				}
-				assetID, sourceRel, ok := owningAssetSourceRelFor(change.Path, assetDirs)
-				if !ok || assetID == "" || sourceRel == "" {
-					domainErrs = append(domainErrs, AdoptUnavailableError{
-						Path:   change.Path,
-						Reason: "reverse-mapping failed",
-					})
-					continue
-				}
-				adoptRequests = append(adoptRequests, AdoptRequest{
-					Path:      change.Path,
-					AssetID:   assetID,
-					SourceRel: sourceRel,
-				})
-			}
-			// UnknownKeep (default) and unresolved Adopt: nothing else
-			// to record on state.
+			loop.applyUnknown(change)
 		}
+	}
+	ignoredNormalized := normalizeIgnoredPaths(r.IgnoredPaths)
+	// Preserve the prior LastAppliedAt when nothing effectively
+	// changed: no managed-file mutations, no adopt requests, the
+	// recorded baseline map matches the prior one, and the ignored set
+	// matches. That leaves state.json byte-identical on disk so the
+	// git commit's empty-diff path skips naturally, avoiding a spurious
+	// project-repo commit whose only diff would be the timestamp bump.
+	// See task 0035 review issue #11.
+	lastAppliedAt := time.Now().UTC()
+	if len(loop.mutated) == 0 && len(loop.adoptRequests) == 0 && preview.ManagedState != nil &&
+		managedFilesEqual(loop.recordedHashes, preview.ManagedState.ManagedFiles) &&
+		slices.Equal(ignoredNormalized, preview.ManagedState.IgnoredPaths) {
+		lastAppliedAt = preview.ManagedState.LastAppliedAt
 	}
 	state := &ManagedState{
 		ProfileID:        preview.ProfileID,
 		ProjectID:        preview.ProjectID,
 		GeneratorVersion: GeneratorVersion,
-		LastAppliedAt:    time.Now().UTC(),
-		ManagedFiles:     recordedHashes,
-		IgnoredPaths:     normalizeIgnoredPaths(r.IgnoredPaths),
+		LastAppliedAt:    lastAppliedAt,
+		ManagedFiles:     loop.recordedHashes,
+		IgnoredPaths:     ignoredNormalized,
 	}
 	statePath := filepath.Join(preview.ProjectPath, config.StateDirName, config.StateFileName)
 	if err := utils.WriteJSON(statePath, state); err != nil {
-		domainErrs = append(domainErrs, err)
+		loop.domainErrs = append(loop.domainErrs, err)
 	}
-	slices.Sort(mutated)
-	slices.SortFunc(adoptRequests, func(a, b AdoptRequest) int {
+	slices.Sort(loop.mutated)
+	slices.SortFunc(loop.adoptRequests, func(a, b AdoptRequest) int {
 		return strings.Compare(a.Path, b.Path)
 	})
-	result := ApplyResult{Mutated: mutated, StatePath: statePath, AdoptRequests: adoptRequests}
-	if len(domainErrs) == 0 {
+	result := ApplyResult{Mutated: loop.mutated, StatePath: statePath, AdoptRequests: loop.adoptRequests}
+	if len(loop.domainErrs) == 0 {
 		return result, nil
 	}
-	if len(domainErrs) == 1 {
-		return result, domainErrs[0]
+	if len(loop.domainErrs) == 1 {
+		return result, loop.domainErrs[0]
 	}
-	return result, errs.Errors(domainErrs)
+	return result, errs.Errors(loop.domainErrs)
+}
+
+// applyLoop holds the per-Apply mutable state so the per-ChangeKind
+// helpers can be plain methods instead of closures. Splitting the
+// dispatch this way lets each branch sit at one level of abstraction —
+// the outer switch reads as pure dispatch, each helper owns the
+// classification rules for its kind (see task 0035 review issue #7).
+type applyLoop struct {
+	preview        *Preview
+	driftByPath    map[string]DriftDecision
+	unknownByPath  map[string]UnknownDecision
+	bodiesByPath   map[string]render.RenderedFile
+	recordedHashes map[string]ManagedFileEntry
+	assetDirs      map[string]assetDirEntry
+	mutated        []string
+	adoptRequests  []AdoptRequest
+	domainErrs     []errs.DomainError
+}
+
+func newApplyLoop(preview *Preview, drift map[string]DriftDecision, unknown map[string]UnknownDecision) *applyLoop {
+	bodies := make(map[string]render.RenderedFile, len(preview.Files))
+	// Pre-fill the state baseline with the rendered hash and provenance
+	// (AssetID + SourceRel) of every desired file. This is the correct
+	// baseline for clean, created, updated, and overwritten paths; only
+	// the ChangeDrift branch overrides it with the prior baseline (ADR
+	// 0015).
+	recorded := make(map[string]ManagedFileEntry, len(preview.Files))
+	for _, f := range preview.Files {
+		bodies[f.Path] = f
+		recorded[f.Path] = ManagedFileEntry{
+			Hash:      utils.HashBytes(f.Body),
+			AssetID:   f.AssetID,
+			SourceRel: f.SourceRel,
+		}
+	}
+	return &applyLoop{
+		preview:        preview,
+		driftByPath:    drift,
+		unknownByPath:  unknown,
+		bodiesByPath:   bodies,
+		recordedHashes: recorded,
+		assetDirs:      assetProjectionDirs(preview.Files),
+	}
+}
+
+// track records rel as an absolute pathspec entry for the sync commit.
+func (a *applyLoop) track(rel string) {
+	a.mutated = append(a.mutated, filepath.Join(a.preview.ProjectPath, filepath.FromSlash(rel)))
+}
+
+// preserveDriftBaseline keeps the prior baseline hash for path so a
+// kept drift stays classified as drift on the next plan (ADR 0015),
+// while still upgrading legacy v2 provenance from the freshly rendered
+// plan. Callers reach for it from every branch that leaves the on-disk
+// file unchanged.
+func (a *applyLoop) preserveDriftBaseline(path string) {
+	if a.preview.ManagedState == nil {
+		a.domainErrs = append(a.domainErrs, PreviewInvariantError{
+			Kind:   "ChangeDrift",
+			Reason: "ManagedState nil",
+		})
+		delete(a.recordedHashes, path)
+		return
+	}
+	prior := a.preview.ManagedState.ManagedFiles[path]
+	if prior.Hash == "" {
+		delete(a.recordedHashes, path)
+		return
+	}
+	fresh := a.recordedHashes[path]
+	a.recordedHashes[path] = ManagedFileEntry{
+		Hash:      prior.Hash,
+		AssetID:   fresh.AssetID,
+		SourceRel: fresh.SourceRel,
+	}
+}
+
+func (a *applyLoop) applyCreateUpdate(change FileChange) {
+	if err := writeRendered(a.preview.ProjectPath, a.bodiesByPath[change.Path]); err != nil {
+		a.domainErrs = append(a.domainErrs, err)
+		return
+	}
+	a.track(change.Path)
+}
+
+func (a *applyLoop) applyDrift(change FileChange) {
+	switch a.driftByPath[change.Path] {
+	case DriftOverwrite:
+		if err := writeRendered(a.preview.ProjectPath, a.bodiesByPath[change.Path]); err != nil {
+			a.domainErrs = append(a.domainErrs, err)
+			return
+		}
+		a.track(change.Path)
+	case DriftAdopt:
+		a.classifyDriftAdopt(change)
+	default:
+		// DriftKeep (or unrecognized): preserve prior baseline so the
+		// path stays classified as drift on the next plan (ADR 0015).
+		a.preserveDriftBaseline(change.Path)
+	}
+}
+
+// classifyDriftAdopt turns a DriftAdopt resolution into an AdoptRequest
+// after cross-checking the state-recorded reverse-mapping keys against
+// the freshly rendered plan. Without the cross-check a tampered
+// state.json entry could redirect the profile-side write into an
+// unrelated asset (task 0035 review issue #2).
+func (a *applyLoop) classifyDriftAdopt(change FileChange) {
+	if a.preview.ManagedState == nil {
+		a.domainErrs = append(a.domainErrs, PreviewInvariantError{
+			Kind:   "ChangeDrift",
+			Reason: "ManagedState nil",
+		})
+		delete(a.recordedHashes, change.Path)
+		return
+	}
+	prior := a.preview.ManagedState.ManagedFiles[change.Path]
+	if prior.AssetID == "" || prior.SourceRel == "" {
+		a.domainErrs = append(a.domainErrs, AdoptUnavailableError{
+			Path:   change.Path,
+			Reason: "legacy v2 state entry missing asset provenance",
+		})
+		a.preserveDriftBaseline(change.Path)
+		return
+	}
+	rendered, ok := a.bodiesByPath[change.Path]
+	if !ok || rendered.AssetID != prior.AssetID || rendered.SourceRel != prior.SourceRel {
+		a.domainErrs = append(a.domainErrs, AdoptUnavailableError{
+			Path:   change.Path,
+			Reason: "state provenance stale, re-plan",
+		})
+		a.preserveDriftBaseline(change.Path)
+		return
+	}
+	a.adoptRequests = append(a.adoptRequests, AdoptRequest{
+		Path:      change.Path,
+		AssetID:   prior.AssetID,
+		SourceRel: prior.SourceRel,
+		Mode:      rendered.Mode,
+	})
+	a.preserveDriftBaseline(change.Path)
+}
+
+func (a *applyLoop) applyDelete(change FileChange) {
+	if err := removeFile(a.preview.ProjectPath, change.Path); err != nil {
+		a.domainErrs = append(a.domainErrs, err)
+		return
+	}
+	a.track(change.Path)
+	// Deleted paths are never in preview.Files, so the pre-filled map
+	// already excludes them.
+}
+
+func (a *applyLoop) applyUnknown(change FileChange) {
+	switch a.unknownByPath[change.Path] {
+	case UnknownDelete:
+		if err := removeFile(a.preview.ProjectPath, change.Path); err != nil {
+			a.domainErrs = append(a.domainErrs, err)
+			return
+		}
+		a.track(change.Path)
+	case UnknownAdopt:
+		a.classifyUnknownAdopt(change)
+	}
+	// UnknownKeep (default) and unresolved Adopt: nothing else to
+	// record on state.
+}
+
+func (a *applyLoop) classifyUnknownAdopt(change FileChange) {
+	if change.OwningAssetID == "" {
+		a.domainErrs = append(a.domainErrs, AdoptUnavailableError{
+			Path:   change.Path,
+			Reason: "unknown file has no owning asset",
+		})
+		return
+	}
+	assetID, sourceRel, ok := owningAssetSourceRelFor(change.Path, a.assetDirs)
+	if !ok || assetID == "" || sourceRel == "" {
+		a.domainErrs = append(a.domainErrs, AdoptUnavailableError{
+			Path:   change.Path,
+			Reason: "reverse-mapping failed",
+		})
+		return
+	}
+	a.adoptRequests = append(a.adoptRequests, AdoptRequest{
+		Path:      change.Path,
+		AssetID:   assetID,
+		SourceRel: sourceRel,
+		Mode:      unknownAdoptMode(a.preview.ProjectPath, change.Path),
+	})
+}
+
+// managedFilesEqual reports whether two ManagedFileEntry maps are
+// element-wise identical. Used to detect a no-op Apply so state.json
+// stays byte-identical on disk (task 0035 review issue #11).
+func managedFilesEqual(a, b map[string]ManagedFileEntry) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		bv, ok := b[k]
+		if !ok || bv != v {
+			return false
+		}
+	}
+	return true
 }
 
 // normalizeIgnoredPaths writes the incoming ignored set verbatim (replace, not
@@ -699,11 +801,25 @@ func loadState(projectPath string) (*ManagedState, errs.DomainError) {
 		if err := validatePathKey(key); err != nil {
 			return nil, StateCorruptError{Path: pth, Key: key}
 		}
+		trimmedAsset := strings.TrimSpace(entry.AssetID)
+		trimmedSource := strings.TrimSpace(entry.SourceRel)
 		// A half-populated v3 entry (only one of AssetID/SourceRel set)
 		// is a wiring bug: v2 entries carry neither, v3 entries carry
-		// both. Surface it loudly rather than silently disable Adopt.
-		if (entry.AssetID == "") != (entry.SourceRel == "") {
+		// both. Whitespace-only counts as empty for the same reason.
+		if (trimmedAsset == "") != (trimmedSource == "") {
 			return nil, StateCorruptError{Path: pth, Key: key}
+		}
+		if trimmedAsset != entry.AssetID || trimmedSource != entry.SourceRel {
+			return nil, StateCorruptError{Path: pth, Key: key}
+		}
+		// SourceRel is written into <profile>/assets/<type>/<AssetID>/<SourceRel>
+		// by Adopt. Validate up front with the same forward-slash
+		// relative-key rule that scopes every other on-disk path so a
+		// tampered "../evil" can never reach asset.ResolveRelative.
+		if entry.SourceRel != "" {
+			if err := validatePathKey(entry.SourceRel); err != nil {
+				return nil, StateCorruptError{Path: pth, Key: key}
+			}
 		}
 	}
 	for _, key := range state.IgnoredPaths {
@@ -913,35 +1029,12 @@ func joinSlash(parts []string) string {
 	return strings.Join(parts, "/")
 }
 
-// owningAssetIDFor returns the AssetID owning the rendered directory
-// that hosts unknownPath, or "" when no known asset's projection dir
-// contains it. Walks parent dirs so an unknown at
-// .claude/skills/foo/example-3.md finds the entry at
-// .claude/skills/foo.
-func owningAssetIDFor(unknownPath string, assetDirs map[string]assetDirEntry) string {
-	dir := pathpkg.Dir(unknownPath)
-	for dir != "." && dir != "/" {
-		if entry, ok := assetDirs[dir]; ok {
-			return entry.AssetID
-		}
-		if surfaces.IsAssetContainerRoot(dir) {
-			return ""
-		}
-		next := pathpkg.Dir(dir)
-		if next == dir {
-			return ""
-		}
-		dir = next
-	}
-	return ""
-}
-
-// owningAssetSourceRelFor returns the projection-relative source path
-// for an unknown file. Given assetDirs at rendered-dir key `dir`, the
-// source path is filepath.Join(entry.ProjectionSource, path.Base(rest))
-// where rest is the tail of unknownPath below entry.ProjectionTarget.
-// Returns ("", "", false) when no owner exists (mirrors owningAssetIDFor
-// so callers get both keys atomically).
+// owningAssetSourceRelFor returns the AssetID + projection-relative
+// source path for the rendered directory that hosts unknownPath.
+// Walks parent dirs so an unknown at .claude/skills/foo/example-3.md
+// finds the entry at .claude/skills/foo. Returns ("", "", false) when
+// no owner exists. Plan discards the source-rel return; Apply keeps
+// both — one walk covers both callers.
 func owningAssetSourceRelFor(unknownPath string, assetDirs map[string]assetDirEntry) (assetID, sourceRel string, ok bool) {
 	dir := pathpkg.Dir(unknownPath)
 	for dir != "." && dir != "/" {
@@ -977,6 +1070,19 @@ func owningAssetSourceRelFor(unknownPath string, assetDirs map[string]assetDirEn
 		dir = next
 	}
 	return "", "", false
+}
+
+// unknownAdoptMode returns the on-disk mode of the repo-relative file
+// so an UnknownAdopt reverse-write does not silently downgrade an
+// executable bit. Falls back to 0o644 when the stat fails; the
+// subsequent read/write pair inside app.Service will surface any real
+// I/O failure as AdoptReadError.
+func unknownAdoptMode(projectPath, rel string) os.FileMode {
+	info, err := os.Stat(filepath.Join(projectPath, filepath.FromSlash(rel)))
+	if err != nil {
+		return 0o644
+	}
+	return info.Mode().Perm()
 }
 
 func setToSortedSlice(set map[string]bool) []string {

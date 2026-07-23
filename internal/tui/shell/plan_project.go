@@ -3,7 +3,7 @@ package shell
 import (
 	"fmt"
 	"maps"
-	"path"
+	pathpkg "path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -35,7 +35,7 @@ type planProjectActions interface {
 	LoadProfile(in actions.LoadProfileInput) (*appapi.LoadedProfile, errs.DomainError)
 	LoadProject(in actions.LoadProjectInput) (*project.Manifest, errs.DomainError)
 	PlanProject(in actions.PlanProjectInput) (*appapi.Preview, errs.DomainError)
-	SyncProject(in actions.SyncProjectInput) (*appapi.Preview, appapi.CommitOutcome, appapi.CommitOutcome, errs.DomainError)
+	SyncProject(in actions.SyncProjectInput) (appapi.ApplyOutcome, errs.DomainError)
 	CreateAssetFromFolder(in actions.CreateAssetFromFolderInput) (string, errs.DomainError)
 }
 
@@ -794,7 +794,7 @@ func (s *planProjectScreen) onRegisterAsset(dirKey string) tea.Cmd {
 	if count, size, statErr := utils.DirStats(abs); statErr == nil {
 		caption = fmt.Sprintf("Register %s · %d files · %s", dirKey, count, formatBytes(size))
 	}
-	s.openModal(modals.NewCreateAssetFromFolder(asset.Manifest{Name: path.Base(dirKey)}, caption), planModalRegisterAsset)
+	s.openModal(modals.NewCreateAssetFromFolder(asset.Manifest{Name: pathpkg.Base(dirKey)}, caption), planModalRegisterAsset)
 	return s.modal.Init()
 }
 
@@ -913,7 +913,7 @@ func (s *planProjectScreen) onApply() tea.Cmd {
 	profileRef := s.profileID
 	projectID := s.projectID
 	return func() tea.Msg {
-		_, outcome, adoptOutcome, err := s.actions.SyncProject(actions.SyncProjectInput{
+		out, err := s.actions.SyncProject(actions.SyncProjectInput{
 			ProfileRef:   profileRef,
 			ProjectID:    projectID,
 			Drift:        drift,
@@ -921,9 +921,9 @@ func (s *planProjectScreen) onApply() tea.Cmd {
 			IgnoredPaths: ignored,
 		})
 		if err != nil {
-			return syncDoneMsg{err: err, outcome: outcome, adopt: adoptOutcome}
+			return syncDoneMsg{err: err, outcome: out.Sync, adopt: out.Adopt}
 		}
-		return syncDoneMsg{info: "Project synced", outcome: outcome, adopt: adoptOutcome}
+		return syncDoneMsg{info: "Project synced", outcome: out.Sync, adopt: out.Adopt}
 	}
 }
 
