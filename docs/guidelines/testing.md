@@ -82,6 +82,57 @@ Don't:
 - add a mocking framework when a small hand-written fake is clearer
 ```
 
+## Cross-Boundary Integration
+
+Any change that mutates files, spawns processes, or crosses a package
+boundary that owns a layout, schema, or protocol must be covered by at
+least one **full-stack real** test — no fakes anywhere between the entry
+point and the effect.
+
+```text
+Do:
+- exercise real domain constructors (e.g. real Init/Load) rather than
+  hand-seeded fixtures whose shape the test author chose
+- shell out to the real external tool (git, subprocess, the OS
+  filesystem) inside a t.TempDir() sandbox
+- assert against ground truth: file contents on disk, `git log`
+  output, the actual bytes written, HTTP response — not against the
+  string constant the implementation also produced
+- when path handling is involved, add a non-default-placement variant
+  (nested folder, symlink, non-repo-root, non-cwd) so path assumptions
+  cannot ride the "everything at the top" happy path
+```
+
+```text
+Don't:
+- write a test whose expected value is a copy of the string constant
+  the code under test built. If both sides can drift together, the
+  test proves nothing.
+- rely only on fake-recorded-tuple assertions when the tuple is the
+  contract with an external system. Fake tests belong next to real
+  tests, never instead of them.
+- skip the real-stack test because it needs the git binary or a
+  scratch directory. Skip on binary absence (`exec.LookPath`) so the
+  test degrades cleanly, but do not delete it.
+```
+
+Concrete triggers that require a real-stack test:
+
+- Any use of `os/exec`, `exec.Command`, subprocess handoff.
+- Any use of `filepath.Join`, `filepath.Rel`, `filepath.Abs`, path
+  glob or pathspec strings in production code.
+- Any code that computes a repo-relative or root-relative path.
+- Any code that reads or writes a serialization format the tool did
+  not author (git object database, external config file, third-party
+  API payload).
+
+Rationale: task 0042 shipped with every unit test green because the
+fake committer's expected pathspec was a copy of the implementation's
+own wrong constant, and the only real-git tests used a fixture whose
+layout matched the wrong constant. The bug surfaced on the first live
+run. See
+[`docs/changelog/2026-07-23_0042-git-aware-commits.md`](../changelog/2026-07-23_0042-git-aware-commits.md).
+
 ## Keep Tests Isolated
 
 Tests must not depend on execution order or state left by another test. Prefer
