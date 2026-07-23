@@ -462,7 +462,9 @@ func (s *Service) Apply(profileRef, projectID string, r Resolutions) (*Preview, 
 		return nil, CommitOutcome{}, err
 	}
 	appPreview := previewFromSync(syncPreview)
-	mutated := mutatedPaths(appPreview, r)
+	mutated := mutatedPaths(appPreview, r, proj.Path)
+	// Subtract one for the state.json entry so the subject counts real
+	// managed-file mutations, not the bookkeeping snapshot itself.
 	msg := fmt.Sprintf("chore(agentfiles): sync project %s (%d files)", proj.Name, len(mutated)-1)
 	outcome := s.runCommit(proj.Path, mutated, msg)
 	return appPreview, outcome, nil
@@ -471,11 +473,13 @@ func (s *Service) Apply(profileRef, projectID string, r Resolutions) (*Preview, 
 // mutatedPaths returns the pathspec the plan-apply commit covers: every
 // file the sync engine created / updated / deleted or the caller
 // resolved as overwrite / delete, plus the managed-state snapshot at
-// `.agentfiles/state.json`. Paths are kept as forward-slash strings so
-// git's own pathspec grammar matches them directly.
-func mutatedPaths(preview *Preview, r Resolutions) []string {
+// `.agentfiles/state.json`. Each returned path is absolute so the git
+// wrapper converts it to repo-relative once against the actual
+// worktree top-level (projRoot may sit deep inside a larger repo).
+func mutatedPaths(preview *Preview, r Resolutions, projRoot string) []string {
+	stateAbs := filepath.Join(projRoot, config.StateDirName, config.StateFileName)
 	if preview == nil {
-		return []string{config.StateDirName + "/" + config.StateFileName}
+		return []string{stateAbs}
 	}
 	drift := map[string]DriftDecision{}
 	for _, d := range r.Drift {
@@ -487,12 +491,13 @@ func mutatedPaths(preview *Preview, r Resolutions) []string {
 	}
 	seen := map[string]bool{}
 	out := make([]string, 0, len(preview.Changes)+1)
-	add := func(p string) {
-		if seen[p] {
+	add := func(rel string) {
+		abs := filepath.Join(projRoot, filepath.FromSlash(rel))
+		if seen[abs] {
 			return
 		}
-		seen[p] = true
-		out = append(out, p)
+		seen[abs] = true
+		out = append(out, abs)
 	}
 	for _, ch := range preview.Changes {
 		switch ch.Kind {
@@ -508,7 +513,9 @@ func mutatedPaths(preview *Preview, r Resolutions) []string {
 			}
 		}
 	}
-	add(config.StateDirName + "/" + config.StateFileName)
+	if !seen[stateAbs] {
+		out = append(out, stateAbs)
+	}
 	return out
 }
 
@@ -955,17 +962,18 @@ func (s *Service) UpdateAsset(profileRef string, manifest *asset.Manifest) (Comm
 	if saveErr := asset.SaveManifest(target.Dir, *manifest); saveErr != nil {
 		return CommitOutcome{}, saveErr
 	}
-	pathspec := []string{"assets/" + manifest.ID + "/asset.json"}
+	pathspec := []string{filepath.Join(target.Dir, config.AssetManifestFileName)}
 	msg := fmt.Sprintf("chore(agentfiles): update asset %s manifest", manifest.ID)
 	return s.runCommit(loaded.Profile.Root, pathspec, msg), nil
 }
 
 // SaveAssetFilesEdit persists the caller's manifest edits then records a
-// files-scoped commit against `assets/<asset-id>/**` in the profile
-// repo. It is the editor-return flow's counterpart to UpdateAsset: the
-// files edit changed the on-disk content, and the single commit covers
-// both the manifest and every file inside the asset directory. Same
-// panic contract as UpdateAsset for a nil manifest.
+// files-scoped commit against the asset directory in the profile repo.
+// It is the editor-return flow's counterpart to UpdateAsset: the files
+// edit changed the on-disk content, and the single commit covers both
+// the manifest and every file inside the asset directory via a
+// recursive pathspec. Same panic contract as UpdateAsset for a nil
+// manifest.
 func (s *Service) SaveAssetFilesEdit(profileRef string, manifest *asset.Manifest) (CommitOutcome, errs.DomainError) {
 	if manifest == nil {
 		panic("app.Service.SaveAssetFilesEdit: nil manifest")
@@ -977,7 +985,7 @@ func (s *Service) SaveAssetFilesEdit(profileRef string, manifest *asset.Manifest
 	if saveErr := asset.SaveManifest(target.Dir, *manifest); saveErr != nil {
 		return CommitOutcome{}, saveErr
 	}
-	pathspec := []string{"assets/" + manifest.ID + "/**"}
+	pathspec := []string{target.Dir + "/**"}
 	msg := fmt.Sprintf("chore(agentfiles): edit asset %s files", manifest.ID)
 	return s.runCommit(loaded.Profile.Root, pathspec, msg), nil
 }

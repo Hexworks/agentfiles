@@ -104,7 +104,7 @@ func TestCommit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Detect: %v", err)
 	}
-	sha, err := repo.Commit([]string{"assets/foo/**"}, "chore(agentfiles): update asset foo manifest")
+	sha, err := repo.Commit([]string{filepath.Join(dir, "assets", "foo") + "/**"}, "chore(agentfiles): update asset foo manifest")
 	if err != nil {
 		t.Fatalf("Commit: %v", err)
 	}
@@ -143,7 +143,7 @@ func TestCommit_UnrelatedStaged(t *testing.T) {
 	}
 	countBefore := headCount(t, dir)
 
-	_, err = repo.Commit([]string{"assets/foo/**"}, "chore(agentfiles): edit asset foo files")
+	_, err = repo.Commit([]string{filepath.Join(dir, "assets", "foo") + "/**"}, "chore(agentfiles): edit asset foo files")
 	var unrelated UnrelatedStagedChangesError
 	if !errors.As(err, &unrelated) {
 		t.Fatalf("expected UnrelatedStagedChangesError, got %T (%v)", err, err)
@@ -164,7 +164,7 @@ func TestCommit_EmptyDiff(t *testing.T) {
 		t.Fatalf("Detect: %v", err)
 	}
 	countBefore := headCount(t, dir)
-	sha, err := repo.Commit([]string{"assets/foo/**"}, "chore(agentfiles): edit asset foo files")
+	sha, err := repo.Commit([]string{filepath.Join(dir, "assets", "foo") + "/**"}, "chore(agentfiles): edit asset foo files")
 	if err != nil {
 		t.Fatalf("Commit: %v", err)
 	}
@@ -173,6 +173,44 @@ func TestCommit_EmptyDiff(t *testing.T) {
 	}
 	if got := headCount(t, dir); got != countBefore {
 		t.Fatalf("expected no new commits, count %d -> %d", countBefore, got)
+	}
+}
+
+// TestCommit_NestedProfile exercises the case where the caller-supplied
+// dir is not the git worktree root — a profile folder sitting inside a
+// larger repo. The commit must land on the nested file even though its
+// pathspec is expressed in worktree-relative form only inside the git
+// wrapper.
+func TestCommit_NestedProfile(t *testing.T) {
+	requireGit(t)
+	repoRoot := initRepo(t)
+	profileDir := filepath.Join(repoRoot, "profiles", "addamsson")
+	assetDir := filepath.Join(profileDir, "assets", "skill", "summarize")
+	if err := os.MkdirAll(assetDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := filepath.Join(assetDir, "asset.json")
+	if err := os.WriteFile(manifest, []byte(`{"id":"summarize"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	repo, err := Detect(profileDir)
+	if err != nil {
+		t.Fatalf("Detect: %v", err)
+	}
+	if repo.Root != repoRoot {
+		t.Fatalf("Repo.Root = %q, want %q", repo.Root, repoRoot)
+	}
+	sha, commitErr := repo.Commit([]string{manifest}, "chore(agentfiles): update asset summarize manifest")
+	if commitErr != nil {
+		t.Fatalf("Commit: %v", commitErr)
+	}
+	if sha == "" {
+		t.Fatalf("expected non-empty SHA")
+	}
+	files := headFiles(t, repoRoot)
+	want := "profiles/addamsson/assets/skill/summarize/asset.json"
+	if len(files) != 1 || files[0] != want {
+		t.Fatalf("HEAD files = %v, want [%q]", files, want)
 	}
 }
 
@@ -195,7 +233,7 @@ func TestCommit_HookFailure(t *testing.T) {
 		t.Fatalf("Detect: %v", err)
 	}
 	countBefore := headCount(t, dir)
-	_, commitErr := repo.Commit([]string{"assets/foo/**"}, "chore(agentfiles): edit asset foo files")
+	_, commitErr := repo.Commit([]string{filepath.Join(dir, "assets", "foo") + "/**"}, "chore(agentfiles): edit asset foo files")
 	var hookErr HookFailedError
 	if !errors.As(commitErr, &hookErr) {
 		t.Fatalf("expected HookFailedError, got %T (%v)", commitErr, commitErr)

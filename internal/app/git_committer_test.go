@@ -3,7 +3,6 @@ package app
 import (
 	"errors"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"testing"
 
@@ -65,8 +64,9 @@ func TestUpdateAsset_CommitsManifestPathspecWhenGitEnabled(t *testing.T) {
 		t.Fatalf("committer calls = %d, want 1", len(fc.Calls))
 	}
 	call := fc.Calls[0]
-	if !reflect.DeepEqual(call.Pathspec, []string{"assets/review/asset.json"}) {
-		t.Fatalf("pathspec = %v, want [assets/review/asset.json]", call.Pathspec)
+	wantSpec := filepath.Join(a.Dir, "asset.json")
+	if len(call.Pathspec) != 1 || call.Pathspec[0] != wantSpec {
+		t.Fatalf("pathspec = %v, want [%q]", call.Pathspec, wantSpec)
 	}
 	if call.Msg != "chore(agentfiles): update asset review manifest" {
 		t.Fatalf("msg = %q", call.Msg)
@@ -88,8 +88,9 @@ func TestSaveAssetFilesEdit_CommitsFilesPathspec(t *testing.T) {
 	if len(fc.Calls) != 1 {
 		t.Fatalf("committer calls = %d, want 1", len(fc.Calls))
 	}
-	if !reflect.DeepEqual(fc.Calls[0].Pathspec, []string{"assets/review/**"}) {
-		t.Fatalf("pathspec = %v, want [assets/review/**]", fc.Calls[0].Pathspec)
+	wantSpec := a.Dir + "/**"
+	if len(fc.Calls[0].Pathspec) != 1 || fc.Calls[0].Pathspec[0] != wantSpec {
+		t.Fatalf("pathspec = %v, want [%q]", fc.Calls[0].Pathspec, wantSpec)
 	}
 	if fc.Calls[0].Msg != "chore(agentfiles): edit asset review files" {
 		t.Fatalf("msg = %q", fc.Calls[0].Msg)
@@ -168,11 +169,13 @@ func TestApply_CommitsSyncedFilesAndStateJSON(t *testing.T) {
 	if call.Dir != repoPath {
 		t.Fatalf("dir = %q, want %q", call.Dir, repoPath)
 	}
-	if !slices.Contains(call.Pathspec, ".agentfiles/state.json") {
-		t.Fatalf("pathspec missing .agentfiles/state.json: %v", call.Pathspec)
+	wantState := filepath.Join(repoPath, ".agentfiles", "state.json")
+	wantAgents := filepath.Join(repoPath, "AGENTS.md")
+	if !slices.Contains(call.Pathspec, wantState) {
+		t.Fatalf("pathspec missing %q: %v", wantState, call.Pathspec)
 	}
-	if !slices.Contains(call.Pathspec, "AGENTS.md") {
-		t.Fatalf("pathspec missing AGENTS.md: %v", call.Pathspec)
+	if !slices.Contains(call.Pathspec, wantAgents) {
+		t.Fatalf("pathspec missing %q: %v", wantAgents, call.Pathspec)
 	}
 	if call.Msg != "chore(agentfiles): sync project Repo (1 files)" {
 		t.Fatalf("msg = %q", call.Msg)
