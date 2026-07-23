@@ -288,7 +288,11 @@ func previewFromSync(p *llmsync.Preview) *appapi.Preview {
 	}
 	changes := make([]appapi.FileChange, len(p.Changes))
 	for i, ch := range p.Changes {
-		changes[i] = appapi.FileChange{Path: ch.Path, Kind: appapi.ChangeKind(ch.Kind)}
+		changes[i] = appapi.FileChange{
+			Path:          ch.Path,
+			Kind:          appapi.ChangeKind(ch.Kind),
+			OwningAssetID: ch.OwningAssetID,
+		}
 	}
 	var ignored []string
 	if p.ManagedState != nil {
@@ -322,17 +326,18 @@ func previewFromSync(p *llmsync.Preview) *appapi.Preview {
 // returned CommitOutcome carries the specific outcome (Committed,
 // Skipped, or Failed); a hard commit failure never rolls back the file
 // writes (they already happened).
-func (s *Service) Apply(profileRef, projectID string, r appapi.Resolutions) (*appapi.Preview, appapi.CommitOutcome, errs.DomainError) {
+func (s *Service) Apply(profileRef, projectID string, r appapi.Resolutions) (*appapi.Preview, appapi.CommitOutcome, appapi.CommitOutcome, errs.DomainError) {
+	skipDisabled := appapi.Skipped{Reason: appapi.SkipDisabled}
 	loaded, proj, projErr := s.resolveProject(profileRef, projectID)
 	if projErr != nil {
-		return nil, appapi.Skipped{Reason: appapi.SkipDisabled}, projErr
+		return nil, skipDisabled, skipDisabled, projErr
 	}
 	syncPreview, err := llmsync.Plan(loaded.Profile, proj)
 	if err != nil {
-		return nil, appapi.Skipped{Reason: appapi.SkipDisabled}, err
+		return nil, skipDisabled, skipDisabled, err
 	}
 	if eligErr := s.assertIgnoredRegisterable(syncPreview, r.IgnoredPaths); eligErr != nil {
-		return nil, appapi.Skipped{Reason: appapi.SkipDisabled}, eligErr
+		return nil, skipDisabled, skipDisabled, eligErr
 	}
 	syncResolutions := llmsync.Resolutions{
 		Drift:        toSyncDriftResolutions(r.Drift),
@@ -341,14 +346,72 @@ func (s *Service) Apply(profileRef, projectID string, r appapi.Resolutions) (*ap
 	}
 	result, applyErr := llmsync.Apply(syncPreview, syncResolutions)
 	if applyErr != nil {
-		return nil, appapi.Skipped{Reason: appapi.SkipDisabled}, applyErr
+		// sync.Apply still writes state on partial failures, so
+		// surface applyErr but continue to the commit paths — the
+		// caller decides whether to render the error alongside the
+		// success toast.
 	}
-	outcome := s.runCommit(triggerSyncProject, commitTriggerCtx{
+	syncOutcome := s.runCommit(triggerSyncProject, commitTriggerCtx{
 		ProjectName:  proj.Name,
 		MutatedFiles: result.Mutated,
 		StatePath:    result.StatePath,
 	}, proj.Path)
-	return previewFromSync(syncPreview), outcome, nil
+	adoptOutcome, adoptErrs := s.executeAdoptRequests(loaded, proj, result.AdoptRequests)
+	preview := previewFromSync(syncPreview)
+	if applyErr != nil {
+		if len(adoptErrs) > 0 {
+			return preview, syncOutcome, adoptOutcome, errs.Errors(append([]errs.DomainError{applyErr}, adoptErrs...))
+		}
+		return preview, syncOutcome, adoptOutcome, applyErr
+	}
+	if len(adoptErrs) > 0 {
+		return preview, syncOutcome, adoptOutcome, errs.Errors(adoptErrs)
+	}
+	return preview, syncOutcome, adoptOutcome, nil
+}
+
+// executeAdoptRequests writes each adopt request's local body back
+// into the owning asset file inside the profile folder, then, when git
+// integration is on and at least one write succeeded, records a
+// scoped commit against the profile repo. See ADR 0020.
+//
+// Per-request failures accumulate into the returned error slice —
+// callers surface them as warnings alongside the sync outcome so a
+// bad request never rolls back peer adopts that succeeded.
+func (s *Service) executeAdoptRequests(loaded *appapi.LoadedProfile, proj *project.Manifest, requests []llmsync.AdoptRequest) (appapi.CommitOutcome, []errs.DomainError) {
+	skip := appapi.Skipped{Reason: appapi.SkipDisabled}
+	if len(requests) == 0 {
+		return skip, nil
+	}
+	var (
+		writtenPathspec []string
+		failures        []errs.DomainError
+	)
+	for _, req := range requests {
+		target := loaded.Profile.Assets[req.AssetID]
+		if target == nil {
+			failures = append(failures, llmsync.AdoptUnavailableError{Path: req.Path, Reason: "profile asset missing"})
+			continue
+		}
+		abs := filepath.Join(proj.Path, filepath.FromSlash(req.Path))
+		body, readErr := os.ReadFile(abs)
+		if readErr != nil {
+			failures = append(failures, AdoptReadError{Path: req.Path, Err: readErr})
+			continue
+		}
+		if writeErr := asset.WriteFile(target.Dir, req.SourceRel, body, 0o644); writeErr != nil {
+			failures = append(failures, writeErr)
+			continue
+		}
+		writtenPathspec = append(writtenPathspec, filepath.Join(target.Dir, filepath.FromSlash(req.SourceRel)))
+	}
+	if len(writtenPathspec) == 0 {
+		return skip, failures
+	}
+	outcome := s.runCommit(triggerAdoptIntoProfile, commitTriggerCtx{
+		MutatedFiles: writtenPathspec,
+	}, loaded.Profile.Root)
+	return outcome, failures
 }
 
 // commitEnabled reports whether git-aware commits should run: the

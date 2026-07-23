@@ -30,6 +30,12 @@ type RenderedFile struct {
 	// AssetID stores the asset id that produced this file, which makes previews
 	// and future debugging easier.
 	AssetID string
+	// SourceRel is the forward-slash asset-relative path of the source
+	// file inside the producing asset directory. Adopt uses it as the
+	// reverse-mapping key: writing the local repo body back to
+	// <asset.Dir>/<SourceRel> replaces the source content the render
+	// pipeline read. See ADR 0020.
+	SourceRel string
 }
 
 // ProjectPlan is the desired state of one project before sync compares it with
@@ -139,7 +145,7 @@ func addRenderedFilesFor(files map[string]RenderedFile, a *asset.Asset, enabledA
 			return []errs.DomainError{err}
 		}
 		target := config.AgentsDocStarterFileName
-		files[target] = RenderedFile{Path: target, Body: body, Mode: 0o644, AssetID: a.ID}
+		files[target] = RenderedFile{Path: target, Body: body, Mode: 0o644, AssetID: a.ID, SourceRel: config.AgentsDocStarterFileName}
 		return nil
 	case asset.TypeSettings:
 		var domainErrs []errs.DomainError
@@ -165,7 +171,7 @@ func addRenderedFilesFor(files map[string]RenderedFile, a *asset.Asset, enabledA
 				domainErrs = append(domainErrs, err)
 				continue
 			}
-			files[mapping.Target] = RenderedFile{Path: mapping.Target, Body: body, Mode: 0o644, AssetID: a.ID}
+			files[mapping.Target] = RenderedFile{Path: mapping.Target, Body: body, Mode: 0o644, AssetID: a.ID, SourceRel: mapping.Source}
 		}
 		return domainErrs
 	default:
@@ -197,7 +203,7 @@ func addRenderedFilesFor(files map[string]RenderedFile, a *asset.Asset, enabledA
 				domainErrs = append(domainErrs, readErr)
 				continue
 			}
-			files[projection.Target] = RenderedFile{Path: projection.Target, Body: body, Mode: 0o644, AssetID: a.ID}
+			files[projection.Target] = RenderedFile{Path: projection.Target, Body: body, Mode: 0o644, AssetID: a.ID, SourceRel: filepath.ToSlash(projection.Source)}
 		}
 		return domainErrs
 	}
@@ -229,13 +235,13 @@ func addSkillOutputs(files map[string]RenderedFile, a *asset.Asset, enabledAgent
 					continue
 				}
 				target := filepath.ToSlash(filepath.Join(root, a.ID, rel))
-				files[target] = RenderedFile{Path: target, Body: data, Mode: 0o644, AssetID: a.ID}
+				files[target] = RenderedFile{Path: target, Body: data, Mode: 0o644, AssetID: a.ID, SourceRel: filepath.ToSlash(rel)}
 			}
 			continue
 		}
 		if agent == "cursor" {
 			target := filepath.ToSlash(filepath.Join(surfaces.CursorCommandsRoot(), a.ID+".md"))
-			files[target] = RenderedFile{Path: target, Body: body, Mode: 0o644, AssetID: a.ID}
+			files[target] = RenderedFile{Path: target, Body: body, Mode: 0o644, AssetID: a.ID, SourceRel: config.SkillStarterFileName}
 		}
 	}
 	return domainErrs
@@ -290,7 +296,7 @@ func walkProjection(
 			return nil
 		}
 		target := filepath.ToSlash(filepath.Join(targetRel, rel))
-		files[target] = RenderedFile{Path: target, Body: body, Mode: 0o644, AssetID: asset.ID}
+		files[target] = RenderedFile{Path: target, Body: body, Mode: 0o644, AssetID: asset.ID, SourceRel: filepath.ToSlash(filepath.Join(sourceRel, rel))}
 		return nil
 	})
 	if walkErr != nil {

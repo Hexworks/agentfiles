@@ -1,7 +1,7 @@
 ---
 id: 0035
 type: feature
-status: in-progress
+status: in-review
 topics: sync_and_safety, domain_model, tui
 depends_on: 0033
 ---

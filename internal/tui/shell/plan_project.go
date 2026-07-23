@@ -35,7 +35,7 @@ type planProjectActions interface {
 	LoadProfile(in actions.LoadProfileInput) (*appapi.LoadedProfile, errs.DomainError)
 	LoadProject(in actions.LoadProjectInput) (*project.Manifest, errs.DomainError)
 	PlanProject(in actions.PlanProjectInput) (*appapi.Preview, errs.DomainError)
-	SyncProject(in actions.SyncProjectInput) (*appapi.Preview, appapi.CommitOutcome, errs.DomainError)
+	SyncProject(in actions.SyncProjectInput) (*appapi.Preview, appapi.CommitOutcome, appapi.CommitOutcome, errs.DomainError)
 	CreateAssetFromFolder(in actions.CreateAssetFromFolderInput) (string, errs.DomainError)
 }
 
@@ -122,14 +122,22 @@ type planProjectScreen struct {
 	profileName string
 	preview     *appapi.Preview
 	// driftResolutions stores only off-default drift selections
-	// (appapi.DriftOverwrite). Default DriftKeep is encoded as map
-	// absence so an empty map means the user wants Keep everywhere.
+	// (appapi.DriftOverwrite or appapi.DriftAdopt). Default DriftKeep
+	// is encoded as map absence so an empty map means the user wants
+	// Keep everywhere. Adopt is the third-way direction (repo →
+	// profile) added by ADR 0020.
 	driftResolutions map[string]appapi.DriftDecision
 	// unknownResolutions stores only off-default unknown selections
-	// (appapi.UnknownDelete). Same absence-as-default convention as
-	// driftResolutions, and the two distinct maps mirror the domain's
-	// two-enum decision space (see docs/architecture/12-glossary.md).
+	// (appapi.UnknownDelete or appapi.UnknownAdopt). Same absence-as-
+	// default convention as driftResolutions, and the two distinct
+	// maps mirror the domain's two-enum decision space (see
+	// docs/architecture/12-glossary.md). UnknownAdopt is only
+	// offered when unknownOwners has a matching entry (ADR 0020).
 	unknownResolutions map[string]appapi.UnknownDecision
+	// unknownOwners is the path→OwningAssetID projection of the
+	// current preview; empty when the row is a fully-untracked file
+	// with no owning asset (Adopt is not offered for those).
+	unknownOwners map[string]string
 
 	tree           *treetable.Model
 	applyBtn       *mnemonic.Button
@@ -194,6 +202,7 @@ func newPlanProjectScreen(a planProjectActions, profileID, projectID string) *pl
 		projectID:          projectID,
 		driftResolutions:   map[string]appapi.DriftDecision{},
 		unknownResolutions: map[string]appapi.UnknownDecision{},
+		unknownOwners:      map[string]string{},
 		ignoredPaths:       map[string]bool{},
 		unignored:          map[string]bool{},
 		pinned:             map[string]bool{},
@@ -380,6 +389,12 @@ func (s *planProjectScreen) handleLoaded(m planProjectLoadedMsg) (Screen, tea.Cm
 	s.projectPath = m.proj.Path
 	s.preview = m.preview
 	s.registerableDirs = appapi.RegisterableDirs(m.preview.Changes)
+	s.unknownOwners = map[string]string{}
+	for _, ch := range m.preview.Changes {
+		if ch.Kind == appapi.ChangeUnknown && ch.OwningAssetID != "" {
+			s.unknownOwners[ch.Path] = ch.OwningAssetID
+		}
+	}
 	s.ignoredPaths = map[string]bool{}
 	s.persistedIgnored = append([]string(nil), m.preview.IgnoredPaths...)
 	slices.Sort(s.persistedIgnored)
@@ -411,7 +426,7 @@ func (s *planProjectScreen) handleSyncDone(m syncDoneMsg) (Screen, tea.Cmd) {
 	if m.err != nil {
 		return s, notificationCmd(m.err.Severity(), m.err.Error())
 	}
-	return s, tea.Batch(commitOutcomeCmd(m.info, m.outcome), popCmd())
+	return s, tea.Batch(syncCommitOutcomeCmd(m.info, m.outcome, m.adopt), popCmd())
 }
 
 func (s *planProjectScreen) handleKey(m tea.KeyPressMsg) (Screen, tea.Cmd) {
@@ -556,13 +571,19 @@ func (s *planProjectScreen) actionValue(n *treetable.Node) string {
 	case appapi.ChangeCreate, appapi.ChangeUpdate, appapi.ChangeDelete:
 		return "-"
 	case appapi.ChangeDrift:
-		if s.driftResolutions[d.path] == appapi.DriftOverwrite {
+		switch s.driftResolutions[d.path] {
+		case appapi.DriftOverwrite:
 			return "Overwrite"
+		case appapi.DriftAdopt:
+			return "Adopt"
 		}
 		return "Keep"
 	case appapi.ChangeUnknown:
-		if s.unknownResolutions[d.path] == appapi.UnknownDelete {
+		switch s.unknownResolutions[d.path] {
+		case appapi.UnknownDelete:
 			return "Delete"
+		case appapi.UnknownAdopt:
+			return "Adopt"
 		}
 		return "Keep"
 	}
@@ -627,15 +648,32 @@ func (s *planProjectScreen) openFileBtn(path string) *mnemonic.Button {
 	return mnemonic.New("Open", 'o', func() tea.Cmd { return s.onOpen(path) })
 }
 
+// driftToggleBtn cycles Keep → Overwrite → Adopt → Keep. Button label
+// shows the *next* state (ADR 0015/0020). Mnemonics stay unique
+// alongside the always-present [Open]/'o' and screen-level buttons.
 func (s *planProjectScreen) driftToggleBtn(path string) *mnemonic.Button {
-	if s.driftResolutions[path] == appapi.DriftOverwrite {
+	switch s.driftResolutions[path] {
+	case appapi.DriftOverwrite:
+		return mnemonic.New("Adopt", 't', func() tea.Cmd { return s.toggleDrift(path, appapi.DriftAdopt) })
+	case appapi.DriftAdopt:
 		return mnemonic.New("Keep", 'p', func() tea.Cmd { return s.toggleDrift(path, appapi.DriftKeep) })
 	}
 	return mnemonic.New("Overwrite", 'w', func() tea.Cmd { return s.toggleDrift(path, appapi.DriftOverwrite) })
 }
 
+// unknownToggleBtn cycles Keep → Delete → Adopt → Keep when the row
+// carries an OwningAssetID (populated at Plan time for unknowns nested
+// inside a known asset projection dir). Otherwise stays a 2-way toggle
+// Keep ↔ Delete. See ADR 0020.
 func (s *planProjectScreen) unknownToggleBtn(path string) *mnemonic.Button {
-	if s.unknownResolutions[path] == appapi.UnknownDelete {
+	adoptEligible := s.unknownOwners[path] != ""
+	switch s.unknownResolutions[path] {
+	case appapi.UnknownDelete:
+		if adoptEligible {
+			return mnemonic.New("Adopt", 't', func() tea.Cmd { return s.toggleUnknown(path, appapi.UnknownAdopt) })
+		}
+		return mnemonic.New("Keep", 'p', func() tea.Cmd { return s.toggleUnknown(path, appapi.UnknownKeep) })
+	case appapi.UnknownAdopt:
 		return mnemonic.New("Keep", 'p', func() tea.Cmd { return s.toggleUnknown(path, appapi.UnknownKeep) })
 	}
 	return mnemonic.New("Delete", 'd', func() tea.Cmd { return s.toggleUnknown(path, appapi.UnknownDelete) })
@@ -729,10 +767,13 @@ type registerAssetDoneMsg struct {
 
 // syncDoneMsg envelopes the outcome of a plan-apply. Success carries the
 // merged base+commit outcome so the shared handler emits one info toast
-// and, on commit failure, batches a warn toast.
+// and, on commit failure, batches a warn toast. adopt carries the
+// secondary profile-repo commit outcome from the ADR 0020 reverse flow
+// (Skipped{SkipDisabled} when no Adopt requests happened).
 type syncDoneMsg struct {
 	info    string
 	outcome appapi.CommitOutcome
+	adopt   appapi.CommitOutcome
 	err     errs.DomainError
 }
 
@@ -853,8 +894,11 @@ func (s *planProjectScreen) onApply() tea.Cmd {
 			continue
 		}
 		decision := appapi.UnknownKeep
-		if s.unknownResolutions[ch.Path] == appapi.UnknownDelete {
+		switch s.unknownResolutions[ch.Path] {
+		case appapi.UnknownDelete:
 			decision = appapi.UnknownDelete
+		case appapi.UnknownAdopt:
+			decision = appapi.UnknownAdopt
 		}
 		unknown = append(unknown, appapi.UnknownResolution{Path: ch.Path, Decision: decision})
 	}
@@ -869,7 +913,7 @@ func (s *planProjectScreen) onApply() tea.Cmd {
 	profileRef := s.profileID
 	projectID := s.projectID
 	return func() tea.Msg {
-		_, outcome, err := s.actions.SyncProject(actions.SyncProjectInput{
+		_, outcome, adoptOutcome, err := s.actions.SyncProject(actions.SyncProjectInput{
 			ProfileRef:   profileRef,
 			ProjectID:    projectID,
 			Drift:        drift,
@@ -877,9 +921,9 @@ func (s *planProjectScreen) onApply() tea.Cmd {
 			IgnoredPaths: ignored,
 		})
 		if err != nil {
-			return syncDoneMsg{err: err}
+			return syncDoneMsg{err: err, outcome: outcome, adopt: adoptOutcome}
 		}
-		return syncDoneMsg{info: "Project synced", outcome: outcome}
+		return syncDoneMsg{info: "Project synced", outcome: outcome, adopt: adoptOutcome}
 	}
 }
 

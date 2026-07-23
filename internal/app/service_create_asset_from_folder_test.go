@@ -36,7 +36,7 @@ func seedFolderRegisterProject(t *testing.T, files map[string]string) (svc *Serv
 	// the unknown-detection pass (skipped on first apply). Only then will the
 	// files below be classified as unknown, which is what makes their parent
 	// folders registerable.
-	if _, _, err := svc.Apply(profileID, projectID, appapi.Resolutions{}); err != nil {
+	if _, _, _, err := svc.Apply(profileID, projectID, appapi.Resolutions{}); err != nil {
 		t.Fatalf("initial apply: %v", err)
 	}
 	for rel, body := range files {

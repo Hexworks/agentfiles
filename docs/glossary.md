@@ -263,12 +263,35 @@ is termed *persisted-ignored* (it came from `ignored_paths`, not from a live
 
 A condition where a previously managed file was changed locally after apply and
 now differs from the managed-state hash. Drift defaults to *keep* during
-apply. `DriftKeep` leaves the file alone **and preserves the prior managed
-baseline**, so a kept drift stays classified as drift on every subsequent plan
-until the user resolves it. `DriftOverwrite` replaces the local edits with the
-rendered body. Keep never adopts the on-disk hash as the new baseline (doing so
-would silently flip drift to update — see bug 0033). Promoting local edits into
-the profile is a separate, future operation (*Adopt*), not Keep. See ADR 0015.
+apply. Three decisions cover the row: `DriftKeep` leaves the file alone
+**and preserves the prior managed baseline**, so a kept drift stays classified
+as drift on every subsequent plan until the user resolves it; `DriftOverwrite`
+replaces the local edits with the rendered body; `DriftAdopt` promotes the
+local edit into the owning profile asset — see [Adopt](#adopt). Keep never
+adopts the on-disk hash as the new baseline (doing so would silently flip
+drift to update — see bug 0033). See ADR 0015 and ADR 0020.
+
+## Adopt
+
+The single sanctioned repo → profile write path. Promotes a local edit
+into the profile asset it came from, making the local content canonical.
+Two flavours:
+
+- `DriftAdopt` on a drifted managed file: the profile asset's source
+  file is overwritten with the local body, and the on-disk repo file
+  is left as-is. On the next plan the profile catches up and the row
+  disappears; sibling agent projections (e.g. the `.codex` mirror of a
+  `.claude` skill file) surface as ordinary `update` rows.
+- `UnknownAdopt` on an untracked file that sits inside a known asset's
+  rendered projection dir (e.g. a new `example-3.md` under
+  `.claude/skills/foo/`). The file is copied into
+  `<profile>/assets/<type>/<asset_id>/<source_rel>`. Untracked files
+  outside a known projection dir remain the Register-as-Asset flow.
+
+Adopt is the deliberate exception to `CLAUDE.md` invariant #6 (render
+never reads the repo as input). When git integration is enabled, a
+second commit is recorded on the profile repo (`chore(agentfiles):
+adopt N file(s) into profile`). See ADR 0020.
 
 ## First-Apply Clean Slate
 
@@ -314,8 +337,10 @@ inline at the source.
 
 The user's per-file decision for a `ChangeDrift` or `ChangeUnknown`
 entry. The sync engine models the two cases as separate types because
-their valid choices do not overlap: `DriftDecision` is `DriftOverwrite`
-or `DriftKeep`; `UnknownDecision` is `UnknownDelete` or `UnknownKeep`.
+their valid choices do not overlap: `DriftDecision` is `DriftOverwrite`,
+`DriftAdopt`, or `DriftKeep`; `UnknownDecision` is `UnknownDelete`,
+`UnknownAdopt`, or `UnknownKeep` (Adopt only when the change carries
+an `OwningAssetID`).
 Paths absent from the resolution slices fall back to the safe default
 (drift → keep, unknown → keep). A `ChangeUnknown` has a third, persisted
 outcome beyond this transient decision: ignoring the folder (see [Ignored

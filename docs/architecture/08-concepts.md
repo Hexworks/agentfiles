@@ -24,9 +24,24 @@ together.
 
 The sync layer stores hashes of managed files in `.agentfiles/state.json`. If a
 managed file changes after apply, the next preview reports drift instead of
-silently overwriting without explanation. Drift defaults to *keep*; the user
-must explicitly resolve a drift entry to `ResolveOverwrite` to let apply
-replace the local edits. See ADR 0010.
+silently overwriting without explanation. Drift is a three-way decision:
+Keep (default) leaves the file and preserves the prior baseline;
+Overwrite replaces the local edits with the rendered body; Adopt
+promotes the local body into the profile asset it came from — the
+single sanctioned repo → profile flow (see ADR 0020). The TUI toggle
+cycles Keep → Overwrite → Adopt → Keep. See ADR 0010, ADR 0015 and ADR 0020.
+
+## Source-Of-Truth Exception: Adopt
+
+Invariant: render never reads the repo as input (profile is
+authoritative). Adopt is the single deliberate exception. `sync.Apply`
+classifies `DriftAdopt` / `UnknownAdopt` rows and returns them as an
+`AdoptRequests` list; the profile-side write lives in
+`app.Service.Apply` alongside the target-repo commit. State v3 entries
+carry `{hash, asset_id, source_rel}` so the reverse mapping is
+persisted per-file. Sibling agent projections catch up as ordinary
+`update` rows on the next plan — Adopt is per-file, single-agent, and
+never a multi-agent broadcast. See ADR 0020.
 
 ## First-Apply Clean Slate
 

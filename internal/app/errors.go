@@ -163,6 +163,27 @@ func (SettingsUnavailableError) Severity() errs.Severity {
 	return errs.SeverityError
 }
 
+// AdoptReadError reports a failure to read the repo-side file whose
+// body an Adopt request wants to write back into the profile. Wraps
+// the underlying os error so the TUI can render a specific message
+// via errors.As. See ADR 0020.
+type AdoptReadError struct {
+	Path string
+	Err  error
+}
+
+func (e AdoptReadError) Error() string {
+	return fmt.Sprintf("adopt read %s: %s", e.Path, e.Err.Error())
+}
+
+func (AdoptReadError) Severity() errs.Severity {
+	return errs.SeverityError
+}
+
+func (e AdoptReadError) Unwrap() error {
+	return e.Err
+}
+
 // UnsafeProfilePathError reports that DeleteProfileWithFolder refused a
 // pathological deletion target: the empty string, the filesystem root,
 // the user's home directory, or an ancestor of the profile registry

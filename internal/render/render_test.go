@@ -54,8 +54,10 @@ func TestBuildSkillAndAgentsDoc(t *testing.T) {
 		t.Fatalf("build: %v", buildErrs)
 	}
 	paths := map[string]bool{}
+	sources := map[string]string{}
 	for _, file := range plan.Files {
 		paths[file.Path] = true
+		sources[file.Path] = file.SourceRel
 	}
 	if !paths["AGENTS.md"] {
 		t.Fatal("expected AGENTS.md")
@@ -65,6 +67,112 @@ func TestBuildSkillAndAgentsDoc(t *testing.T) {
 	}
 	if !paths[".cursor/commands/review.md"] {
 		t.Fatal("expected cursor skill projection")
+	}
+	// Every branch must populate SourceRel so Adopt can reverse-map the
+	// rendered path back to the asset file. Skill and cursor emit the
+	// same starter filename; agents_doc emits AGENTS.md.
+	if got, want := sources["AGENTS.md"], config.AgentsDocStarterFileName; got != want {
+		t.Errorf("AGENTS.md SourceRel = %q, want %q", got, want)
+	}
+	if got, want := sources[".codex/skills/review/SKILL.md"], config.SkillStarterFileName; got != want {
+		t.Errorf("codex skill SourceRel = %q, want %q", got, want)
+	}
+	if got, want := sources[".cursor/commands/review.md"], config.SkillStarterFileName; got != want {
+		t.Errorf("cursor skill SourceRel = %q, want %q", got, want)
+	}
+}
+
+// TestBuild_PopulatesSourceRelForGenericProjection covers the generic
+// file projection branch (rule asset) so Adopt has a reverse-mapping
+// key for every branch of addRenderedFilesFor.
+func TestBuild_PopulatesSourceRelForGenericProjection(t *testing.T) {
+	root := t.TempDir()
+	if _, err := profile.Init(root, "Personal"); err != nil {
+		t.Fatal(err)
+	}
+	ruleDir := filepath.Join(root, config.AssetsDirName, "rule", "guard")
+	if err := os.MkdirAll(ruleDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := `{"id":"guard","name":"guard","type":"rule","projections":[{"agent":"codex","source":"body.md","target":".codex/guard.md"}]}`
+	if err := os.WriteFile(filepath.Join(ruleDir, config.AssetManifestFileName), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ruleDir, "body.md"), []byte("guard"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := profile.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	plan, buildErrs := Build(loaded, &project.Manifest{
+		ID: "app", Name: "app", Path: "/tmp/app",
+		EnabledAgents:    []string{"codex"},
+		SelectedAssetIDs: []string{"guard"},
+	})
+	if len(buildErrs) > 0 {
+		t.Fatalf("build: %v", buildErrs)
+	}
+	var found bool
+	for _, file := range plan.Files {
+		if file.Path != ".codex/guard.md" {
+			continue
+		}
+		found = true
+		if file.SourceRel != "body.md" {
+			t.Errorf("SourceRel = %q, want %q", file.SourceRel, "body.md")
+		}
+	}
+	if !found {
+		t.Fatal("expected .codex/guard.md in plan")
+	}
+}
+
+// TestBuild_PopulatesSourceRelForDirProjection covers walkProjection so
+// a rule/hook asset whose source is a directory carries per-file
+// SourceRel values preserving the sub-path shape.
+func TestBuild_PopulatesSourceRelForDirProjection(t *testing.T) {
+	root := t.TempDir()
+	if _, err := profile.Init(root, "Personal"); err != nil {
+		t.Fatal(err)
+	}
+	hookDir := filepath.Join(root, config.AssetsDirName, "hook", "chain")
+	if err := os.MkdirAll(filepath.Join(hookDir, "pre"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := `{"id":"chain","name":"chain","type":"hook","projections":[{"agent":"codex","source":"pre","target":".codex/hooks"}]}`
+	if err := os.WriteFile(filepath.Join(hookDir, config.AssetManifestFileName), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(hookDir, "pre", "a.sh"), []byte("a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := profile.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	plan, buildErrs := Build(loaded, &project.Manifest{
+		ID: "app", Name: "app", Path: "/tmp/app",
+		EnabledAgents:    []string{"codex"},
+		SelectedAssetIDs: []string{"chain"},
+	})
+	if len(buildErrs) > 0 {
+		t.Fatalf("build: %v", buildErrs)
+	}
+	var found bool
+	for _, file := range plan.Files {
+		if file.Path != ".codex/hooks/a.sh" {
+			continue
+		}
+		found = true
+		if file.SourceRel != "pre/a.sh" {
+			t.Errorf("SourceRel = %q, want %q", file.SourceRel, "pre/a.sh")
+		}
+	}
+	if !found {
+		t.Fatal("expected .codex/hooks/a.sh in plan")
 	}
 }
 

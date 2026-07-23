@@ -42,3 +42,35 @@ func commitOutcomeCmd(base string, outcome appapi.CommitOutcome) tea.Cmd {
 	}
 	return tea.Batch(info, warn)
 }
+
+// syncCommitOutcomeCmd merges the primary sync commit and the ADR 0020
+// Adopt commit outcomes into one info toast plus any warning toasts
+// their Failed variants demand. Success text follows the sync/adopt
+// pattern:
+//   - both Committed → "Project synced (committed <sync>; profile <adopt>)"
+//   - sync Committed only → "Project synced (committed <sync>)"
+//   - adopt Committed only → "Project synced (profile <adopt>)"
+//   - neither Committed → base unchanged.
+func syncCommitOutcomeCmd(base string, sync, adopt appapi.CommitOutcome) tea.Cmd {
+	text := base
+	var warns []tea.Cmd
+	if syncCommitted, ok := sync.(appapi.Committed); ok {
+		text = base + " (committed " + syncCommitted.SHA + ")"
+	} else if failed, ok := sync.(appapi.Failed); ok {
+		warns = append(warns, notificationCmd(failed.Err.Severity(), failed.Err.Error()))
+	}
+	if adoptCommitted, ok := adopt.(appapi.Committed); ok {
+		if text == base {
+			text = base + " (profile " + adoptCommitted.SHA + ")"
+		} else {
+			text = text[:len(text)-1] + "; profile " + adoptCommitted.SHA + ")"
+		}
+	} else if failed, ok := adopt.(appapi.Failed); ok {
+		warns = append(warns, notificationCmd(failed.Err.Severity(), failed.Err.Error()))
+	}
+	info := notificationCmd(errs.SeverityInfo, text)
+	if len(warns) == 0 {
+		return info
+	}
+	return tea.Batch(append([]tea.Cmd{info}, warns...)...)
+}

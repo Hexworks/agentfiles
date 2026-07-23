@@ -125,6 +125,25 @@ func RemoveFile(dir, rel string) errs.DomainError {
 	return nil
 }
 
+// WriteFile writes body to dir/rel after validating the relative path
+// through ResolveRelative. Intermediate directories are created with
+// 0o755; the file itself is written with mode. Used by the Adopt path
+// (ADR 0020) to push a local edit back into the profile source it
+// was rendered from — same containment rail as AddFile / RemoveFile.
+func WriteFile(dir, rel string, body []byte, mode os.FileMode) errs.DomainError {
+	abs, err := ResolveRelative(dir, rel)
+	if err != nil {
+		return err
+	}
+	if mkErr := os.MkdirAll(filepath.Dir(abs), 0o755); mkErr != nil {
+		return FileCreateError{Path: rel, Err: mkErr}
+	}
+	if wErr := os.WriteFile(abs, body, mode); wErr != nil {
+		return FileCreateError{Path: rel, Err: wErr}
+	}
+	return nil
+}
+
 // Equal reports whether two manifests describe the same asset. Slice
 // fields treat nil and an empty slice as equivalent (slices.Equal
 // semantics) so a freshly-loaded manifest equals one that has been

@@ -50,7 +50,7 @@ Domain packages are kept separable by design — do not blur them:
 3. **Drift vs. update.** `update` = desired content changed; `drift` = local file hash diverged from last `.agentfiles/state.json`. Never collapse them.
 4. **Delete opt-in.** `delete` is surfaced in the preview but only removed when `Apply` is called with `deleteCandidates=true`.
 5. **Single ownership.** One target repo path may belong to at most one project across every registered profile. Enforced by `app.Service.ensureProjectPathAvailable` in one pass against `projectstore.Store.AllProjects()` — no per-profile filesystem walk. Adding or moving a project against a path already owned elsewhere returns `app.ProjectPathOwnedError`.
-6. **Source of truth.** Profile content is authoritative; repo files are outputs. Never make render read from the repo as input.
+6. **Source of truth.** Profile content is authoritative; repo files are outputs. Never make render read from the repo as input. The single sanctioned exception is **Adopt** (ADR 0020): `sync.Apply` classifies `DriftAdopt` / `UnknownAdopt` rows and returns an `AdoptRequests` list; `app.Service.Apply` writes the local body back into the owning profile asset via `asset.WriteFile`. Render itself is untouched.
 
 ### TUI-only
 

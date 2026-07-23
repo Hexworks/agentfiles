@@ -65,6 +65,10 @@ const (
 type FileChange struct {
 	Path string
 	Kind ChangeKind
+	// OwningAssetID gates the row-level Adopt action on ChangeUnknown
+	// rows: the TUI offers UnknownAdopt only when this is non-empty,
+	// matching sync's reverse-mapping table (ADR 0020).
+	OwningAssetID string
 }
 
 // Preview is the boundary mirror of sync.Preview. It carries the change
@@ -88,6 +92,9 @@ type DriftDecision string
 const (
 	DriftKeep      DriftDecision = "keep"
 	DriftOverwrite DriftDecision = "overwrite"
+	// DriftAdopt promotes the local edit into the profile asset it came
+	// from — the single sanctioned repo → profile flow (ADR 0020).
+	DriftAdopt DriftDecision = "adopt"
 )
 
 // UnknownDecision is the boundary mirror of sync.UnknownDecision.
@@ -97,6 +104,9 @@ type UnknownDecision string
 const (
 	UnknownKeep   UnknownDecision = "keep"
 	UnknownDelete UnknownDecision = "delete"
+	// UnknownAdopt promotes an untracked file that sits inside a known
+	// asset projection dir into the owning asset (ADR 0020).
+	UnknownAdopt UnknownDecision = "adopt"
 )
 
 // DriftResolution pairs a drifted path with the user's per-file
@@ -236,23 +246,24 @@ func DesiredIgnored(persisted, unignored, newlyIgnored []string) []string {
 	return out
 }
 
-// DriftResolutionsFromMap encodes the ADR 0015 emission contract: a
-// drift row emits a resolution only when the user picked DriftOverwrite;
-// DriftKeep (and "no choice") stays absent so sync preserves the prior
-// baseline. Callers assembling the Apply resolutions from a change list
-// and a path→decision map use this instead of open-coding the rule so
-// the domain contract lives one hop from sync rather than in each UI.
-// Returns nil when no row would emit.
+// DriftResolutionsFromMap encodes the ADR 0015 / ADR 0020 emission
+// contract: a drift row emits a resolution only when the user picked
+// DriftOverwrite or DriftAdopt; DriftKeep (and "no choice") stays absent
+// so sync preserves the prior baseline. Callers assembling the Apply
+// resolutions from a change list and a path→decision map use this
+// instead of open-coding the rule so the domain contract lives one hop
+// from sync rather than in each UI. Returns nil when no row would emit.
 func DriftResolutionsFromMap(changes []FileChange, decisions map[string]DriftDecision) []DriftResolution {
 	var out []DriftResolution
 	for _, ch := range changes {
 		if ch.Kind != ChangeDrift {
 			continue
 		}
-		if decisions[ch.Path] != DriftOverwrite {
+		decision := decisions[ch.Path]
+		if decision != DriftOverwrite && decision != DriftAdopt {
 			continue
 		}
-		out = append(out, DriftResolution{Path: ch.Path, Decision: DriftOverwrite})
+		out = append(out, DriftResolution{Path: ch.Path, Decision: decision})
 	}
 	return out
 }

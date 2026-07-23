@@ -12,6 +12,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/config"
 	"github.com/hexworks/agentfiles/internal/profile"
 	"github.com/hexworks/agentfiles/internal/project"
+	"github.com/hexworks/agentfiles/internal/render"
 	"github.com/hexworks/agentfiles/internal/utils"
 )
 
@@ -54,22 +55,12 @@ func setupProfileAndProject(t *testing.T, projectRoot string) (*profile.Profile,
 
 // writeState persists a ManagedState snapshot under the project's
 // .agentfiles/state.json so subsequent Plan calls treat the project as a
-// non-first-apply.
+// non-first-apply. Entries carry only Hash (v2-shape legacy from the
+// caller's perspective), which is enough for drift/delete/unknown
+// classification tests.
 func writeState(t *testing.T, projectRoot string, files map[string]string) {
 	t.Helper()
-	if err := os.MkdirAll(filepath.Join(projectRoot, config.StateDirName), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	state := ManagedState{
-		ProfileID:        "personal",
-		ProjectID:        "app",
-		GeneratorVersion: GeneratorVersion,
-		LastAppliedAt:    time.Now().UTC(),
-		ManagedFiles:     files,
-	}
-	if err := os.WriteFile(filepath.Join(projectRoot, config.StateDirName, config.StateFileName), mustJSON(t, state), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	writeStateEntries(t, projectRoot, hashesToEntries(files), nil)
 }
 
 // writeStateWithIgnored persists a ManagedState snapshot that also carries
@@ -77,6 +68,14 @@ func writeState(t *testing.T, projectRoot string, files map[string]string) {
 // already has persisted ignores.
 func writeStateWithIgnored(t *testing.T, projectRoot string, files map[string]string, ignored []string) {
 	t.Helper()
+	writeStateEntries(t, projectRoot, hashesToEntries(files), ignored)
+}
+
+// writeStateEntries is the low-level test helper that lets a caller
+// stamp v3-shape entries (with AssetID/SourceRel populated) or an
+// otherwise-tuned ManagedState onto disk.
+func writeStateEntries(t *testing.T, projectRoot string, entries map[string]ManagedFileEntry, ignored []string) {
+	t.Helper()
 	if err := os.MkdirAll(filepath.Join(projectRoot, config.StateDirName), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -85,12 +84,52 @@ func writeStateWithIgnored(t *testing.T, projectRoot string, files map[string]st
 		ProjectID:        "app",
 		GeneratorVersion: GeneratorVersion,
 		LastAppliedAt:    time.Now().UTC(),
+		ManagedFiles:     entries,
+		IgnoredPaths:     ignored,
+	}
+	if err := os.WriteFile(filepath.Join(projectRoot, config.StateDirName, config.StateFileName), mustJSON(t, state), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// writeStateV2Legacy stamps the legacy v2 shape (managed_files entries
+// serialized as bare hash strings) onto disk so the loader's
+// backwards-compatible UnmarshalJSON branch is covered.
+func writeStateV2Legacy(t *testing.T, projectRoot string, files map[string]string, ignored []string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(projectRoot, config.StateDirName), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	type legacyState struct {
+		ProfileID        string            `json:"profile_id"`
+		ProjectID        string            `json:"project_id"`
+		GeneratorVersion string            `json:"generator_version"`
+		LastAppliedAt    time.Time         `json:"last_applied_at"`
+		ManagedFiles     map[string]string `json:"managed_files"`
+		IgnoredPaths     []string          `json:"ignored_paths"`
+	}
+	state := legacyState{
+		ProfileID:        "personal",
+		ProjectID:        "app",
+		GeneratorVersion: "1.0.0",
+		LastAppliedAt:    time.Now().UTC(),
 		ManagedFiles:     files,
 		IgnoredPaths:     ignored,
 	}
 	if err := os.WriteFile(filepath.Join(projectRoot, config.StateDirName, config.StateFileName), mustJSON(t, state), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func hashesToEntries(hashes map[string]string) map[string]ManagedFileEntry {
+	if hashes == nil {
+		return nil
+	}
+	out := make(map[string]ManagedFileEntry, len(hashes))
+	for k, v := range hashes {
+		out[k] = ManagedFileEntry{Hash: v}
+	}
+	return out
 }
 
 // findChange returns the FileChange entry for path or fails the test.
@@ -408,7 +447,7 @@ func TestApply_StateRewritten(t *testing.T) {
 	}
 
 	state := readState(t, projectRoot)
-	if got, want := state.ManagedFiles["AGENTS.md"], hashOf(agentsDocBody); got != want {
+	if got, want := state.ManagedFiles["AGENTS.md"].Hash, hashOf(agentsDocBody); got != want {
 		t.Fatalf("AGENTS.md hash = %q, want %q", got, want)
 	}
 	if _, ok := state.ManagedFiles[".codex/old.txt"]; ok {
@@ -440,7 +479,7 @@ func TestApply_DriftKeep_PreservesPriorBaseline(t *testing.T) {
 	}
 
 	state := readState(t, projectRoot)
-	if got, want := state.ManagedFiles["AGENTS.md"], "previous"; got != want {
+	if got, want := state.ManagedFiles["AGENTS.md"].Hash, "previous"; got != want {
 		t.Fatalf("baseline hash = %q, want prior %q (Keep must not adopt on-disk hash)", got, want)
 	}
 
@@ -483,7 +522,7 @@ func TestApply_DefaultDrift_LeavesAlone(t *testing.T) {
 	}
 
 	state := readState(t, projectRoot)
-	if got, want := state.ManagedFiles["AGENTS.md"], "previous"; got != want {
+	if got, want := state.ManagedFiles["AGENTS.md"].Hash, "previous"; got != want {
 		t.Fatalf("baseline hash = %q, want prior %q (default Keep must preserve baseline)", got, want)
 	}
 
@@ -522,7 +561,7 @@ func TestApply_NoResolutions_LeavesDriftBaselineUntouched(t *testing.T) {
 	}
 
 	state := readState(t, projectRoot)
-	if got, want := state.ManagedFiles["AGENTS.md"], "previous"; got != want {
+	if got, want := state.ManagedFiles["AGENTS.md"].Hash, "previous"; got != want {
 		t.Fatalf("baseline hash = %q, want prior %q (pure ignore-set change must not touch drift baseline)", got, want)
 	}
 	if state.IgnoredPaths != nil {
@@ -820,5 +859,346 @@ func TestApply_FirstApply_SerializesIgnoredPathsNull(t *testing.T) {
 	}
 	if !strings.Contains(string(data), `"ignored_paths": null`) {
 		t.Fatalf("expected ignored_paths to serialize as null, got: %s", data)
+	}
+}
+
+// setupProfileAndProjectWithSkill scaffolds a profile with a "foo" skill
+// asset (SKILL.md) and returns the loaded profile + a project manifest
+// pointing at projectRoot that enables the claude-code agent.
+func setupProfileAndProjectWithSkill(t *testing.T, projectRoot string) (*profile.Profile, *project.Manifest) {
+	t.Helper()
+	profileRoot := t.TempDir()
+	if _, err := profile.Init(profileRoot, "Personal"); err != nil {
+		t.Fatal(err)
+	}
+	skillDir := filepath.Join(profileRoot, config.AssetsDirName, "skill", "foo")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, config.AssetManifestFileName), []byte(`{"id":"foo","name":"foo","type":"skill"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("skill body"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := profile.Load(profileRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return loaded, &project.Manifest{
+		ID:               "app",
+		Name:             "app",
+		Path:             projectRoot,
+		EnabledAgents:    []string{"claude-code"},
+		SelectedAssetIDs: []string{"foo"},
+	}
+}
+
+// TestPreview_ChangeUnknown_PopulatesOwningAssetIDForKnownAsset pins
+// the Plan-time reverse mapping: a stray file dropped into an existing
+// skill's rendered dir surfaces on the change list with OwningAssetID
+// set, so the TUI can offer Adopt.
+func TestPreview_ChangeUnknown_PopulatesOwningAssetIDForKnownAsset(t *testing.T) {
+	projectRoot := t.TempDir()
+	loaded, proj := setupProfileAndProjectWithSkill(t, projectRoot)
+	skillDir := filepath.Join(projectRoot, ".claude", "skills", "foo")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("skill body"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "example-3.md"), []byte("stray"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeState(t, projectRoot, map[string]string{
+		".claude/skills/foo/SKILL.md": hashOf("skill body"),
+	})
+
+	preview, err := Plan(loaded, proj)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	unknown := findChange(t, preview.Changes, ".claude/skills/foo/example-3.md")
+	if unknown.Kind != ChangeUnknown {
+		t.Fatalf("kind = %q, want unknown", unknown.Kind)
+	}
+	if unknown.OwningAssetID != "foo" {
+		t.Fatalf("OwningAssetID = %q, want foo", unknown.OwningAssetID)
+	}
+}
+
+// TestPreview_ChangeUnknown_LeavesOwningAssetIDEmptyForOrphan covers the
+// negative case: a stray file whose parent is a container root (not a
+// per-asset projection dir) has no owner and the TUI must not offer
+// Adopt.
+func TestPreview_ChangeUnknown_LeavesOwningAssetIDEmptyForOrphan(t *testing.T) {
+	projectRoot := t.TempDir()
+	loaded, proj := setupProfileAndProjectWithSkill(t, projectRoot)
+	skillDir := filepath.Join(projectRoot, ".claude", "skills", "foo")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("skill body"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	orphanDir := filepath.Join(projectRoot, ".claude", "skills")
+	if err := os.WriteFile(filepath.Join(orphanDir, "orphan.md"), []byte("orphan"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeState(t, projectRoot, map[string]string{
+		".claude/skills/foo/SKILL.md": hashOf("skill body"),
+	})
+
+	preview, err := Plan(loaded, proj)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	orphan := findChange(t, preview.Changes, ".claude/skills/orphan.md")
+	if orphan.Kind != ChangeUnknown {
+		t.Fatalf("kind = %q, want unknown", orphan.Kind)
+	}
+	if orphan.OwningAssetID != "" {
+		t.Fatalf("OwningAssetID = %q, want empty (parent is a container root)", orphan.OwningAssetID)
+	}
+}
+
+// TestPreview_ChangeUnknown_LeavesOwningAssetIDEmptyForAmbiguousDir
+// exercises the "same rendered dir, multiple assets" branch of
+// assetProjectionDirs: when two known assets both project into the
+// same rendered directory the walker cannot pick an owner, so Adopt
+// is not offered.
+func TestPreview_ChangeUnknown_LeavesOwningAssetIDEmptyForAmbiguousDir(t *testing.T) {
+	dirs := assetProjectionDirs([]render.RenderedFile{
+		{Path: ".claude/skills/shared/a.md", AssetID: "one", SourceRel: "a.md"},
+		{Path: ".claude/skills/shared/b.md", AssetID: "two", SourceRel: "b.md"},
+	})
+	if _, ok := dirs[".claude/skills/shared"]; ok {
+		t.Fatalf("assetProjectionDirs kept ambiguous dir: %+v", dirs)
+	}
+	if got := owningAssetIDFor(".claude/skills/shared/new.md", dirs); got != "" {
+		t.Fatalf("OwningAssetID for ambiguous dir = %q, want empty", got)
+	}
+}
+
+// TestDriftUnknownAdoptEnumsMirror pins the string values shared by
+// the sync + appapi enum pairs so a future rename cannot silently
+// desync the two layers.
+func TestDriftUnknownAdoptEnumsMirror(t *testing.T) {
+	if got, want := string(DriftAdopt), "adopt"; got != want {
+		t.Errorf("DriftAdopt = %q, want %q", got, want)
+	}
+	if got, want := string(UnknownAdopt), "adopt"; got != want {
+		t.Errorf("UnknownAdopt = %q, want %q", got, want)
+	}
+}
+
+// TestApply_DriftAdopt_WritesProfileAndClearsDrift pins Step 5: an
+// Adopt request classifies the drift row, leaves the repo file
+// untouched, and returns an AdoptRequest carrying the reverse-mapping
+// keys the app service needs to write the profile side. Also verifies
+// that Apply's own state rewrite preserves the prior baseline, so the
+// path stays drift until the profile-side write in Step 6 lands.
+func TestApply_DriftAdopt_WritesProfileAndClearsDrift(t *testing.T) {
+	projectRoot := t.TempDir()
+	loaded, proj := setupProfileAndProject(t, projectRoot)
+	if err := os.WriteFile(filepath.Join(projectRoot, "AGENTS.md"), []byte("drifted-body"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeStateEntries(t, projectRoot, map[string]ManagedFileEntry{
+		"AGENTS.md": {Hash: "previous", AssetID: "base", SourceRel: "AGENTS.md"},
+	}, nil)
+
+	preview, err := Plan(loaded, proj)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, applyErr := Apply(preview, Resolutions{Drift: []DriftResolution{{Path: "AGENTS.md", Decision: DriftAdopt}}})
+	if applyErr != nil {
+		t.Fatalf("Apply: %v", applyErr)
+	}
+	if len(result.AdoptRequests) != 1 {
+		t.Fatalf("AdoptRequests = %+v, want single entry", result.AdoptRequests)
+	}
+	req := result.AdoptRequests[0]
+	if req.Path != "AGENTS.md" || req.AssetID != "base" || req.SourceRel != "AGENTS.md" {
+		t.Fatalf("AdoptRequest = %+v, want {AGENTS.md base AGENTS.md}", req)
+	}
+	// Repo body must remain the local edit — sync does not write.
+	got, readErr := os.ReadFile(filepath.Join(projectRoot, "AGENTS.md"))
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(got) != "drifted-body" {
+		t.Fatalf("AGENTS.md = %q, want unchanged 'drifted-body' (sync must not write repo)", got)
+	}
+	// Baseline still the prior hash: the profile side has not caught
+	// up yet, so the next Plan will still see drift until Step 6's
+	// profile write lands and the next Plan re-hashes.
+	state := readState(t, projectRoot)
+	if entry := state.ManagedFiles["AGENTS.md"]; entry.Hash != "previous" {
+		t.Fatalf("baseline = %+v, want prior 'previous' hash", entry)
+	}
+}
+
+// TestApply_UnknownAdopt_RejectsOrphanFile pins that UnknownAdopt on a
+// row without an owner surfaces AdoptUnavailableError and produces no
+// AdoptRequest.
+func TestApply_UnknownAdopt_RejectsOrphanFile(t *testing.T) {
+	projectRoot := t.TempDir()
+	loaded, proj := setupProfileAndProjectWithSkill(t, projectRoot)
+	skillDir := filepath.Join(projectRoot, ".claude", "skills", "foo")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("skill body"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	orphan := filepath.Join(projectRoot, ".claude", "skills", "orphan.md")
+	if err := os.WriteFile(orphan, []byte("orphan"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeStateEntries(t, projectRoot, map[string]ManagedFileEntry{
+		".claude/skills/foo/SKILL.md": {Hash: hashOf("skill body"), AssetID: "foo", SourceRel: "SKILL.md"},
+	}, nil)
+
+	preview, err := Plan(loaded, proj)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, applyErr := Apply(preview, Resolutions{Unknown: []UnknownResolution{{Path: ".claude/skills/orphan.md", Decision: UnknownAdopt}}})
+	if applyErr == nil {
+		t.Fatalf("expected AdoptUnavailableError, got nil")
+	}
+	var unavailable AdoptUnavailableError
+	if !errors.As(applyErr, &unavailable) {
+		t.Fatalf("expected AdoptUnavailableError, got %T: %v", applyErr, applyErr)
+	}
+	if len(result.AdoptRequests) != 0 {
+		t.Fatalf("AdoptRequests = %+v, want empty", result.AdoptRequests)
+	}
+	// Repo file must remain in place — Adopt does not clean unknowns.
+	if _, statErr := os.Stat(orphan); statErr != nil {
+		t.Fatalf("orphan removed: %v", statErr)
+	}
+}
+
+// TestApply_UnknownAdopt_WritesProfileAssetFile pins the happy path:
+// an unknown inside a known skill's projection dir produces an
+// AdoptRequest whose SourceRel matches the file's tail below the
+// projection root.
+func TestApply_UnknownAdopt_WritesProfileAssetFile(t *testing.T) {
+	projectRoot := t.TempDir()
+	loaded, proj := setupProfileAndProjectWithSkill(t, projectRoot)
+	skillDir := filepath.Join(projectRoot, ".claude", "skills", "foo")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("skill body"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stray := filepath.Join(skillDir, "example-3.md")
+	if err := os.WriteFile(stray, []byte("stray body"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeStateEntries(t, projectRoot, map[string]ManagedFileEntry{
+		".claude/skills/foo/SKILL.md": {Hash: hashOf("skill body"), AssetID: "foo", SourceRel: "SKILL.md"},
+	}, nil)
+
+	preview, err := Plan(loaded, proj)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, applyErr := Apply(preview, Resolutions{Unknown: []UnknownResolution{{Path: ".claude/skills/foo/example-3.md", Decision: UnknownAdopt}}})
+	if applyErr != nil {
+		t.Fatalf("Apply: %v", applyErr)
+	}
+	if len(result.AdoptRequests) != 1 {
+		t.Fatalf("AdoptRequests = %+v, want single entry", result.AdoptRequests)
+	}
+	req := result.AdoptRequests[0]
+	if req.AssetID != "foo" || req.SourceRel != "example-3.md" || req.Path != ".claude/skills/foo/example-3.md" {
+		t.Fatalf("AdoptRequest = %+v, want {.claude/skills/foo/example-3.md foo example-3.md}", req)
+	}
+	if _, statErr := os.Stat(stray); statErr != nil {
+		t.Fatalf("stray removed: %v", statErr)
+	}
+}
+
+// TestState_LoadV2LegacyEntries_LeavesAdoptDisabled covers the v2→v3
+// backwards-compatible loader path: a state.json whose managed_files
+// entries are bare hash strings decodes cleanly, but the resulting
+// entries carry empty AssetID/SourceRel so a follow-up DriftAdopt
+// resolution surfaces AdoptUnavailableError.
+func TestState_LoadV2LegacyEntries_LeavesAdoptDisabled(t *testing.T) {
+	projectRoot := t.TempDir()
+	loaded, proj := setupProfileAndProject(t, projectRoot)
+	if err := os.WriteFile(filepath.Join(projectRoot, "AGENTS.md"), []byte("drifted"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeStateV2Legacy(t, projectRoot, map[string]string{"AGENTS.md": "previous"}, nil)
+
+	preview, planErr := Plan(loaded, proj)
+	if planErr != nil {
+		t.Fatalf("Plan: %v", planErr)
+	}
+	if got := preview.ManagedState.ManagedFiles["AGENTS.md"]; got.Hash != "previous" || got.AssetID != "" || got.SourceRel != "" {
+		t.Fatalf("v2 legacy entry = %+v, want Hash-only", got)
+	}
+
+	_, applyErr := Apply(preview, Resolutions{Drift: []DriftResolution{{Path: "AGENTS.md", Decision: DriftAdopt}}})
+	if applyErr == nil {
+		t.Fatalf("expected AdoptUnavailableError for legacy v2 entry, got nil")
+	}
+	var unavailable AdoptUnavailableError
+	if !errors.As(applyErr, &unavailable) {
+		t.Fatalf("expected AdoptUnavailableError, got %T: %v", applyErr, applyErr)
+	}
+	if unavailable.Path != "AGENTS.md" {
+		t.Fatalf("Path = %q, want AGENTS.md", unavailable.Path)
+	}
+}
+
+// TestState_WriteV3_IncludesAssetIDAndSourceRel pins the on-disk v3
+// shape: after a real Plan+Apply cycle each managed_files entry is a
+// JSON object carrying hash, asset_id and source_rel.
+func TestState_WriteV3_IncludesAssetIDAndSourceRel(t *testing.T) {
+	projectRoot := t.TempDir()
+	loaded, proj := setupProfileAndProject(t, projectRoot)
+	preview, err := Plan(loaded, proj)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Apply(preview, Resolutions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	data, readErr := os.ReadFile(filepath.Join(projectRoot, config.StateDirName, config.StateFileName))
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if !strings.Contains(string(data), `"asset_id": "base"`) {
+		t.Fatalf("state.json missing asset_id field: %s", data)
+	}
+	if !strings.Contains(string(data), `"source_rel": "AGENTS.md"`) {
+		t.Fatalf("state.json missing source_rel field: %s", data)
+	}
+
+	state := readState(t, projectRoot)
+	entry := state.ManagedFiles["AGENTS.md"]
+	if entry.AssetID != "base" {
+		t.Errorf("AssetID = %q, want base", entry.AssetID)
+	}
+	if entry.SourceRel != "AGENTS.md" {
+		t.Errorf("SourceRel = %q, want AGENTS.md", entry.SourceRel)
+	}
+	if entry.Hash == "" {
+		t.Errorf("Hash empty")
 	}
 }

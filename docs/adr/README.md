@@ -47,4 +47,6 @@ Each ADR uses a small Michael Nygard style structure:
 - 0016 — Definition-of-Done gate for the task workflow
 - 0017 — Split projects out of the profile folder
 - 0018 — License under AGPL-3.0 with copyright-assignment CLA
+- 0019 — Optional git-aware commits
+- 0020 — Adopt is the single sanctioned repo → profile flow
 

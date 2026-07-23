@@ -178,7 +178,12 @@ Builds a project plan by resolving selected assets and projecting them into
 agent-specific output paths. Returns structured data and typed errors only;
 loop failures (missing assets, exclusive-group conflicts, per-asset render
 failures) are accumulated and returned as `[]errs.DomainError` so the TUI
-can list every issue in one preview.
+can list every issue in one preview. Each `RenderedFile` carries `Path`,
+`Body`, `Mode`, `AssetID`, and `SourceRel` (the asset-relative path of
+the source file). `SourceRel` is the provenance key the sync engine
+persists in state.json so `DriftAdopt` / `UnknownAdopt` can write the
+local body back into `<profile>/assets/<type>/<asset_id>/<source_rel>`
+(ADR 0020).
 
 ### `sync`
 
@@ -189,6 +194,16 @@ struct; turning that struct into user-facing text is the TUI's job
 (see `tui.RenderPreview`). First-apply (no `.agentfiles/state.json`) is
 treated as a clean slate — every desired file is `ChangeCreate`, no
 `ChangeUnknown` entries are emitted. See ADR 0010.
+
+`sync.ApplyResult` also carries an `AdoptRequests` slice: when the
+user picked `DriftAdopt` or `UnknownAdopt`, sync classifies the row
+and hands back the `{path, asset_id, source_rel}` triple the app
+service needs to write the profile side (`sync` itself stays
+repo-only). State entries are the value type `ManagedFileEntry{Hash,
+AssetID, SourceRel}` (schema v3, bumped from v2's bare-hash map);
+`render.RenderedFile.SourceRel` supplies the provenance keys.
+Backwards-compatible loader keeps legacy v2 entries readable with
+Adopt disabled until the next re-apply. See ADR 0020.
 
 ### `app`
 
@@ -202,7 +217,12 @@ return `[]errs.DomainError`; non-accumulator calls wrap render slices in
 and the discriminated `appapi.CommitOutcome` value (`appapi.Committed`,
 `appapi.Skipped`, `appapi.Failed`) that `Service.UpdateAsset`,
 `Service.SaveAssetFilesEdit`, and `Service.Apply` return alongside
-their existing outputs. The concrete committer (`gitBinaryCommitter`)
+their existing outputs. `Service.Apply` returns *two* outcomes: the
+first for the target-repo sync commit, the second for the profile-repo
+Adopt commit (`Skipped{SkipDisabled}` when the caller did not adopt
+anything). The profile write itself runs through `asset.WriteFile`
+inside `executeAdoptRequests`, reusing the containment rail that
+`AddFile` / `RemoveFile` use. See ADR 0020. The concrete committer (`gitBinaryCommitter`)
 wraps `internal/git` and is the sole anti-corruption layer between the
 git wrapper's typed errors and the boundary values; unit tests inject
 a fake. `Service.Settings()` and `Service.UpdateSettings()` expose the

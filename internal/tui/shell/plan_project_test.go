@@ -28,14 +28,15 @@ var _ Screen = (*planProjectScreen)(nil)
 // syncOutcome + syncErr drive the SyncProject result so tests can
 // exercise the git-aware toast paths.
 type fakePlanActions struct {
-	prof        *appapi.LoadedProfile
-	proj        *project.Manifest
-	preview     *appapi.Preview
-	syncResult  *appapi.Preview
-	syncOutcome appapi.CommitOutcome
-	syncErr     errs.DomainError
-	planErr     errs.DomainError
-	syncInputs  []actions.SyncProjectInput
+	prof         *appapi.LoadedProfile
+	proj         *project.Manifest
+	preview      *appapi.Preview
+	syncResult   *appapi.Preview
+	syncOutcome  appapi.CommitOutcome
+	adoptOutcome appapi.CommitOutcome
+	syncErr      errs.DomainError
+	planErr      errs.DomainError
+	syncInputs   []actions.SyncProjectInput
 
 	createInputs []actions.CreateAssetFromFolderInput
 	createID     string
@@ -57,9 +58,13 @@ func (f *fakePlanActions) PlanProject(in actions.PlanProjectInput) (*appapi.Prev
 	return f.preview, nil
 }
 
-func (f *fakePlanActions) SyncProject(in actions.SyncProjectInput) (*appapi.Preview, appapi.CommitOutcome, errs.DomainError) {
+func (f *fakePlanActions) SyncProject(in actions.SyncProjectInput) (*appapi.Preview, appapi.CommitOutcome, appapi.CommitOutcome, errs.DomainError) {
 	f.syncInputs = append(f.syncInputs, in)
-	return f.syncResult, f.syncOutcome, f.syncErr
+	adopt := f.adoptOutcome
+	if adopt == nil {
+		adopt = appapi.Skipped{Reason: appapi.SkipDisabled}
+	}
+	return f.syncResult, f.syncOutcome, adopt, f.syncErr
 }
 
 func (f *fakePlanActions) CreateAssetFromFolder(in actions.CreateAssetFromFolderInput) (string, errs.DomainError) {
@@ -271,9 +276,29 @@ func TestPlanProjectScreen_TreeActionsFnDriftKeepRendersOpenAndOverwriteBtn(t *t
 	assertBtn(t, got[1], "Overwrite", 'w')
 }
 
-func TestPlanProjectScreen_TreeActionsFnDriftOverwriteRendersOpenAndKeepBtn(t *testing.T) {
+func TestPlanProjectScreen_TreeActionsFnDriftOverwriteRendersOpenAndAdoptBtn(t *testing.T) {
 	f := newPlanActionsFake("Proj", nil)
 	s := newPlanProjectScreen(f, "alpha", "proj-1")
+	_ = s.driftToggleBtn("p").Trigger()
+
+	fn := s.treeActionsFn()
+	n := &treetable.Node{Data: planNode{kind: planNodeFile, path: "p", change: appapi.FileChange{Path: "p", Kind: appapi.ChangeDrift}}}
+	got := fn(n)
+	if len(got) != 2 {
+		t.Fatalf("got %d buttons, want 2", len(got))
+	}
+	assertBtn(t, got[0], "Open", 'o')
+	assertBtn(t, got[1], "Adopt", 't')
+}
+
+// TestPlanProjectScreen_TreeActionsFnDriftAdoptRendersOpenAndKeepBtn
+// pins the third state of the drift toggle cycle: after Adopt the
+// button flips to [Keep], closing the Keep→Overwrite→Adopt→Keep loop.
+func TestPlanProjectScreen_TreeActionsFnDriftAdoptRendersOpenAndKeepBtn(t *testing.T) {
+	f := newPlanActionsFake("Proj", nil)
+	s := newPlanProjectScreen(f, "alpha", "proj-1")
+	// Two toggles: Keep → Overwrite → Adopt.
+	_ = s.driftToggleBtn("p").Trigger()
 	_ = s.driftToggleBtn("p").Trigger()
 
 	fn := s.treeActionsFn()
@@ -425,7 +450,11 @@ func TestPlanProjectScreen_AfterRegisterAssetCancelDoesNothing(t *testing.T) {
 	}
 }
 
-func TestPlanProjectScreen_ToggleDriftSwapsState(t *testing.T) {
+// TestPlanProjectScreen_DriftToggleCyclesKeepOverwriteAdopt pins the
+// ADR 0020 three-way cycle. Absence in the resolution map encodes
+// Keep, so the loop tests both explicit state transitions and the
+// closing swap back to the default.
+func TestPlanProjectScreen_DriftToggleCyclesKeepOverwriteAdopt(t *testing.T) {
 	changes := []appapi.FileChange{{Path: "p", Kind: appapi.ChangeDrift}}
 	f := newPlanActionsFake("Proj", changes)
 	s := newPlanProjectScreen(f, "alpha", "proj-1")
@@ -434,18 +463,89 @@ func TestPlanProjectScreen_ToggleDriftSwapsState(t *testing.T) {
 	fn := s.treeActionsFn()
 	n := &treetable.Node{Data: planNode{kind: planNodeFile, path: "p", change: changes[0]}}
 
-	// Index 0 is the always-present [Open] button; index 1 is the drift
-	// resolution toggle which flips between Overwrite and Keep.
-	btn := fn(n)[1]
-	_ = btn.Trigger()
+	// Keep → Overwrite.
+	_ = fn(n)[1].Trigger()
 	if s.driftResolutions["p"] != appapi.DriftOverwrite {
 		t.Fatalf("after first toggle: state = %v, want DriftOverwrite", s.driftResolutions["p"])
 	}
-
-	btn = fn(n)[1]
-	_ = btn.Trigger()
+	// Overwrite → Adopt.
+	_ = fn(n)[1].Trigger()
+	if s.driftResolutions["p"] != appapi.DriftAdopt {
+		t.Fatalf("after second toggle: state = %v, want DriftAdopt", s.driftResolutions["p"])
+	}
+	// Adopt → Keep (map absence).
+	_ = fn(n)[1].Trigger()
 	if _, present := s.driftResolutions["p"]; present {
-		t.Fatalf("after second toggle: state still present (%v), want absent", s.driftResolutions["p"])
+		t.Fatalf("after third toggle: state still present (%v), want absent", s.driftResolutions["p"])
+	}
+}
+
+// TestPlanProjectScreen_UnknownAdoptShownOnlyWhenOwnedByAsset pins the
+// ADR 0020 gate on the unknown row: [Adopt] is offered only when the
+// change carries an OwningAssetID (unknown sits inside a known asset
+// projection dir). Otherwise the toggle stays a 2-way Keep↔Delete
+// cycle.
+func TestPlanProjectScreen_UnknownAdoptShownOnlyWhenOwnedByAsset(t *testing.T) {
+	changes := []appapi.FileChange{
+		{Path: "owned.md", Kind: appapi.ChangeUnknown, OwningAssetID: "foo"},
+		{Path: "orphan.md", Kind: appapi.ChangeUnknown},
+	}
+	f := newPlanActionsFake("Proj", changes)
+	s := newPlanProjectScreen(f, "alpha", "proj-1")
+	planLoadInto(t, s, f)
+
+	fn := s.treeActionsFn()
+
+	// Owned row cycles Keep → Delete → Adopt → Keep.
+	ownedNode := &treetable.Node{Data: planNode{kind: planNodeFile, path: "owned.md", change: changes[0]}}
+	// First state: Keep → button shows [Delete].
+	assertBtn(t, fn(ownedNode)[1], "Delete", 'd')
+	_ = fn(ownedNode)[1].Trigger() // → Delete
+	assertBtn(t, fn(ownedNode)[1], "Adopt", 't')
+	_ = fn(ownedNode)[1].Trigger() // → Adopt
+	assertBtn(t, fn(ownedNode)[1], "Keep", 'p')
+	_ = fn(ownedNode)[1].Trigger() // → Keep (absent from map)
+	assertBtn(t, fn(ownedNode)[1], "Delete", 'd')
+
+	// Orphan row stays a 2-way cycle: Keep ↔ Delete only.
+	orphanNode := &treetable.Node{Data: planNode{kind: planNodeFile, path: "orphan.md", change: changes[1]}}
+	assertBtn(t, fn(orphanNode)[1], "Delete", 'd')
+	_ = fn(orphanNode)[1].Trigger() // → Delete
+	assertBtn(t, fn(orphanNode)[1], "Keep", 'p')
+	_ = fn(orphanNode)[1].Trigger() // → Keep
+	assertBtn(t, fn(orphanNode)[1], "Delete", 'd')
+}
+
+// TestPlanProjectScreen_ApplyEmitsAdoptResolutions pins that onApply
+// forwards DriftAdopt and UnknownAdopt selections to the SyncProject
+// action as-is, mirroring the existing Overwrite/Delete emission.
+func TestPlanProjectScreen_ApplyEmitsAdoptResolutions(t *testing.T) {
+	changes := []appapi.FileChange{
+		{Path: "d/drift.md", Kind: appapi.ChangeDrift},
+		{Path: "u/unknown.md", Kind: appapi.ChangeUnknown, OwningAssetID: "foo"},
+	}
+	f := newPlanActionsFake("Proj", changes)
+	s := newPlanProjectScreen(f, "alpha", "proj-1")
+	planLoadInto(t, s, f)
+	s.driftResolutions["d/drift.md"] = appapi.DriftAdopt
+	s.unknownResolutions["u/unknown.md"] = appapi.UnknownAdopt
+
+	_ = s.onApply()()
+	if len(f.syncInputs) != 1 {
+		t.Fatalf("syncInputs len = %d, want 1", len(f.syncInputs))
+	}
+	in := f.syncInputs[0]
+	if len(in.Drift) != 1 || in.Drift[0].Decision != appapi.DriftAdopt || in.Drift[0].Path != "d/drift.md" {
+		t.Errorf("Drift = %+v, want [{d/drift.md adopt}]", in.Drift)
+	}
+	adopts := 0
+	for _, r := range in.Unknown {
+		if r.Decision == appapi.UnknownAdopt && r.Path == "u/unknown.md" {
+			adopts++
+		}
+	}
+	if adopts != 1 {
+		t.Errorf("Unknown = %+v, want one adopt entry for u/unknown.md", in.Unknown)
 	}
 }
 
@@ -709,16 +809,16 @@ func TestPlanProjectScreen_OnApplyFailureEmitsNotificationOnly(t *testing.T) {
 // TestPlanProjectScreen_MnemonicUniquenessExhaustive walks every cursor
 // row and every state-override combination and asserts every registered
 // button has a unique mnemonic rune. The candidate alphabet across all
-// states is {o, k, d, a, b}. An outer assertion verifies the walk
-// actually reached a drift/unknown row (otherwise the inner uniqueness
-// would be trivial — only [Apply] and [Back] registered).
+// states is {o, w, p, t, d, a, b, g}. An outer assertion verifies the
+// walk actually reached a drift/unknown row (otherwise the inner
+// uniqueness would be trivial — only [Apply] and [Back] registered).
 func TestPlanProjectScreen_MnemonicUniquenessExhaustive(t *testing.T) {
 	changes := []appapi.FileChange{
 		{Path: "a/add.md", Kind: appapi.ChangeCreate},
 		{Path: "b/upd.md", Kind: appapi.ChangeUpdate},
 		{Path: "c/del.md", Kind: appapi.ChangeDelete},
 		{Path: "d/drift.md", Kind: appapi.ChangeDrift},
-		{Path: "e/unknown.md", Kind: appapi.ChangeUnknown},
+		{Path: "e/unknown.md", Kind: appapi.ChangeUnknown, OwningAssetID: "foo"},
 	}
 	type override struct {
 		drift   map[string]appapi.DriftDecision
@@ -727,11 +827,9 @@ func TestPlanProjectScreen_MnemonicUniquenessExhaustive(t *testing.T) {
 	overrides := []override{
 		{},
 		{drift: map[string]appapi.DriftDecision{"d/drift.md": appapi.DriftOverwrite}},
+		{drift: map[string]appapi.DriftDecision{"d/drift.md": appapi.DriftAdopt}},
 		{unknown: map[string]appapi.UnknownDecision{"e/unknown.md": appapi.UnknownDelete}},
-		{
-			drift:   map[string]appapi.DriftDecision{"d/drift.md": appapi.DriftOverwrite},
-			unknown: map[string]appapi.UnknownDecision{"e/unknown.md": appapi.UnknownDelete},
-		},
+		{unknown: map[string]appapi.UnknownDecision{"e/unknown.md": appapi.UnknownAdopt}},
 	}
 	sawToggleLabel := false
 	for oi, ov := range overrides {

@@ -48,12 +48,13 @@ Apply never adopts the on-disk hash as the new baseline.
 `DriftOverwrite` is unchanged: it writes the rendered body and records the
 rendered hash.
 
-Accepting local edits as canonical is split out into a separate, future
-operation, **Adopt** (task 0035). Adopt is not a baseline rewrite — it promotes
-the local edit *into the profile* (the source of truth) and re-renders to every
-sibling agent, so nothing is left as drift or update. Because it reverses the
-profile → repo flow, it gets its own `DriftDecision` value, its own UI button,
-and its own ADR when built.
+Accepting local edits as canonical is now shipped as **Adopt** — see
+[ADR 0020](./0020-adopt-as-sanctioned-reverse-flow.md). Adopt is not a
+baseline rewrite: it promotes the local edit *into the profile* (the
+source of truth) and lets sibling agent projections catch up as ordinary
+`update` rows on the next plan. Because it reverses the profile → repo
+flow, it gets its own `DriftDecision` value (`DriftAdopt`) and its own
+UI button.
 
 We considered dropping the `DriftKeep` enum entirely (since Keep and "no
 decision" are now identical) but kept it as the explicit, named default — it
@@ -65,8 +66,8 @@ documents intent and stays symmetric with `UnknownKeep`.
   (`preview.ManagedState.ManagedFiles[path]`), not the on-disk hash.
 - `onApply` emits a drift resolution only for `DriftOverwrite` rows; untouched
   rows fall through to the preserve-baseline default.
-- The "acknowledge these edits as the new baseline" capability is gone until
-  Adopt (task 0035) provides it deliberately.
+- The "acknowledge these edits as the new baseline" capability is now
+  provided deliberately by Adopt (ADR 0020).
 - Tests change accordingly: `TestApply_DriftKeep_AdoptsCurrentAsBaseline` is
   replaced by a preserves-prior-baseline assertion; a pure ignore-set Apply must
   leave unrelated drift baselines untouched.

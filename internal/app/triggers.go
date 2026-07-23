@@ -98,3 +98,20 @@ var triggerAssetFiles = commitTrigger{
 		return []string{c.AssetDir + "/**"}
 	},
 }
+
+// triggerAdoptIntoProfile is the plan-apply reverse-flow commit
+// trigger (ADR 0020). Fires on the profile repo when at least one
+// Adopt request landed. Subject counts the adopted files; pathspec is
+// the absolute paths of the profile-side asset files the service just
+// wrote.
+var triggerAdoptIntoProfile = commitTrigger{
+	Subject: func(c commitTriggerCtx) string {
+		return fmt.Sprintf(
+			"chore(agentfiles): adopt %d file(s) into profile",
+			len(c.MutatedFiles),
+		)
+	},
+	Pathspec: func(c commitTriggerCtx) []string {
+		return append([]string(nil), c.MutatedFiles...)
+	},
+}

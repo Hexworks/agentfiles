@@ -16,6 +16,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/projectstore"
 	"github.com/hexworks/agentfiles/internal/registry"
 	"github.com/hexworks/agentfiles/internal/settings"
+	llmsync "github.com/hexworks/agentfiles/internal/sync"
 )
 
 // enabledSettings is the shared "git enabled" value seeded into services
@@ -191,7 +192,7 @@ func TestApply_CommitsSyncedFilesAndStateJSON(t *testing.T) {
 		t.Fatalf("add project: %v", addErrs)
 	}
 
-	_, outcome, applyErr := svc.Apply("personal", "repo", appapi.Resolutions{})
+	_, outcome, _, applyErr := svc.Apply("personal", "repo", appapi.Resolutions{})
 	if applyErr != nil {
 		t.Fatalf("Apply: %v", applyErr)
 	}
@@ -235,7 +236,7 @@ func TestApply_DisabledSkipsCommit(t *testing.T) {
 		t.Fatalf("add project: %v", addErrs)
 	}
 
-	_, outcome, applyErr := svc.Apply("personal", "repo", appapi.Resolutions{})
+	_, outcome, _, applyErr := svc.Apply("personal", "repo", appapi.Resolutions{})
 	if applyErr != nil {
 		t.Fatalf("Apply: %v", applyErr)
 	}
@@ -477,7 +478,7 @@ func TestApply_RealGitRecordsProjectCommit(t *testing.T) {
 		t.Fatalf("add project: %v", addErrs)
 	}
 
-	_, outcome, applyErr := svc.Apply("personal", "repo", appapi.Resolutions{})
+	_, outcome, _, applyErr := svc.Apply("personal", "repo", appapi.Resolutions{})
 	if applyErr != nil {
 		t.Fatalf("Apply: %v", applyErr)
 	}
@@ -531,7 +532,7 @@ func TestApply_RealGitProfileNestedInsideOuterRepo(t *testing.T) {
 		t.Fatalf("add project: %v", addErrs)
 	}
 
-	_, outcome, applyErr := svc.Apply("personal", "nested", appapi.Resolutions{})
+	_, outcome, _, applyErr := svc.Apply("personal", "nested", appapi.Resolutions{})
 	if applyErr != nil {
 		t.Fatalf("Apply: %v", applyErr)
 	}
@@ -553,6 +554,182 @@ func TestApply_RealGitProfileNestedInsideOuterRepo(t *testing.T) {
 	}
 	if !sawAgents || !sawState {
 		t.Fatalf("HEAD files = %v, want both %q and %q", files, wantAgents, wantState)
+	}
+}
+
+// seedAdoptProject seeds a fake-committer service with a skill asset
+// "foo" (SKILL.md), a project pointing at repoPath, and a first Apply
+// that lays down .claude/skills/foo/SKILL.md plus its v3 state.json.
+// The returned skill body is the last-applied managed content.
+func seedAdoptProject(t *testing.T, s settings.Settings, fc *fakeCommitter) (svc *Service, profileID, projectID, repoPath, skillBody string) {
+	t.Helper()
+	root := t.TempDir()
+	svc = newSvcWith(root, s, fc)
+	if _, err := svc.CreateProfile("Personal", filepath.Join(root, "profile")); err != nil {
+		t.Fatalf("create profile: %v", err)
+	}
+	if _, err := svc.InitAsset("personal", asset.Manifest{
+		ID: "foo", Name: "foo", Type: asset.TypeSkill, Description: "seed",
+	}); err != nil {
+		t.Fatalf("init asset: %v", err)
+	}
+	repoPath = filepath.Join(root, "repo")
+	if _, addErrs := svc.AddProject("personal", "Repo", repoPath, []string{"claude-code"}, []string{"foo"}); len(addErrs) > 0 {
+		t.Fatalf("add project: %v", addErrs)
+	}
+	if _, _, _, applyErr := svc.Apply("personal", "repo", appapi.Resolutions{}); applyErr != nil {
+		t.Fatalf("initial apply: %v", applyErr)
+	}
+	// Snapshot the last-applied SKILL.md body for the drift step.
+	got, readErr := os.ReadFile(filepath.Join(repoPath, ".claude", "skills", "foo", "SKILL.md"))
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	skillBody = string(got)
+	fc.Calls = nil
+	return svc, "personal", "repo", repoPath, skillBody
+}
+
+// TestService_Apply_AdoptCommitsProfileWhenGitEnabled pins the ADR
+// 0020 profile-side commit: after a DriftAdopt resolution the fake
+// committer sees a second call scoped to the profile repo with the
+// adopt subject.
+func TestService_Apply_AdoptCommitsProfileWhenGitEnabled(t *testing.T) {
+	fc := &fakeCommitter{SHA: "adopt01"}
+	svc, profileID, projectID, repoPath, _ := seedAdoptProject(t, enabledSettings, fc)
+	// Edit the rendered file locally to create drift.
+	skillRepo := filepath.Join(repoPath, ".claude", "skills", "foo", "SKILL.md")
+	if err := os.WriteFile(skillRepo, []byte("adopted body\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, syncOutcome, adoptOutcome, applyErr := svc.Apply(profileID, projectID, appapi.Resolutions{
+		Drift: []appapi.DriftResolution{{Path: ".claude/skills/foo/SKILL.md", Decision: appapi.DriftAdopt}},
+	})
+	if applyErr != nil {
+		t.Fatalf("Apply: %v", applyErr)
+	}
+	// Two commit calls: one on the target repo (sync), one on the
+	// profile repo (adopt).
+	if len(fc.Calls) != 2 {
+		t.Fatalf("committer calls = %d, want 2", len(fc.Calls))
+	}
+	// syncOutcome is the target-repo commit result; adoptOutcome is
+	// the profile-repo one. Both come out Committed because SHA is
+	// set on the fake.
+	if _, ok := syncOutcome.(appapi.Committed); !ok {
+		t.Fatalf("syncOutcome = %T, want Committed", syncOutcome)
+	}
+	if got := mustCommitted(t, adoptOutcome); got.SHA != "adopt01" {
+		t.Fatalf("adopt SHA = %q, want adopt01", got.SHA)
+	}
+	// Second call carries the adopt template + pathspec pointing at
+	// the profile asset file.
+	adoptCall := fc.Calls[1]
+	if !strings.HasPrefix(adoptCall.Msg, "chore(agentfiles): adopt ") || !strings.Contains(adoptCall.Msg, "file(s) into profile") {
+		t.Fatalf("adopt msg = %q, want adopt subject template", adoptCall.Msg)
+	}
+	if len(adoptCall.Pathspec) != 1 || !strings.HasSuffix(adoptCall.Pathspec[0], "/SKILL.md") {
+		t.Fatalf("adopt pathspec = %v, want single SKILL.md entry", adoptCall.Pathspec)
+	}
+}
+
+// TestService_Apply_AdoptSkipsCommitWhenGitDisabled pins the disabled
+// path: the asset file still gets written, but no commit is attempted.
+func TestService_Apply_AdoptSkipsCommitWhenGitDisabled(t *testing.T) {
+	fc := &fakeCommitter{}
+	svc, profileID, projectID, repoPath, _ := seedAdoptProject(t, settings.Default(), fc)
+	skillRepo := filepath.Join(repoPath, ".claude", "skills", "foo", "SKILL.md")
+	if err := os.WriteFile(skillRepo, []byte("adopted disabled\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, adoptOutcome, applyErr := svc.Apply(profileID, projectID, appapi.Resolutions{
+		Drift: []appapi.DriftResolution{{Path: ".claude/skills/foo/SKILL.md", Decision: appapi.DriftAdopt}},
+	})
+	if applyErr != nil {
+		t.Fatalf("Apply: %v", applyErr)
+	}
+	if len(fc.Calls) != 0 {
+		t.Fatalf("committer called %d times, want 0", len(fc.Calls))
+	}
+	mustSkipped(t, adoptOutcome, appapi.SkipDisabled)
+	// Adopt still copies the body into the profile asset even when
+	// the git commit is off.
+	profileAsset := loadedAsset(t, svc, profileID, "foo")
+	got, readErr := os.ReadFile(filepath.Join(profileAsset.Dir, "SKILL.md"))
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(got) != "adopted disabled\n" {
+		t.Fatalf("profile SKILL.md = %q, want adopted body", got)
+	}
+}
+
+// TestService_Apply_AdoptWritesAssetFileWithProvenance pins that the
+// profile-side file matches the repo edit byte-for-byte and the repo
+// file is untouched by adopt.
+func TestService_Apply_AdoptWritesAssetFileWithProvenance(t *testing.T) {
+	fc := &fakeCommitter{}
+	svc, profileID, projectID, repoPath, _ := seedAdoptProject(t, settings.Default(), fc)
+	skillRepo := filepath.Join(repoPath, ".claude", "skills", "foo", "SKILL.md")
+	edited := "adopted provenance body\n"
+	if err := os.WriteFile(skillRepo, []byte(edited), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, _, _, applyErr := svc.Apply(profileID, projectID, appapi.Resolutions{
+		Drift: []appapi.DriftResolution{{Path: ".claude/skills/foo/SKILL.md", Decision: appapi.DriftAdopt}},
+	}); applyErr != nil {
+		t.Fatalf("Apply: %v", applyErr)
+	}
+	profileAsset := loadedAsset(t, svc, profileID, "foo")
+	profileBody, err := os.ReadFile(filepath.Join(profileAsset.Dir, "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(profileBody) != edited {
+		t.Fatalf("profile SKILL.md = %q, want %q", profileBody, edited)
+	}
+	repoBody, err := os.ReadFile(skillRepo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(repoBody) != edited {
+		t.Fatalf("repo SKILL.md changed: %q", repoBody)
+	}
+}
+
+// TestService_Apply_AdoptMissingAssetSurfacesError pins the
+// accumulator contract inside executeAdoptRequests: an AdoptRequest
+// whose AssetID no longer resolves in the loaded profile produces a
+// typed error and no commit lands.
+func TestService_Apply_AdoptMissingAssetSurfacesError(t *testing.T) {
+	fc := &fakeCommitter{}
+	svc, _, _, _, _ := seedAdoptProject(t, enabledSettings, fc)
+	loaded, err := svc.LoadProfile("personal")
+	if err != nil {
+		t.Fatalf("load profile: %v", err)
+	}
+	proj := loaded.Projects["repo"]
+	fc.Calls = nil
+
+	// Hand-craft a bogus AdoptRequest that references an asset id the
+	// loaded profile has no entry for. executeAdoptRequests must
+	// surface an AdoptUnavailableError and never invoke the fake.
+	outcome, failures := svc.executeAdoptRequests(loaded, proj, []llmsync.AdoptRequest{
+		{Path: "AGENTS.md", AssetID: "bogus", SourceRel: "AGENTS.md"},
+	})
+	mustSkipped(t, outcome, appapi.SkipDisabled)
+	if len(failures) != 1 {
+		t.Fatalf("failures = %v, want single AdoptUnavailableError", failures)
+	}
+	var unavailable llmsync.AdoptUnavailableError
+	if !errors.As(failures[0], &unavailable) {
+		t.Fatalf("expected AdoptUnavailableError, got %T: %v", failures[0], failures[0])
+	}
+	if len(fc.Calls) != 0 {
+		t.Fatalf("committer called %d times, want 0", len(fc.Calls))
 	}
 }
 

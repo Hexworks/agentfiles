@@ -135,11 +135,41 @@ stateDiagram-v2
 
     Drift --> Drift: Apply[Keep] (B,F,D unchanged)
     Drift --> Clean: Apply[Overwrite] (F:=D, B:=D)
+    Drift --> Clean: Apply[Adopt] (profile:=F → next Plan: D:=F)
     Drift --> Clean: local edit back to D
     Drift --> Update: local edit back to B (B≠D)
     Drift --> Clean: profile converges (D:=F)
 ```
 
-Promoting a local edit back into the profile (*Adopt*) is a planned future
-resolution, not yet implemented; it would add a `Drift --> Clean` edge that
-also rewrites the profile and re-renders to sibling agents.
+Promoting a local edit back into the profile — **Adopt** — is now
+implemented as `DriftAdopt` (see ADR 0020). Adopt keeps `F` unchanged,
+copies the local body into the profile asset it came from, and lets
+the next `Plan` re-render so `D` catches up (Clean edge below).
+Sibling agent projections (e.g. the `.codex` mirror of an adopted
+`.claude` skill file) surface as ordinary `update` rows on that next
+plan — Adopt is per-file, single-agent.
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant TUI as tui
+    participant App as app
+    participant Sync as sync
+    participant Repo as target repo
+    participant Profile as profile repo
+
+    User->>TUI: toggle drift row → Adopt, [Apply]
+    TUI->>App: SyncProject{Drift:[{path, adopt}]}
+    App->>Sync: Plan + Apply(DriftAdopt)
+    Sync-->>App: AdoptRequests{path, asset_id, source_rel}
+    App->>Repo: read local body
+    App->>Profile: write <asset.Dir>/<source_rel>
+    App->>Repo: commit sync (target)
+    App->>Profile: commit adopt (profile)
+    App-->>TUI: syncOutcome + adoptOutcome
+    TUI-->>User: toast (committed sync; profile adopt)
+```
+
+State: `Drift --> Clean` on the primary agent's projection after the
+next plan; sibling projections briefly enter `Update` until the user
+applies them separately.

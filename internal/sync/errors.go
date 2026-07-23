@@ -178,3 +178,26 @@ func (e PreviewInvariantError) Error() string {
 func (PreviewInvariantError) Severity() errs.Severity {
 	return errs.SeverityError
 }
+
+// AdoptUnavailableError reports that an Adopt resolution cannot be
+// executed because the reverse-mapping keys (AssetID + SourceRel) are
+// missing. Two cases produce it:
+//   - a DriftAdopt against a state.json entry that was written under
+//     the v2 schema (Hash only), so the profile source is unknown;
+//   - an UnknownAdopt against a change row whose OwningAssetID was not
+//     populated (the unknown file does not sit under a known asset
+//     projection dir).
+//
+// See ADR 0020.
+type AdoptUnavailableError struct {
+	Path   string
+	Reason string
+}
+
+func (e AdoptUnavailableError) Error() string {
+	return fmt.Sprintf("adopt unavailable for %s: %s", e.Path, e.Reason)
+}
+
+func (AdoptUnavailableError) Severity() errs.Severity {
+	return errs.SeverityError
+}
