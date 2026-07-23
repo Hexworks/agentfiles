@@ -2,10 +2,12 @@
   "profile_id": "addamsson",
   "project_id": "agentfiles",
   "generator_version": "2.0.0",
-  "last_applied_at": "2026-07-23T17:25:16.947905428Z",
+  "last_applied_at": "2026-07-23T17:47:51.927704338Z",
   "managed_files": {
     ".claude/skills/af.check-task/SKILL.md": {
-      "hash": "640eda0eb9f00da60aee520ac4f1c8038aef3af0ca770bcfc99a02b2984b93e7"
+      "hash": "640eda0eb9f00da60aee520ac4f1c8038aef3af0ca770bcfc99a02b2984b93e7",
+      "asset_id": "af.check-task",
+      "source_rel": "SKILL.md"
     },
     ".claude/skills/af.cleanup-tasks/SKILL.md": {
       "hash": "e49a634b2339f6b2f39833e2d80647420f31024e8ec1a1e403523f05b66b65a5",
@@ -23,13 +25,19 @@
       "source_rel": "SKILL.md"
     },
     ".claude/skills/af.create-task/SKILL.md": {
-      "hash": "ab2ebbca60f632f6d4e77e809a830fe74877a59d2e5c7bffa646383fb1269f06"
+      "hash": "ab2ebbca60f632f6d4e77e809a830fe74877a59d2e5c7bffa646383fb1269f06",
+      "asset_id": "af.create-task",
+      "source_rel": "SKILL.md"
     },
     ".claude/skills/af.create-task/example-1-description.md": {
-      "hash": "c90b97b86ac4eaf939ab45b1e23bc6e5db6cc7821e2f73e4557ae67071aeaf18"
+      "hash": "c90b97b86ac4eaf939ab45b1e23bc6e5db6cc7821e2f73e4557ae67071aeaf18",
+      "asset_id": "af.create-task",
+      "source_rel": "example-1-description.md"
     },
     ".claude/skills/af.create-task/example-2-description.md": {
-      "hash": "63b4ff4ba53eb4224b534ea5273dbdcfd10d9f4e2bab2821fb2d81fe9a847795"
+      "hash": "63b4ff4ba53eb4224b534ea5273dbdcfd10d9f4e2bab2821fb2d81fe9a847795",
+      "asset_id": "af.create-task",
+      "source_rel": "example-2-description.md"
     },
     ".claude/skills/af.drift-cleanup/SKILL.md": {
       "hash": "f836441a897262a52632abef497c3cf1ab14fc193743512b2b1295e19d9641b4",
@@ -147,7 +155,9 @@
       "source_rel": "docs/changelog/2026-06-13_0029-plan-project-screen.md"
     },
     ".claude/skills/af.drift-cleanup/docs/glossary.md": {
-      "hash": "6fc0a3d7af8d12cf8141cb5fdf65ce91ade59f0a5435eae360add10a13dbd7dd"
+      "hash": "6fc0a3d7af8d12cf8141cb5fdf65ce91ade59f0a5435eae360add10a13dbd7dd",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/glossary.md"
     },
     ".claude/skills/af.task.implement/SKILL.md": {
       "hash": "93dab75003e90d947e7abc04317c976ce4c340fc332ee0a21b217a461e3b10eb",
@@ -160,7 +170,9 @@
       "source_rel": "changelog-template.md"
     },
     ".claude/skills/af.task.plan/SKILL.md": {
-      "hash": "84c7764f386d1eb9e7b647c0125c09a5d74eb73fda3d2daff955eab0e28a0d27"
+      "hash": "84c7764f386d1eb9e7b647c0125c09a5d74eb73fda3d2daff955eab0e28a0d27",
+      "asset_id": "af.task.plan",
+      "source_rel": "SKILL.md"
     },
     ".claude/skills/af.task.review-apply/SKILL.md": {
       "hash": "ed586ab38bbe9625de96f8becdfbf818ff0dc87179598c5feadb626c0249163b",
@@ -168,7 +180,9 @@
       "source_rel": "SKILL.md"
     },
     ".claude/skills/af.task.review/SKILL.md": {
-      "hash": "1c5ea432609063a2aaa6031296afad48b3c7f3a4936ed0e82c9b0bb09cea7c15"
+      "hash": "1c5ea432609063a2aaa6031296afad48b3c7f3a4936ed0e82c9b0bb09cea7c15",
+      "asset_id": "af.task.review",
+      "source_rel": "SKILL.md"
     },
     ".claude/skills/af.task.review/review-template.md": {
       "hash": "3a93c69852cfe9449186a1db444acc7e6eb596d7dad92d500f55b6053c47fe22",
@@ -346,7 +360,9 @@
       "source_rel": "docs/changelog/2026-06-13_0029-plan-project-screen.md"
     },
     ".codex/skills/af.drift-cleanup/docs/glossary.md": {
-      "hash": "6fc0a3d7af8d12cf8141cb5fdf65ce91ade59f0a5435eae360add10a13dbd7dd"
+      "hash": "6fc0a3d7af8d12cf8141cb5fdf65ce91ade59f0a5435eae360add10a13dbd7dd",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/glossary.md"
     },
     ".codex/skills/af.task.implement/SKILL.md": {
       "hash": "93dab75003e90d947e7abc04317c976ce4c340fc332ee0a21b217a461e3b10eb",
