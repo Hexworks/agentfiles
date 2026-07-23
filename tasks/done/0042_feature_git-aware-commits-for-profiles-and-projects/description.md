@@ -1,32 +1,32 @@
 ---
 id: 0042
 type: feature
-status: in-review
+status: done
 topics: git, tui, external_tools, sync_and_safety
 notes: |
-  I'd like af to be git-aware. This means adding the following functionality:
+    I'd like af to be git-aware. This means adding the following functionality:
 
-  If the profile we're currently editing is a git repository then I'd like to have additional behavior:
-  - When an asset's files are edited (there is a change in git) when we return from the editor on the edit asset screen then I'd like to create a commit out of it
-  - when an asset's metadata (asset.json) is edited through "Save" I'd like to create a commit
+    If the profile we're currently editing is a git repository then I'd like to have additional behavior:
+    - When an asset's files are edited (there is a change in git) when we return from the editor on the edit asset screen then I'd like to create a commit out of it
+    - when an asset's metadata (asset.json) is edited through "Save" I'd like to create a commit
 
-  When the project we edit is a git repository then:
-  - changes to the project metadata (eg: `.agentfiles/state.json`) made on the "Editing Project" modal should be committed
-  - changes to the rendered asset files (on the "Planning project ..." screen) should be committed
+    When the project we edit is a git repository then:
+    - changes to the project metadata (eg: `.agentfiles/state.json`) made on the "Editing Project" modal should be committed
+    - changes to the rendered asset files (on the "Planning project ..." screen) should be committed
 
-  Git support should be an option on the "Settings screen". All the values that we change on the "Settings" screen should be loaded when af starts
-  and changes made to these values should be saved to a new `settings.json` file (next to the already-existing `profiles.json` and `projects.json`).
+    Git support should be an option on the "Settings screen". All the values that we change on the "Settings" screen should be loaded when af starts
+    and changes made to these values should be saved to a new `settings.json` file (next to the already-existing `profiles.json` and `projects.json`).
 
-  The settings screen should have a Save (mnemonic `e`) button just like the profile editor and we should only save when it is invoked.
+    The settings screen should have a Save (mnemonic `e`) button just like the profile editor and we should only save when it is invoked.
 
-  A notification should appear when we do so.
+    A notification should appear when we do so.
 
-  Git integration should only happen if:
-  - the folder we work with *is* a git repository
-  - Git integration is enabled in settings
+    Git integration should only happen if:
+    - the folder we work with *is* a git repository
+    - Git integration is enabled in settings
 
-  **important**: we should only include our changes in the commit and the commit message should be succinct and it should include some sort of prefix (eg: `[Agentfiles]` or something similar)
-  that signifies that it is an automated commit
+    **important**: we should only include our changes in the commit and the commit message should be succinct and it should include some sort of prefix (eg: `[Agentfiles]` or something similar)
+    that signifies that it is an automated commit
 ---
 
 # Git-aware commits for profiles and projects
@@ -53,19 +53,19 @@ user's git identity.
   `svc.UpdateSettings(new)` on Save; no live reload from disk.
   Missing file → defaults, no error.
 - **Schema**:
-  ```json
-  { "version": 1, "git": { "enabled": false } }
-  ```
+    ```json
+    { "version": 1, "git": { "enabled": false } }
+    ```
 - **Commit message shape** (Conventional Commits, scope `agentfiles`):
-  - Asset files edited: `chore(agentfiles): edit asset <asset-id> files`
-  - Asset manifest saved: `chore(agentfiles): update asset <asset-id> manifest`
-  - Plan-apply: `chore(agentfiles): sync project <name> (N files)`
-  - Subject only, no body.
+    - Asset files edited: `chore(agentfiles): edit asset <asset-id> files`
+    - Asset manifest saved: `chore(agentfiles): update asset <asset-id> manifest`
+    - Plan-apply: `chore(agentfiles): sync project <name> (N files)`
+    - Subject only, no body.
 - **Pathspec per trigger**:
-  - Asset files edited → `assets/<asset-id>/**` in profile repo.
-  - Asset manifest → `assets/<asset-id>/asset.json` in profile repo.
-  - Plan-apply → all files sync.Apply created/updated/deleted **plus**
-    `.agentfiles/state.json`, single commit in target repo.
+    - Asset files edited → `assets/<asset-id>/**` in profile repo.
+    - Asset manifest → `assets/<asset-id>/asset.json` in profile repo.
+    - Plan-apply → all files sync.Apply created/updated/deleted **plus**
+      `.agentfiles/state.json`, single commit in target repo.
 - **"Edit Project" modal writes to `~/.agentfiles/projects.json`, not
   target repo**. Not a commit trigger (dropped from user's original
   list on review — file is outside any project repo).
@@ -112,7 +112,7 @@ user's git identity.
       settings.json is not written.
 - [ ] New `internal/git` package exports `Detect(dir) (*Repo, error)`
       using `git rev-parse --git-dir`, and `Repo.Commit(paths, msg)
-      (shortSHA, error)`.
+    (shortSHA, error)`.
 - [ ] `Repo.Commit` refuses when `git diff --cached --name-only`
       contains any path outside the supplied pathspec — returns
       `UnrelatedStagedChangesError{Paths}` with the offending paths.

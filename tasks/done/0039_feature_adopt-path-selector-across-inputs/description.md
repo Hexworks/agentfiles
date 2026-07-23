@@ -1,7 +1,7 @@
 ---
 id: 0039
 type: feature
-status: in-review
+status: done
 topics: tui, go
 depends_on: 0037
 ---

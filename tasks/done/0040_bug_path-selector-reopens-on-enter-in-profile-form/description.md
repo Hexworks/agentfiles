@@ -1,15 +1,15 @@
 ---
 id: 0040
 type: bug
-status: in-review
+status: done
 topics: tui, charm
 depends_on: 0039, 0037
 notes: |
-  I've noticed that the solution for #0039 is buggy. When I select a path
-  it goes back to the profile registration form (i've only tried this on
-  the register profile action). The path form element says it is
-  read-only, but i can still edit it, and pressing <enter> opens the path
-  selector again as opposed to submitting the form.
+    I've noticed that the solution for #0039 is buggy. When I select a path
+    it goes back to the profile registration form (i've only tried this on
+    the register profile action). The path form element says it is
+    read-only, but i can still edit it, and pressing <enter> opens the path
+    selector again as opposed to submitting the form.
 ---
 
 # Path selector re-opens on Enter in profile form
@@ -48,7 +48,7 @@ call site.
 ## Acceptance Criteria
 
 - [ ] `internal/tui/modals/fields.go` exposes `pathDisplayNote(value
-      *string, description string) *huh.Note` in place of
+    *string, description string) *huh.Note` in place of
       `readOnlyPathInput`; no `readOnlyPathInput` references remain in
       the package.
 - [ ] `internal/tui/modals/create_profile.go`,
@@ -63,7 +63,7 @@ call site.
       `state.Path` is unchanged.
 - [ ] For register-profile and register-project (single-Note groups),
       a unit test feeds `Enter` and asserts `form.State ==
-      huh.StateCompleted` — no picker re-open, no key bleed-through.
+    huh.StateCompleted` — no picker re-open, no key bleed-through.
 - [ ] For create-profile (Name + Note), a unit test seeds a valid
       Name, advances focus off the Name field, feeds `Enter` on the
       Note row, and asserts `form.State == huh.StateCompleted`.
