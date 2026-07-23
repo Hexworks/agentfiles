@@ -4,17 +4,11 @@ import (
 	"errors"
 	"path/filepath"
 	"testing"
-
-	"github.com/hexworks/agentfiles/internal/projectstore"
-	"github.com/hexworks/agentfiles/internal/registry"
 )
 
 func TestProjectPathCannotBeSharedAcrossProfiles(t *testing.T) {
 	root := t.TempDir()
-	svc := New(
-		registry.NewStore(filepath.Join(root, "registry.json")),
-		projectstore.NewStore(filepath.Join(root, "projects.json")),
-	)
+	svc := newSvc(root)
 	firstProfile := filepath.Join(root, "first")
 	secondProfile := filepath.Join(root, "second")
 	if _, err := svc.CreateProfile("First", firstProfile); err != nil {
@@ -44,10 +38,7 @@ func TestProjectPathCannotBeSharedAcrossProfiles(t *testing.T) {
 
 func TestProjectPathCannotBeSharedWithinSameProfile(t *testing.T) {
 	root := t.TempDir()
-	svc := New(
-		registry.NewStore(filepath.Join(root, "registry.json")),
-		projectstore.NewStore(filepath.Join(root, "projects.json")),
-	)
+	svc := newSvc(root)
 	if _, err := svc.CreateProfile("Personal", filepath.Join(root, "profile")); err != nil {
 		t.Fatal(err)
 	}
@@ -79,10 +70,7 @@ func TestProjectPathCannotBeSharedWithinSameProfile(t *testing.T) {
 // s.Projects.Add bypasses AddProject; the store must still refuse.
 func TestPathOwnershipIsEnforcedInsideStore(t *testing.T) {
 	root := t.TempDir()
-	svc := New(
-		registry.NewStore(filepath.Join(root, "registry.json")),
-		projectstore.NewStore(filepath.Join(root, "projects.json")),
-	)
+	svc := newSvc(root)
 	if _, err := svc.CreateProfile("First", filepath.Join(root, "first")); err != nil {
 		t.Fatal(err)
 	}

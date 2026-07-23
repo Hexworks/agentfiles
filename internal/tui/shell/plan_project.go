@@ -35,7 +35,7 @@ type planProjectActions interface {
 	LoadProfile(in actions.LoadProfileInput) (*app.LoadedProfile, errs.DomainError)
 	LoadProject(in actions.LoadProjectInput) (*project.Manifest, errs.DomainError)
 	PlanProject(in actions.PlanProjectInput) (*app.Preview, errs.DomainError)
-	SyncProject(in actions.SyncProjectInput) (*app.Preview, errs.DomainError)
+	SyncProject(in actions.SyncProjectInput) (*app.Preview, app.CommitOutcome, errs.DomainError)
 	CreateAssetFromFolder(in actions.CreateAssetFromFolderInput) (string, errs.DomainError)
 }
 
@@ -313,7 +313,7 @@ func (s *planProjectScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 	// own resolution, and async results in flight).
 	if s.modal != nil {
 		switch msg.(type) {
-		case modal.ResolvedMsg, tea.WindowSizeMsg, planProjectLoadedMsg, mutationDoneMsg, registerAssetDoneMsg:
+		case modal.ResolvedMsg, tea.WindowSizeMsg, planProjectLoadedMsg, mutationDoneMsg, syncDoneMsg, registerAssetDoneMsg:
 			// fall through to type-specific handling
 		default:
 			return s.forwardToModal(msg)
@@ -325,6 +325,8 @@ func (s *planProjectScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 		return s.handleLoaded(m)
 	case mutationDoneMsg:
 		return s.handleMutationDone(m)
+	case syncDoneMsg:
+		return s.handleSyncDone(m)
 	case registerAssetDoneMsg:
 		return s.handleRegisterAssetDone(m)
 	case modal.ResolvedMsg:
@@ -400,6 +402,16 @@ func (s *planProjectScreen) handleMutationDone(m mutationDoneMsg) (Screen, tea.C
 		return s, tea.Batch(note, popCmd())
 	}
 	return s, note
+}
+
+// handleSyncDone mirrors handleMutationDone for the Apply flow but also
+// composes the merged save-plus-commit toast. Failure keeps the user on
+// the plan so they can retry; success pops the screen after the toast.
+func (s *planProjectScreen) handleSyncDone(m syncDoneMsg) (Screen, tea.Cmd) {
+	if m.err != nil {
+		return s, notificationCmd(m.err.Severity(), m.err.Error())
+	}
+	return s, tea.Batch(commitOutcomeCmd(m.info, m.outcome), popCmd())
 }
 
 func (s *planProjectScreen) handleKey(m tea.KeyPressMsg) (Screen, tea.Cmd) {
@@ -715,6 +727,15 @@ type registerAssetDoneMsg struct {
 	err  errs.DomainError
 }
 
+// syncDoneMsg envelopes the outcome of a plan-apply. Success carries the
+// merged base+commit outcome so the shared handler emits one info toast
+// and, on commit failure, batches a warn toast.
+type syncDoneMsg struct {
+	info    string
+	outcome app.CommitOutcome
+	err     errs.DomainError
+}
+
 // onRegisterAsset opens the Create Asset modal pre-scoped to the selected
 // folder. The project-relative key is stored on the screen so the post-confirm
 // handler can hand it to the service (which resolves and re-validates it); the
@@ -847,19 +868,19 @@ func (s *planProjectScreen) onApply() tea.Cmd {
 	)
 	profileRef := s.profileID
 	projectID := s.projectID
-	return mutationCmd(
-		func() errs.DomainError {
-			_, err := s.actions.SyncProject(actions.SyncProjectInput{
-				ProfileRef:   profileRef,
-				ProjectID:    projectID,
-				Drift:        drift,
-				Unknown:      unknown,
-				IgnoredPaths: ignored,
-			})
-			return err
-		},
-		"Project synced",
-	)
+	return func() tea.Msg {
+		_, outcome, err := s.actions.SyncProject(actions.SyncProjectInput{
+			ProfileRef:   profileRef,
+			ProjectID:    projectID,
+			Drift:        drift,
+			Unknown:      unknown,
+			IgnoredPaths: ignored,
+		})
+		if err != nil {
+			return syncDoneMsg{err: err}
+		}
+		return syncDoneMsg{info: "Project synced", outcome: outcome}
+	}
 }
 
 // buildPlanTree turns the preview's FileChange list into a directory tree

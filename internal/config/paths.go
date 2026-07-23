@@ -26,6 +26,11 @@ const ProfilesStoreFileName = "profiles.json"
 // to live inside each profile folder.
 const ProjectsStoreFileName = "projects.json"
 
+// SettingsStoreFileName is the name of the settings store file written
+// under UserConfigDirName. It holds user-editable settings (currently the
+// git integration toggle) applied on startup.
+const SettingsStoreFileName = "settings.json"
+
 // ProfileManifestFileName is the name of the per-profile manifest file
 // scaffolded by profile.Init at the profile root.
 const ProfileManifestFileName = "profile.json"

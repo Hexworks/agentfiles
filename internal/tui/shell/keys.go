@@ -69,7 +69,7 @@ func (m Model) handleGlobalKey(kp tea.KeyPressMsg) (tea.Cmd, bool) {
 	case key.Matches(kp, m.keys.Notifications):
 		return showNotificationsCmd(), true
 	case key.Matches(kp, m.keys.Settings):
-		return pushCmd(newSettingsScreen()), true
+		return pushCmd(newSettingsScreen(m.actions)), true
 	case key.Matches(kp, m.keys.Help):
 		return showHelpCmd(m.helpTopic()), true
 	case key.Matches(kp, m.keys.Quit):

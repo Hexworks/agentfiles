@@ -67,7 +67,7 @@ func TestUpdateAsset_OverwritesManifestOnDisk(t *testing.T) {
 
 	a.Description = "updated"
 	a.Tags = []string{"review"}
-	if err := svc.UpdateAsset("personal", &a.Manifest); err != nil {
+	if _, err := svc.UpdateAsset("personal", &a.Manifest); err != nil {
 		t.Fatalf("update: %v", err)
 	}
 
@@ -91,7 +91,7 @@ func TestUpdateAsset_MissingAssetReturnsError(t *testing.T) {
 	}
 
 	stranger := &asset.Manifest{ID: "stranger", Name: "stranger", Type: asset.TypeAgentsDoc}
-	err := svc.UpdateAsset("personal", stranger)
+	_, err := svc.UpdateAsset("personal", stranger)
 
 	var typed AssetNotFoundError
 	if !errors.As(err, &typed) {
@@ -122,7 +122,7 @@ func TestUpdateAsset_IgnoresCallerSuppliedDir(t *testing.T) {
 	// redirect the write because UpdateAsset takes only the manifest.
 	edit := a.Manifest
 	edit.Description = "edited"
-	if err := svc.UpdateAsset("personal", &edit); err != nil {
+	if _, err := svc.UpdateAsset("personal", &edit); err != nil {
 		t.Fatalf("update: %v", err)
 	}
 

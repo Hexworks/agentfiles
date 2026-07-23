@@ -11,11 +11,41 @@ should be updated so the language stays internally consistent.
 ## User Config Dir
 
 The centralized directory `~/.agentfiles/` that holds the persistent CLI
-state: the profile registry (`profiles.json`) and the projects store
-(`projects.json`). Its name intentionally matches the target-repo
+state: the profile registry (`profiles.json`), the projects store
+(`projects.json`), and the [Settings Store](#settings-store)
+(`settings.json`). Its name intentionally matches the target-repo
 [Managed State](#managed-state) dir — the two live under different
 anchors ($HOME vs repo root), so both can be called `.agentfiles/` without
 ambiguity at the file-system level. Introduced by ADR 0017.
+
+## Settings Store
+
+The persistent user-preferences aggregate rooted at
+`~/.agentfiles/settings.json` inside the [User Config Dir](#user-config-dir).
+Schema `{version:1, git:{enabled}}`. Loaded once by `cmd/af/main.go` and
+swapped in on `Service.UpdateSettings`; missing file → defaults with no
+error. Only owns the settings that the user is meant to change through the
+Settings TUI screen. See ADR 0019.
+
+## Commit Trigger
+
+One of the three points where `af` records an automated
+[Git-Aware Commit](#git-aware-commit): asset-manifest save (Save button
+on Edit Asset), asset-files edit (return from the external editor), and
+plan-apply. Each has a distinct pathspec and Conventional-Commits
+subject; the trigger fires only when git integration is enabled in the
+[Settings Store](#settings-store) and the mutated folder is a git
+repository.
+
+## Git-Aware Commit
+
+The scoped Conventional-Commits commit `af` records after a mutation
+when git integration is enabled. Produced by the `app.GitCommitter`
+seam and materialized by `internal/git` via `os/exec`. Silent-skips
+when the folder is not a git repo or the pathspec has no diff; refuses
+when the index already carries staged paths outside the pathspec so
+unrelated user work is never rolled into an automated commit. See
+ADR 0019.
 
 ## Registry
 

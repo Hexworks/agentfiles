@@ -31,8 +31,11 @@ func (a *Actions) PlanProject(in PlanProjectInput) (*app.Preview, errs.DomainErr
 
 // SyncProject applies the desired files to the project repository,
 // honoring the per-file Drift and Unknown resolutions plus the ignored
-// folder keys in the input.
-func (a *Actions) SyncProject(in SyncProjectInput) (*app.Preview, errs.DomainError) {
+// folder keys in the input. When git integration is enabled and the
+// target repo is a git repository a single scoped commit is recorded
+// after the file writes succeed; the outcome rides on the returned
+// CommitOutcome.
+func (a *Actions) SyncProject(in SyncProjectInput) (*app.Preview, app.CommitOutcome, errs.DomainError) {
 	return a.svc.Apply(in.ProfileRef, in.ProjectID, app.Resolutions{
 		Drift:        in.Drift,
 		Unknown:      in.Unknown,

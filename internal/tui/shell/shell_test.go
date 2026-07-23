@@ -13,15 +13,19 @@ import (
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/projectstore"
 	"github.com/hexworks/agentfiles/internal/registry"
+	"github.com/hexworks/agentfiles/internal/settings"
 	"github.com/hexworks/agentfiles/internal/tui/notifications"
 )
 
 func newTestSvc(t *testing.T) *app.Service {
 	t.Helper()
 	dir := t.TempDir()
-	return app.New(
+	return app.NewWithStores(
 		registry.NewStore(dir+"/registry.json"),
 		projectstore.NewStore(dir+"/projects.json"),
+		settings.NewStore(dir+"/settings.json"),
+		settings.Default(),
+		nil,
 	)
 }
 
@@ -58,7 +62,7 @@ func TestUpdate_PushScreenMsgGrowsStack(t *testing.T) {
 		t.Fatalf("initial top = %T, want *welcomeScreen", m.stack[0])
 	}
 
-	tm, _ := m.Update(PushScreenMsg{Screen: newSettingsScreen()})
+	tm, _ := m.Update(PushScreenMsg{Screen: newSettingsScreen(m.actions)})
 	m = tm.(Model)
 	if len(m.stack) != 2 {
 		t.Fatalf("after push depth = %d, want 2", len(m.stack))
@@ -156,13 +160,13 @@ func collect(t *testing.T, cmd tea.Cmd, visit func(tea.Msg)) {
 
 func TestUpdate_PushScreenMsgDedupSameType(t *testing.T) {
 	m := newTestShell(t)
-	tm, _ := m.Update(PushScreenMsg{Screen: newSettingsScreen()})
+	tm, _ := m.Update(PushScreenMsg{Screen: newSettingsScreen(m.actions)})
 	m = tm.(Model)
 	if len(m.stack) != 2 {
 		t.Fatalf("after first push depth = %d, want 2", len(m.stack))
 	}
 
-	tm, _ = m.Update(PushScreenMsg{Screen: newSettingsScreen()})
+	tm, _ = m.Update(PushScreenMsg{Screen: newSettingsScreen(m.actions)})
 	m = tm.(Model)
 	if len(m.stack) != 2 {
 		t.Fatalf("after duplicate-type push depth = %d, want 2 (dedup)", len(m.stack))
@@ -171,7 +175,7 @@ func TestUpdate_PushScreenMsgDedupSameType(t *testing.T) {
 
 func TestUpdate_PopScreenMsgShrinksStack(t *testing.T) {
 	m := newTestShell(t)
-	tm, _ := m.Update(PushScreenMsg{Screen: newSettingsScreen()})
+	tm, _ := m.Update(PushScreenMsg{Screen: newSettingsScreen(m.actions)})
 	m = tm.(Model)
 
 	tm, _ = m.Update(PopScreenMsg{})
@@ -186,7 +190,7 @@ func TestUpdate_PopScreenMsgShrinksStack(t *testing.T) {
 
 func TestUpdate_PopScreenMsgZeroesSlot(t *testing.T) {
 	m := newTestShell(t)
-	tm, _ := m.Update(PushScreenMsg{Screen: newSettingsScreen()})
+	tm, _ := m.Update(PushScreenMsg{Screen: newSettingsScreen(m.actions)})
 	m = tm.(Model)
 
 	// Reach into the backing array's index-1 slot via re-slice.

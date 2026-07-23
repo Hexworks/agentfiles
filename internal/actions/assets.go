@@ -1,6 +1,7 @@
 package actions
 
 import (
+	"github.com/hexworks/agentfiles/internal/app"
 	"github.com/hexworks/agentfiles/internal/asset"
 	"github.com/hexworks/agentfiles/internal/errs"
 )
@@ -21,8 +22,21 @@ func (a *Actions) CreateAssetFromFolder(in CreateAssetFromFolderInput) (string, 
 	return a.svc.CreateAssetFromFolder(in.ProfileRef, in.ProjectID, in.Manifest, in.DirKey)
 }
 
-func (a *Actions) UpdateAsset(in UpdateAssetInput) (struct{}, errs.DomainError) {
-	return struct{}{}, a.svc.UpdateAsset(in.ProfileRef, in.Manifest)
+// UpdateAsset persists the manifest edit and, when git integration is
+// enabled and the profile is a git repo, records a manifest-scoped
+// commit. The returned CommitOutcome carries the short SHA on success
+// and Err on a hard commit failure; a zero-value CommitOutcome means
+// "no commit path was attempted" (feature disabled or dir not a repo).
+func (a *Actions) UpdateAsset(in UpdateAssetInput) (app.CommitOutcome, errs.DomainError) {
+	return a.svc.UpdateAsset(in.ProfileRef, in.Manifest)
+}
+
+// SaveAssetFilesEdit persists the manifest edit alongside a
+// files-scoped commit against `assets/<asset-id>/**`, used by the
+// editor-return flow after the user finishes editing an asset file. See
+// UpdateAsset for the CommitOutcome semantics.
+func (a *Actions) SaveAssetFilesEdit(in SaveAssetFilesEditInput) (app.CommitOutcome, errs.DomainError) {
+	return a.svc.SaveAssetFilesEdit(in.ProfileRef, in.Manifest)
 }
 
 // DeleteAsset removes the asset from the profile and unselects it from

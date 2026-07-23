@@ -11,6 +11,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/hexworks/agentfiles/internal/actions"
+	"github.com/hexworks/agentfiles/internal/app"
 	"github.com/hexworks/agentfiles/internal/asset"
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/tui/components/focus"
@@ -30,7 +31,8 @@ import (
 // without depending on the full Actions surface.
 type editAssetActions interface {
 	LoadAsset(in actions.LoadAssetInput) (*asset.Asset, errs.DomainError)
-	UpdateAsset(in actions.UpdateAssetInput) (struct{}, errs.DomainError)
+	UpdateAsset(in actions.UpdateAssetInput) (app.CommitOutcome, errs.DomainError)
+	SaveAssetFilesEdit(in actions.SaveAssetFilesEditInput) (app.CommitOutcome, errs.DomainError)
 	AddAssetFile(in actions.AddAssetFileInput) (struct{}, errs.DomainError)
 	RemoveAssetFile(in actions.RemoveAssetFileInput) (struct{}, errs.DomainError)
 }
@@ -155,10 +157,13 @@ type filesChangedMsg struct {
 }
 
 // saveSucceededMsg is dispatched by a successful Save so Update refreshes
-// the dirty-tracking snapshot atomically with the toast emission.
+// the dirty-tracking snapshot atomically with the toast emission. outcome
+// carries the git commit result so the merged save-plus-commit toast can
+// be composed at message-handling time.
 type saveSucceededMsg struct {
 	snapshot editAssetForm
 	info     string
+	outcome  app.CommitOutcome
 }
 
 func newEditAssetScreen(a editAssetActions, profileID, assetID string) *editAssetScreen {
@@ -523,7 +528,7 @@ func (s *editAssetScreen) handleSaveSucceeded(m saveSucceededMsg) (Screen, tea.C
 	if m.info == "" {
 		return s, nil
 	}
-	return s, notificationCmd(errs.SeverityInfo, m.info)
+	return s, commitOutcomeCmd(m.info, m.outcome)
 }
 
 func (s *editAssetScreen) handleEditorFinished(m editor.FinishedMsg) (Screen, tea.Cmd) {
@@ -534,13 +539,13 @@ func (s *editAssetScreen) handleEditorFinished(m editor.FinishedMsg) (Screen, te
 	}
 	// The editor wrote to disk; refresh the file list (a brand-new
 	// neighbour file would otherwise be invisible) and persist the
-	// manifest so a future per-file hash store (see app/service.go's
-	// UpdateAsset comment) refreshes too.
+	// manifest through the files-scoped commit path so `assets/<id>/**`
+	// captures both the manifest and every edited file in one commit.
 	dir := s.asset.Dir
 	files := sortedRelativeFiles(dir)
 	s.files = files
 	s.tree.SetRoot(buildAssetTree(s.asset, s.files))
-	return s, s.saveManifestCmd(fmt.Sprintf("Edited %q", rel))
+	return s, s.saveEditCmd(fmt.Sprintf("Edited %q", rel))
 }
 
 func (s *editAssetScreen) handleKey(m tea.KeyPressMsg) (Screen, tea.Cmd) {
@@ -738,25 +743,44 @@ func (s *editAssetScreen) onSave() tea.Cmd {
 	return s.saveManifestCmd(fmt.Sprintf("Asset %q saved", s.assetID))
 }
 
-// saveManifestCmd is the single chokepoint for "persist current form as
-// a manifest" — called from Save and from any post-mutation path that
-// also wants pending edits committed (file create / delete, editor
-// finished). On success it emits saveSucceededMsg so Update refreshes
-// snapshot atomically; on failure it emits a mutationDoneMsg so the
-// caller still sees the toast but the snapshot stays stale (which leaves
-// dirty() returning true).
+// saveManifestCmd is the manifest-scoped save path invoked from the
+// Save button. On success it emits saveSucceededMsg so Update refreshes
+// snapshot atomically and composes the merged toast; on failure it
+// emits a mutationDoneMsg so the caller still sees the toast but the
+// snapshot stays stale (which leaves dirty() returning true).
 func (s *editAssetScreen) saveManifestCmd(info string) tea.Cmd {
 	manifest := s.composeManifest()
 	snapshot := s.form
 	profileRef := s.profileID
 	return func() tea.Msg {
-		if _, err := s.actions.UpdateAsset(actions.UpdateAssetInput{
+		outcome, err := s.actions.UpdateAsset(actions.UpdateAssetInput{
 			ProfileRef: profileRef,
 			Manifest:   &manifest,
-		}); err != nil {
+		})
+		if err != nil {
 			return mutationDoneMsg{severity: err.Severity(), text: err.Error()}
 		}
-		return saveSucceededMsg{snapshot: snapshot, info: info}
+		return saveSucceededMsg{snapshot: snapshot, info: info, outcome: outcome}
+	}
+}
+
+// saveEditCmd is the files-scoped save path invoked when the external
+// editor returns. It differs from saveManifestCmd only in the commit
+// shape it produces (`assets/<id>/**` vs. `assets/<id>/asset.json`);
+// the manifest persistence is identical.
+func (s *editAssetScreen) saveEditCmd(info string) tea.Cmd {
+	manifest := s.composeManifest()
+	snapshot := s.form
+	profileRef := s.profileID
+	return func() tea.Msg {
+		outcome, err := s.actions.SaveAssetFilesEdit(actions.SaveAssetFilesEditInput{
+			ProfileRef: profileRef,
+			Manifest:   &manifest,
+		})
+		if err != nil {
+			return mutationDoneMsg{severity: err.Severity(), text: err.Error()}
+		}
+		return saveSucceededMsg{snapshot: snapshot, info: info, outcome: outcome}
 	}
 }
 

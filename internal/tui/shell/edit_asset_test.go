@@ -15,6 +15,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/projectstore"
 	"github.com/hexworks/agentfiles/internal/registry"
+	"github.com/hexworks/agentfiles/internal/settings"
 	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
 	"github.com/hexworks/agentfiles/internal/tui/components/modal"
 	"github.com/hexworks/agentfiles/internal/tui/components/treetable"
@@ -37,9 +38,12 @@ type editAssetFixture struct {
 func newEditAssetFixture(t *testing.T, assetName string, assetType asset.Type) *editAssetFixture {
 	t.Helper()
 	root := t.TempDir()
-	svc := app.New(
+	svc := app.NewWithStores(
 		registry.NewStore(filepath.Join(root, "registry.json")),
 		projectstore.NewStore(filepath.Join(root, "projects.json")),
+		settings.NewStore(filepath.Join(root, "settings.json")),
+		settings.Default(),
+		nil,
 	)
 	ref, err := svc.CreateProfile("alpha", filepath.Join(root, "alpha"))
 	if err != nil {

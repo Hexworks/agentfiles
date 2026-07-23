@@ -8,6 +8,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/app"
 	"github.com/hexworks/agentfiles/internal/projectstore"
 	"github.com/hexworks/agentfiles/internal/registry"
+	"github.com/hexworks/agentfiles/internal/settings"
 )
 
 // fixture is the shared bag returned by newFixture. ProfilePath is the
@@ -39,9 +40,12 @@ func newFixture(t *testing.T, opts ...fixtureOpt) fixture {
 		apply(&o)
 	}
 	root := t.TempDir()
-	svc := app.New(
+	svc := app.NewWithStores(
 		registry.NewStore(filepath.Join(root, "registry.json")),
 		projectstore.NewStore(filepath.Join(root, "projects.json")),
+		settings.NewStore(filepath.Join(root, "settings.json")),
+		settings.Default(),
+		nil,
 	)
 	f := fixture{
 		A:    actions.New(svc),

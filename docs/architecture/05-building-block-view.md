@@ -184,6 +184,37 @@ return `[]errs.DomainError`; non-accumulator calls wrap render slices in
 `errs.Errors` and return a single `error`. Typed-error conventions live in
 [`docs/guidelines/errors.md`](../guidelines/errors.md).
 
+`app.Service` also owns the `GitCommitter` seam (`internal/app/git.go`)
+and the `CommitOutcome{SHA, Err}` value that `Service.UpdateAsset`,
+`Service.SaveAssetFilesEdit`, and `Service.Apply` return alongside their
+existing outputs. The concrete committer wraps `internal/git`; unit
+tests inject a fake. `Service.Settings()` and `Service.UpdateSettings()`
+expose the loaded settings and persist changes through the settings
+store, running a `git.BinaryAvailable()` pre-flight when the toggle is
+about to enable git integration. See ADR 0019.
+
+### `settings`
+
+Owns `~/.agentfiles/settings.json`, the persistent user-preferences file
+introduced by ADR 0019. Schema `{version:1, git:{enabled}}`. `Store`
+mirrors `projectstore.Store` / `registry.Store` shape (`Load`, `Save`,
+`DefaultPath`, `NewStore`) so `cmd/af/main.go` wires all three the
+same way. Missing file → `Default()` with no error so first-time users
+start with the safe (git-disabled) default.
+
+### `git`
+
+Narrow wrapper around the `git` binary via `os/exec`, per
+`docs/guidelines/external_tools.md`. Exposes `Detect(dir) *Repo`,
+`BinaryAvailable()`, and `Repo.Commit(pathspec, msg) (shortSHA, error)`.
+Typed errors (`BinaryMissingError`, `NotARepoError`,
+`UnrelatedStagedChangesError`, `HookFailedError`, `CommitError`) let
+the TUI render specific messages. `Repo.Commit` refuses when staged
+paths lie outside the pathspec, returns `("", nil)` on an empty diff
+(silent skip), and honors user hooks (no `--no-verify`). Consumed only
+by `internal/app` — the rest of the codebase sees the `GitCommitter`
+seam instead.
+
 ### `tui/shell`
 
 The root Bubble Tea program. Runs in alt-screen mode, owns the screen

@@ -16,6 +16,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/profile"
 	"github.com/hexworks/agentfiles/internal/projectstore"
 	"github.com/hexworks/agentfiles/internal/registry"
+	"github.com/hexworks/agentfiles/internal/settings"
 	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
 	"github.com/hexworks/agentfiles/internal/tui/components/modal"
 	"github.com/hexworks/agentfiles/internal/tui/modals"
@@ -36,9 +37,12 @@ type profilesFixture struct {
 func newProfilesFixture(t *testing.T) *profilesFixture {
 	t.Helper()
 	root := t.TempDir()
-	svc := app.New(
+	svc := app.NewWithStores(
 		registry.NewStore(filepath.Join(root, "registry.json")),
 		projectstore.NewStore(filepath.Join(root, "projects.json")),
+		settings.NewStore(filepath.Join(root, "settings.json")),
+		settings.Default(),
+		nil,
 	)
 	return &profilesFixture{Root: root, Service: svc, Actions: actions.New(svc)}
 }

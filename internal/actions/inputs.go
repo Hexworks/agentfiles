@@ -111,6 +111,15 @@ type UpdateAssetInput struct {
 	Manifest   *asset.Manifest
 }
 
+// SaveAssetFilesEditInput mirrors UpdateAssetInput; the separate name
+// keeps the intent visible at the call site (Save button vs. return
+// from external editor) so the shell test doubles can differentiate the
+// two commit shapes without inspecting arguments.
+type SaveAssetFilesEditInput struct {
+	ProfileRef string
+	Manifest   *asset.Manifest
+}
+
 type DeleteAssetInput struct {
 	ProfileRef string
 	AssetID    string

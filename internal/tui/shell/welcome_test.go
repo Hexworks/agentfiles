@@ -10,14 +10,18 @@ import (
 	"github.com/hexworks/agentfiles/internal/app"
 	"github.com/hexworks/agentfiles/internal/projectstore"
 	"github.com/hexworks/agentfiles/internal/registry"
+	"github.com/hexworks/agentfiles/internal/settings"
 )
 
 func newTestWelcomeScreen(t *testing.T) *welcomeScreen {
 	t.Helper()
 	dir := t.TempDir()
-	svc := app.New(
+	svc := app.NewWithStores(
 		registry.NewStore(dir+"/registry.json"),
 		projectstore.NewStore(dir+"/projects.json"),
+		settings.NewStore(dir+"/settings.json"),
+		settings.Default(),
+		nil,
 	)
 	return newWelcomeScreen(defaultGlobalKeyMap(), actions.New(svc))
 }

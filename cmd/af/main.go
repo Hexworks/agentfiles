@@ -1,7 +1,8 @@
-// Command af is the agentfiles CLI. It parses the --registry and
-// --projects flags, runs any pending user-config migration, and drops the
-// user into the alt-screen Bubble Tea shell defined in internal/tui/shell,
-// which is the only interface agentfiles exposes.
+// Command af is the agentfiles CLI. It parses the --registry,
+// --projects, and --settings flags, runs any pending user-config
+// migration, and drops the user into the alt-screen Bubble Tea shell
+// defined in internal/tui/shell, which is the only interface agentfiles
+// exposes.
 package main
 
 import (
@@ -16,6 +17,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/migrate"
 	"github.com/hexworks/agentfiles/internal/projectstore"
 	"github.com/hexworks/agentfiles/internal/registry"
+	"github.com/hexworks/agentfiles/internal/settings"
 	"github.com/hexworks/agentfiles/internal/tui/notifications"
 	"github.com/hexworks/agentfiles/internal/tui/shell"
 	"github.com/hexworks/agentfiles/internal/tui/styles"
@@ -32,9 +34,15 @@ func main() {
 		fmt.Fprintln(os.Stderr, projPathErr.Error())
 		os.Exit(1)
 	}
+	settingsDefault, settingsPathErr := settings.DefaultPath()
+	if settingsPathErr != nil {
+		fmt.Fprintln(os.Stderr, settingsPathErr.Error())
+		os.Exit(1)
+	}
 
 	registryPath := flag.String("registry", registryDefault, "path to profile registry")
 	projectsPath := flag.String("projects", projectsDefault, "path to project store")
+	settingsPath := flag.String("settings", settingsDefault, "path to settings store")
 	themePath := flag.String("theme", "", "path to theme override (default $XDG_CONFIG_HOME/agentfiles/theme.json)")
 	flag.Parse()
 
@@ -45,13 +53,20 @@ func main() {
 
 	profileStore := registry.NewStore(*registryPath)
 	projectStore := projectstore.NewStore(*projectsPath)
+	settingsStore := settings.NewStore(*settingsPath)
 
 	if err := migrate.Run(profileStore, projectStore, migrate.StderrLogger); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 
-	svc := app.New(profileStore, projectStore)
+	loadedSettings, settingsLoadErr := settingsStore.Load()
+	if settingsLoadErr != nil {
+		fmt.Fprintln(os.Stderr, settingsLoadErr.Error())
+		os.Exit(1)
+	}
+
+	svc := app.NewWithStores(profileStore, projectStore, settingsStore, loadedSettings, app.NewGitCommitter())
 	a := actions.New(svc)
 	log := notifications.NewLog()
 

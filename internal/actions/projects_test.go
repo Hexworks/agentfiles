@@ -176,7 +176,7 @@ func TestActions_SyncProject_AppliesAndReturnsPreview(t *testing.T) {
 		t.Fatalf("seed: %v", addErr)
 	}
 
-	preview, err := f.A.SyncProject(actions.SyncProjectInput{
+	preview, _, err := f.A.SyncProject(actions.SyncProjectInput{
 		ProfileRef: "personal",
 		ProjectID:  "repo",
 	})
@@ -203,7 +203,7 @@ func TestActions_SyncProject_PassesDriftAndUnknownResolutions(t *testing.T) {
 	// preview — Service should ignore them silently. The point of this
 	// test is to confirm the action surface forwards the slices without
 	// dropping them.
-	_, err := f.A.SyncProject(actions.SyncProjectInput{
+	_, _, err := f.A.SyncProject(actions.SyncProjectInput{
 		ProfileRef: "personal",
 		ProjectID:  "repo",
 		Drift: []app.DriftResolution{
@@ -238,7 +238,7 @@ func TestActions_SyncProject_PersistsIgnoredPaths(t *testing.T) {
 	// (skipped on first apply). Only then is an all-unknown folder eligible
 	// to be ignored — Service.Apply re-asserts that eligibility before
 	// persisting, so the path must actually exist as an unknown folder.
-	if _, err := f.A.SyncProject(actions.SyncProjectInput{ProfileRef: "personal", ProjectID: "repo"}); err != nil {
+	if _, _, err := f.A.SyncProject(actions.SyncProjectInput{ProfileRef: "personal", ProjectID: "repo"}); err != nil {
 		t.Fatalf("initial sync: %v", err)
 	}
 	legacy := filepath.Join(repo, ".codex", "skills", "legacy")
@@ -249,7 +249,7 @@ func TestActions_SyncProject_PersistsIgnoredPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := f.A.SyncProject(actions.SyncProjectInput{
+	if _, _, err := f.A.SyncProject(actions.SyncProjectInput{
 		ProfileRef:   "personal",
 		ProjectID:    "repo",
 		IgnoredPaths: []string{".codex/skills/legacy"},

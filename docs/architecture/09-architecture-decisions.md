@@ -20,6 +20,7 @@ durable rationale is recorded as ADRs in [`../adr/`](../adr/README.md).
 - `0016`: Definition-of-Done gate for the task workflow
 - `0017`: split projects out of the profile folder
 - `0018`: license under AGPL-3.0 with copyright-assignment CLA
+- `0019`: optional git-aware auto-commits for profile and target repos
 
 ## Usage
 

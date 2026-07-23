@@ -40,7 +40,7 @@ func newWelcomeScreen(globals globalKeyMap, a *actions.Actions) *welcomeScreen {
 	return &welcomeScreen{
 		items: []welcomeItem{
 			{label: "Profiles", action: func() tea.Cmd { return pushCmd(newProfilesScreen(a)) }},
-			{label: "Settings", action: func() tea.Cmd { return pushCmd(newSettingsScreen()) }},
+			{label: "Settings", action: func() tea.Cmd { return pushCmd(newSettingsScreen(a)) }},
 			{label: "Quit", action: func() tea.Cmd { return tea.Quit }},
 		},
 		up:     globals.Up,

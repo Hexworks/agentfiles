@@ -1,7 +1,7 @@
 ---
 id: 0042
 type: feature
-status: in-progress
+status: in-review
 topics: git, tui, external_tools, sync_and_safety
 notes: |
   I'd like af to be git-aware. This means adding the following functionality:

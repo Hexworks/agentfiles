@@ -25,13 +25,17 @@ var _ Screen = (*planProjectScreen)(nil)
 // configured profile/project/preview. planErr exercises the load-error
 // path; syncResult lets tests assert that the screen does not assume
 // PlanProject and SyncProject return the same Preview shape.
+// syncOutcome + syncErr drive the SyncProject result so tests can
+// exercise the git-aware toast paths.
 type fakePlanActions struct {
-	prof       *app.LoadedProfile
-	proj       *project.Manifest
-	preview    *app.Preview
-	syncResult *app.Preview
-	planErr    errs.DomainError
-	syncInputs []actions.SyncProjectInput
+	prof        *app.LoadedProfile
+	proj        *project.Manifest
+	preview     *app.Preview
+	syncResult  *app.Preview
+	syncOutcome app.CommitOutcome
+	syncErr     errs.DomainError
+	planErr     errs.DomainError
+	syncInputs  []actions.SyncProjectInput
 
 	createInputs []actions.CreateAssetFromFolderInput
 	createID     string
@@ -53,9 +57,9 @@ func (f *fakePlanActions) PlanProject(in actions.PlanProjectInput) (*app.Preview
 	return f.preview, nil
 }
 
-func (f *fakePlanActions) SyncProject(in actions.SyncProjectInput) (*app.Preview, errs.DomainError) {
+func (f *fakePlanActions) SyncProject(in actions.SyncProjectInput) (*app.Preview, app.CommitOutcome, errs.DomainError) {
 	f.syncInputs = append(f.syncInputs, in)
-	return f.syncResult, nil
+	return f.syncResult, f.syncOutcome, f.syncErr
 }
 
 func (f *fakePlanActions) CreateAssetFromFolder(in actions.CreateAssetFromFolderInput) (string, errs.DomainError) {
@@ -501,12 +505,15 @@ func TestPlanProjectScreen_OnApplyEmptyMapOmitsDriftKeepAndKeepsUnknown(t *testi
 	if cmd == nil {
 		t.Fatalf("onApply returned nil cmd")
 	}
-	done, ok := cmd().(mutationDoneMsg)
+	done, ok := cmd().(syncDoneMsg)
 	if !ok {
-		t.Fatalf("onApply produced %T, want mutationDoneMsg", cmd())
+		t.Fatalf("onApply produced %T, want syncDoneMsg", cmd())
 	}
-	if done.severity != errs.SeverityInfo {
-		t.Errorf("severity = %v, want Info", done.severity)
+	if done.err != nil {
+		t.Errorf("err = %v, want nil", done.err)
+	}
+	if done.info != "Project synced" {
+		t.Errorf("info = %q, want %q", done.info, "Project synced")
 	}
 	if len(f.syncInputs) != 1 {
 		t.Fatalf("syncInputs len = %d, want 1", len(f.syncInputs))

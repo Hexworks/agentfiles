@@ -98,6 +98,17 @@ asset, project, render, and sync remain decoupled, with stable identifiers
 and explicit manifests rather than ad-hoc maps. See
 [`docs/guidelines/domain_model.md`](../guidelines/domain_model.md).
 
+## External Tool Handoff
+
+Every shell-out to an outside program lives in a narrow wrapper
+package: `internal/tui/editor` for the interactive `$VISUAL`/`$EDITOR`,
+and `internal/git` for the `git` binary that records optional
+[Commit Triggers](../glossary.md#commit-trigger). Both wrappers own
+their `exec.Command` construction, argument quoting, and typed error
+translation so callers never touch `os/exec` directly. See
+[`docs/guidelines/external_tools.md`](../guidelines/external_tools.md)
+and ADRs 0009 / 0019.
+
 ## Testing Strategy
 
 Tests live next to the code they exercise and use table-driven cases with

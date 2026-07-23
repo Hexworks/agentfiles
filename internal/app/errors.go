@@ -150,6 +150,19 @@ func (ProfileFolderNotARootError) Severity() errs.Severity {
 	return errs.SeverityError
 }
 
+// SettingsUnavailableError reports an UpdateSettings call against a
+// Service whose SettingsStore was never wired. Surfaces a wiring bug so
+// the TUI shows a clear error instead of a nil-pointer panic.
+type SettingsUnavailableError struct{}
+
+func (SettingsUnavailableError) Error() string {
+	return "settings store is not wired"
+}
+
+func (SettingsUnavailableError) Severity() errs.Severity {
+	return errs.SeverityError
+}
+
 // UnsafeProfilePathError reports that DeleteProfileWithFolder refused a
 // pathological deletion target: the empty string, the filesystem root,
 // the user's home directory, or an ancestor of the profile registry

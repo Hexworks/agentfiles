@@ -77,12 +77,12 @@ func (f *fakeSelectActions) PlanProject(in actions.PlanProjectInput) (*app.Previ
 	return f.preview, nil
 }
 
-func (f *fakeSelectActions) SyncProject(in actions.SyncProjectInput) (*app.Preview, errs.DomainError) {
+func (f *fakeSelectActions) SyncProject(in actions.SyncProjectInput) (*app.Preview, app.CommitOutcome, errs.DomainError) {
 	f.syncInputs = append(f.syncInputs, in)
 	if f.syncErr != nil {
-		return nil, f.syncErr
+		return nil, app.CommitOutcome{}, f.syncErr
 	}
-	return f.preview, nil
+	return f.preview, app.CommitOutcome{}, nil
 }
 
 func (f *fakeSelectActions) CreateAssetFromFolder(in actions.CreateAssetFromFolderInput) (string, errs.DomainError) {

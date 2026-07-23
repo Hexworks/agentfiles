@@ -5,6 +5,7 @@ package app
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -15,10 +16,12 @@ import (
 	"github.com/hexworks/agentfiles/internal/asset"
 	"github.com/hexworks/agentfiles/internal/config"
 	"github.com/hexworks/agentfiles/internal/errs"
+	"github.com/hexworks/agentfiles/internal/git"
 	"github.com/hexworks/agentfiles/internal/profile"
 	"github.com/hexworks/agentfiles/internal/project"
 	"github.com/hexworks/agentfiles/internal/projectstore"
 	"github.com/hexworks/agentfiles/internal/registry"
+	"github.com/hexworks/agentfiles/internal/settings"
 	"github.com/hexworks/agentfiles/internal/surfaces"
 	llmsync "github.com/hexworks/agentfiles/internal/sync"
 	"github.com/hexworks/agentfiles/internal/utils"
@@ -62,19 +65,31 @@ func (l *LoadedProfile) ProjectList() []*project.Manifest {
 // holds the two centralized stores (profiles + projects) so every
 // operation runs against the same aggregate root.
 type Service struct {
-	Registry     *registry.Store
-	Projects     *projectstore.Store
-	profilesRoot string
+	Registry      *registry.Store
+	Projects      *projectstore.Store
+	SettingsStore *settings.Store
+	settings      settings.Settings
+	committer     GitCommitter
+	profilesRoot  string
 }
 
-// New wires an already-built pair of stores into a Service. It is the
-// only constructor: cmd/af/main.go builds both stores explicitly so the
-// migrator and the app read the same instances; tests build both under
+// NewWithStores wires the three centralized stores plus the initial
+// loaded settings and the git committer seam into a Service. It is the
+// only constructor: cmd/af/main.go builds every store explicitly so the
+// migrator and the app read the same instances; tests build them under
 // t.TempDir() for the same reason. The projects store's KnownProfiles
 // and Validator seams are wired here so the store enforces its
 // invariants against the live registry without importing it directly.
-func New(reg *registry.Store, proj *projectstore.Store) *Service {
-	svc := &Service{Registry: reg, Projects: proj}
+// committer may be nil in tests that never exercise a git-aware path;
+// production wiring always supplies one.
+func NewWithStores(reg *registry.Store, proj *projectstore.Store, sset *settings.Store, s settings.Settings, committer GitCommitter) *Service {
+	svc := &Service{
+		Registry:      reg,
+		Projects:      proj,
+		SettingsStore: sset,
+		settings:      s,
+		committer:     committer,
+	}
 	proj.KnownProfiles = svc.knownProfileIDs
 	proj.Validator = func(m *project.Manifest) errs.DomainError { return m.Validate() }
 	return svc
@@ -419,13 +434,24 @@ type Resolutions struct {
 // gate uses), so a stale or hand-built key cannot persist an ancestor of
 // managed files into ignored_paths. Already-persisted keys are exempt: their
 // folders have legitimately vanished from the plan.
-func (s *Service) Apply(profileRef, projectID string, r Resolutions) (*Preview, errs.DomainError) {
-	syncPreview, err := s.planSync(profileRef, projectID)
+//
+// When git integration is enabled and the project's target repo is a git
+// repository, a single scoped commit is recorded after sync succeeds
+// covering every mutated file plus `.agentfiles/state.json`. The
+// returned CommitOutcome carries the short SHA on success; a hard
+// commit failure surfaces on CommitOutcome.Err but does not roll back
+// the file writes (they already happened).
+func (s *Service) Apply(profileRef, projectID string, r Resolutions) (*Preview, CommitOutcome, errs.DomainError) {
+	loaded, proj, projErr := s.resolveProject(profileRef, projectID)
+	if projErr != nil {
+		return nil, CommitOutcome{}, projErr
+	}
+	syncPreview, err := llmsync.Plan(loaded.Profile, proj)
 	if err != nil {
-		return nil, err
+		return nil, CommitOutcome{}, err
 	}
 	if eligErr := s.assertIgnoredRegisterable(syncPreview, r.IgnoredPaths); eligErr != nil {
-		return nil, eligErr
+		return nil, CommitOutcome{}, eligErr
 	}
 	syncResolutions := llmsync.Resolutions{
 		Drift:        toSyncDriftResolutions(r.Drift),
@@ -433,9 +459,105 @@ func (s *Service) Apply(profileRef, projectID string, r Resolutions) (*Preview, 
 		IgnoredPaths: r.IgnoredPaths,
 	}
 	if err := llmsync.Apply(syncPreview, syncResolutions); err != nil {
-		return nil, err
+		return nil, CommitOutcome{}, err
 	}
-	return previewFromSync(syncPreview), nil
+	appPreview := previewFromSync(syncPreview)
+	mutated := mutatedPaths(appPreview, r)
+	msg := fmt.Sprintf("chore(agentfiles): sync project %s (%d files)", proj.Name, len(mutated)-1)
+	outcome := s.runCommit(proj.Path, mutated, msg)
+	return appPreview, outcome, nil
+}
+
+// mutatedPaths returns the pathspec the plan-apply commit covers: every
+// file the sync engine created / updated / deleted or the caller
+// resolved as overwrite / delete, plus the managed-state snapshot at
+// `.agentfiles/state.json`. Paths are kept as forward-slash strings so
+// git's own pathspec grammar matches them directly.
+func mutatedPaths(preview *Preview, r Resolutions) []string {
+	if preview == nil {
+		return []string{config.StateDirName + "/" + config.StateFileName}
+	}
+	drift := map[string]DriftDecision{}
+	for _, d := range r.Drift {
+		drift[d.Path] = d.Decision
+	}
+	unknown := map[string]UnknownDecision{}
+	for _, u := range r.Unknown {
+		unknown[u.Path] = u.Decision
+	}
+	seen := map[string]bool{}
+	out := make([]string, 0, len(preview.Changes)+1)
+	add := func(p string) {
+		if seen[p] {
+			return
+		}
+		seen[p] = true
+		out = append(out, p)
+	}
+	for _, ch := range preview.Changes {
+		switch ch.Kind {
+		case ChangeCreate, ChangeUpdate, ChangeDelete:
+			add(ch.Path)
+		case ChangeDrift:
+			if drift[ch.Path] == DriftOverwrite {
+				add(ch.Path)
+			}
+		case ChangeUnknown:
+			if unknown[ch.Path] == UnknownDelete {
+				add(ch.Path)
+			}
+		}
+	}
+	add(config.StateDirName + "/" + config.StateFileName)
+	return out
+}
+
+// commitEnabled reports whether git-aware commits should run: the
+// setting is on and a committer is wired.
+func (s *Service) commitEnabled() bool {
+	return s != nil && s.settings.Git.Enabled && s.committer != nil
+}
+
+// runCommit is the shared adapter between service methods and the
+// GitCommitter seam. When the feature is disabled or no committer is
+// wired it returns a zero-value CommitOutcome so callers still see a
+// consistent shape. Typed commit failures ride on CommitOutcome.Err;
+// they are never returned as domain errors from the parent method
+// because the file write already succeeded.
+func (s *Service) runCommit(dir string, pathspec []string, msg string) CommitOutcome {
+	if !s.commitEnabled() {
+		return CommitOutcome{}
+	}
+	sha, err := s.committer.Commit(dir, pathspec, msg)
+	if err != nil {
+		return CommitOutcome{Err: err}
+	}
+	return CommitOutcome{SHA: sha}
+}
+
+// Settings returns a read-only copy of the currently active settings.
+// The Settings TUI screen consumes it on entry; there is no live-reload
+// path from disk while the app is running (see ADR 0019).
+func (s *Service) Settings() settings.Settings { return s.settings }
+
+// UpdateSettings persists new to disk and swaps it in. When enabling
+// git for the first time the pre-flight rejects the save if the git
+// binary is missing so the toggle can never enter an unusable state.
+// The store is required — a nil settings store is a wiring bug.
+func (s *Service) UpdateSettings(next settings.Settings) errs.DomainError {
+	if s.SettingsStore == nil {
+		return SettingsUnavailableError{}
+	}
+	if next.Git.Enabled && !s.settings.Git.Enabled {
+		if err := git.BinaryAvailable(); err != nil {
+			return err
+		}
+	}
+	if err := s.SettingsStore.Save(next); err != nil {
+		return err
+	}
+	s.settings = next
+	return nil
 }
 
 // assertIgnoredRegisterable verifies every newly selected ignored key is an
@@ -807,29 +929,57 @@ func (s *Service) LoadAsset(profileRef, assetID string) (*asset.Asset, errs.Doma
 }
 
 // UpdateAsset overwrites the asset manifest on disk with the caller's
-// edits. The asset must already exist in the profile; this method is not
-// a scaffold path (use InitAsset for that). The on-disk destination is
-// resolved from the loaded profile, so a tampered caller cannot redirect
-// the write outside the profile root.
+// edits and, when git integration is enabled and the profile folder is a
+// git repository, records a scoped commit against the manifest file. The
+// asset must already exist in the profile; this method is not a scaffold
+// path (use InitAsset for that). The on-disk destination is resolved
+// from the loaded profile, so a tampered caller cannot redirect the
+// write outside the profile root.
 //
-// Note: the task description mentions recomputing per-file content
-// hashes. The current asset model does not store hashes — internal/sync
-// computes them on the fly from disk and the project's state.json — so
-// the drift-vs-update distinction already works without an asset-side
-// hash store. If a later change adds an in-memory hash field on
-// asset.Asset, recompute it here.
+// The returned CommitOutcome carries the short SHA on a successful
+// commit, is zero-value when the commit path is a silent skip (feature
+// disabled, dir not a repo, empty diff), and carries a typed domain
+// error on a hard commit failure. A CommitOutcome.Err is never a save
+// failure — the manifest is already on disk by then.
 //
 // Panics if manifest is nil: a nil pointer is a programmer bug per
 // docs/guidelines/errors.md, not a recoverable not-found.
-func (s *Service) UpdateAsset(profileRef string, manifest *asset.Manifest) errs.DomainError {
+func (s *Service) UpdateAsset(profileRef string, manifest *asset.Manifest) (CommitOutcome, errs.DomainError) {
 	if manifest == nil {
 		panic("app.Service.UpdateAsset: nil manifest")
 	}
-	_, target, err := s.resolveAsset(profileRef, manifest.ID)
+	loaded, target, err := s.resolveAsset(profileRef, manifest.ID)
 	if err != nil {
-		return err
+		return CommitOutcome{}, err
 	}
-	return asset.SaveManifest(target.Dir, *manifest)
+	if saveErr := asset.SaveManifest(target.Dir, *manifest); saveErr != nil {
+		return CommitOutcome{}, saveErr
+	}
+	pathspec := []string{"assets/" + manifest.ID + "/asset.json"}
+	msg := fmt.Sprintf("chore(agentfiles): update asset %s manifest", manifest.ID)
+	return s.runCommit(loaded.Profile.Root, pathspec, msg), nil
+}
+
+// SaveAssetFilesEdit persists the caller's manifest edits then records a
+// files-scoped commit against `assets/<asset-id>/**` in the profile
+// repo. It is the editor-return flow's counterpart to UpdateAsset: the
+// files edit changed the on-disk content, and the single commit covers
+// both the manifest and every file inside the asset directory. Same
+// panic contract as UpdateAsset for a nil manifest.
+func (s *Service) SaveAssetFilesEdit(profileRef string, manifest *asset.Manifest) (CommitOutcome, errs.DomainError) {
+	if manifest == nil {
+		panic("app.Service.SaveAssetFilesEdit: nil manifest")
+	}
+	loaded, target, err := s.resolveAsset(profileRef, manifest.ID)
+	if err != nil {
+		return CommitOutcome{}, err
+	}
+	if saveErr := asset.SaveManifest(target.Dir, *manifest); saveErr != nil {
+		return CommitOutcome{}, saveErr
+	}
+	pathspec := []string{"assets/" + manifest.ID + "/**"}
+	msg := fmt.Sprintf("chore(agentfiles): edit asset %s files", manifest.ID)
+	return s.runCommit(loaded.Profile.Root, pathspec, msg), nil
 }
 
 // AddAssetFile creates an empty file at rel inside the asset folder.

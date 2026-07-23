@@ -52,6 +52,13 @@ ADR 0017.
    `app.Service.Apply` → `llmsync.Apply`. On success the screen
    surfaces a `Project synced` notification and pops back to the
    previous screen; on failure it stays put with the error toast.
+   When git integration is enabled and the target repo is a git
+   repository, `app.Service.Apply` records a single scoped commit
+   covering every mutated file plus `.agentfiles/state.json`. The
+   commit's short SHA (or the commit failure) rides on the
+   `CommitOutcome` the action returns; the screen merges it into the
+   success toast (`Project synced (committed abc1234)`) or surfaces a
+   warn toast when the commit fails. See ADR 0019.
 
 ## Scenario: Apply A Project
 
