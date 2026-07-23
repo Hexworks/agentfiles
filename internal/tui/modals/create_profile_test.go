@@ -6,21 +6,23 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
+
+	"github.com/hexworks/agentfiles/internal/tui/styles"
 )
 
 func TestCreateProfile_PrefillSeedsState(t *testing.T) {
-	_, state, _, _ := buildCreateProfile(CreateProfileInput{Name: "demo", Path: "/tmp/demo"})
+	built := buildCreateProfile(CreateProfileInput{Name: "demo", Path: "/tmp/demo"})
 
-	if state.Name != "demo" || state.Path != "/tmp/demo" {
-		t.Errorf("state = %+v", state)
+	if built.State.Name != "demo" || built.State.Path != "/tmp/demo" {
+		t.Errorf("state = %+v", built.State)
 	}
 }
 
 func TestCreateProfile_PumpResolvesWithTypedInput(t *testing.T) {
-	form, _, extract, _ := buildCreateProfile(CreateProfileInput{Name: "demo", Path: "/tmp/demo"})
-	submitForm(t, form)
+	built := buildCreateProfile(CreateProfileInput{Name: "demo", Path: "/tmp/demo"})
+	submitForm(t, built.Form)
 
-	msg := runResolvedThroughModal(t, "create-profile", form, extract)
+	msg := runResolvedThroughModal(t, "create-profile", built.Form, built.Extract)
 
 	if !msg.Confirmed {
 		t.Fatalf("Confirmed = false, want true")
@@ -35,16 +37,16 @@ func TestCreateProfile_PumpResolvesWithTypedInput(t *testing.T) {
 }
 
 func TestCreateProfile_RejectsEmptyRequiredField(t *testing.T) {
-	form, _, _, _ := buildCreateProfile(CreateProfileInput{})
-	expectFormStuck(t, form)
+	built := buildCreateProfile(CreateProfileInput{})
+	expectFormStuck(t, built.Form)
 }
 
 func TestCreateProfile_CancelResolvesEmpty(t *testing.T) {
-	form, _, extract, _ := buildCreateProfile(CreateProfileInput{Name: "demo", Path: "/tmp/demo"})
+	built := buildCreateProfile(CreateProfileInput{Name: "demo", Path: "/tmp/demo"})
 
-	abortForm(form)
+	abortForm(built.Form)
 
-	msg := runResolvedThroughModal(t, "create-profile", form, extract)
+	msg := runResolvedThroughModal(t, "create-profile", built.Form, built.Extract)
 
 	if msg.Confirmed {
 		t.Errorf("Confirmed = true, want false on cancel")
@@ -66,46 +68,65 @@ func TestNewCreateProfile_UsesStableID(t *testing.T) {
 // second (Name) slot, not an editable Input. The rendered view must
 // include the picked path so the user can confirm it.
 func TestBuildCreateProfile_PathFieldIsNote(t *testing.T) {
-	form, _, _, fields := buildCreateProfile(CreateProfileInput{Name: "demo", Path: "/tmp/seed"})
+	built := buildCreateProfile(CreateProfileInput{Name: "demo", Path: "/tmp/seed"})
 
-	if _, ok := fields[1].(*huh.Note); !ok {
-		t.Fatalf("fields[1] type = %T, want *huh.Note", fields[1])
+	if _, ok := built.Fields[1].(*huh.Note); !ok {
+		t.Fatalf("fields[1] type = %T, want *huh.Note", built.Fields[1])
 	}
-	if _, ok := fields[1].(*huh.Input); ok {
+	if _, ok := built.Fields[1].(*huh.Input); ok {
 		t.Fatalf("fields[1] is *huh.Input; task 0040 requires *huh.Note")
 	}
-	form.Init()
-	if view := form.View(); !strings.Contains(view, "/tmp/seed") {
+	built.Form.Init()
+	if view := built.Form.View(); !strings.Contains(view, "/tmp/seed") {
 		t.Errorf("form view missing picked path %q; got:\n%s", "/tmp/seed", view)
 	}
 }
 
 // TestBuildCreateProfile_RuneKeyLeavesPathUnchanged — task 0040
-// symptom: with a huh.Input the path was mutated by any keypress reaching
-// the field. Note has no value binding, so a rune keypress must leave
-// state.Path untouched regardless of which field currently has focus.
+// symptom: with a huh.Input the picked path was mutated by any keypress
+// reaching the field. Focus after Init lands on Name (an Input), so the
+// rune mutates state.Name; the path row is a Note with no value binding
+// and state.Path must stay untouched regardless.
 func TestBuildCreateProfile_RuneKeyLeavesPathUnchanged(t *testing.T) {
-	form, state, _, _ := buildCreateProfile(CreateProfileInput{Name: "demo", Path: "/tmp/seed"})
-	form.Init()
+	built := buildCreateProfile(CreateProfileInput{Name: "demo", Path: "/tmp/seed"})
+	built.Form.Init()
 
-	drainCmd(form, func() tea.Cmd {
-		_, cmd := form.Update(tea.KeyPressMsg{Text: "x", Code: 'x'})
-		return cmd
-	}())
+	_, cmd := built.Form.Update(tea.KeyPressMsg{Text: "x", Code: 'x'})
+	drainCmd(built.Form, cmd)
 
-	if state.Path != "/tmp/seed" {
-		t.Errorf("state.Path = %q, want %q (rune must not mutate a Note)", state.Path, "/tmp/seed")
+	if built.State.Path != "/tmp/seed" {
+		t.Errorf("state.Path = %q, want %q (rune must not mutate a Note)", built.State.Path, "/tmp/seed")
 	}
 }
 
 // TestBuildCreateProfile_EnterCompletesForm — task 0040: with a valid
-// Name seeded, driving the form to completion (Enter cycles through
-// Name → Note → nextGroup) must reach StateCompleted. The Note is the
-// last field in a multi-field group, so Note.Skip() is true and the
-// group hits OnLast without focus visibly landing on the path row.
+// Name seeded, feeding a real tea.KeyPressMsg{Code: tea.KeyEnter}
+// through form.Update must drive the group to completion. Name.Update
+// validates and returns NextField; Group.nextField walks past the Note
+// (Skip()==true when it is not the sole field) and hits OnLast, which
+// emits nextGroup and completes the form. The submitForm-based variant
+// exercised nextFieldMsg directly and could not have caught the
+// regression in Note.Update's keypress path.
 func TestBuildCreateProfile_EnterCompletesForm(t *testing.T) {
-	form, _, _, _ := buildCreateProfile(CreateProfileInput{Name: "demo", Path: "/tmp/seed"})
-	submitForm(t, form)
+	built := buildCreateProfile(CreateProfileInput{Name: "demo", Path: "/tmp/seed"})
+	pumpEnterUntilCompleted(t, built.Form)
+}
+
+// TestPathDisplayNote_SoleFieldEnterCompletesForm validates
+// Note.Update's Enter branch in the "sole field in its group" shape —
+// the exact position pathDisplayNote occupies in register-profile.
+// AC 6 wording was aimed at this behaviour but is not achievable in
+// create-profile's multi-field group (Note.Skip() returns true when the
+// Note is not sole, so focus never lands on it there). This test uses a
+// bespoke single-Note form to pin the same guarantee down.
+func TestPathDisplayNote_SoleFieldEnterCompletesForm(t *testing.T) {
+	form := huh.NewForm(
+		huh.NewGroup(pathDisplayNote("/tmp/seed", "Picked path")),
+	).WithTheme(styles.HuhTheme())
+	form.Init()
+
+	_, cmd := form.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	drainCmd(form, cmd)
 
 	if form.State != huh.StateCompleted {
 		t.Fatalf("form.State = %v, want StateCompleted", form.State)

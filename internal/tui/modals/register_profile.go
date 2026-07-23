@@ -13,17 +13,33 @@ type RegisterProfileInput struct {
 	Path string
 }
 
-// NewRegisterProfile builds the Register Profile modal.
-func NewRegisterProfile(initial RegisterProfileInput) *modal.Modal {
-	form, _, extract, _ := buildRegisterProfile(initial)
-	return modal.NewForm("register-profile", form, extract, modal.WithCaption("Registering Profile"))
+// builtRegisterProfileForm is the internal handle produced by
+// buildRegisterProfile. Production wraps `.Form` + `.Extract`; tests reach
+// into `.State` and `.Fields` to inspect field types without reflecting
+// into huh internals.
+type builtRegisterProfileForm struct {
+	Form    *huh.Form
+	State   *RegisterProfileInput
+	Extract func(*huh.Form) any
+	Fields  []huh.Field
 }
 
-func buildRegisterProfile(initial RegisterProfileInput) (*huh.Form, *RegisterProfileInput, func(*huh.Form) any, []huh.Field) {
+// NewRegisterProfile builds the Register Profile modal.
+func NewRegisterProfile(initial RegisterProfileInput) *modal.Modal {
+	built := buildRegisterProfile(initial)
+	return modal.NewForm("register-profile", built.Form, built.Extract, modal.WithCaption("Registering Profile"))
+}
+
+func buildRegisterProfile(initial RegisterProfileInput) builtRegisterProfileForm {
 	state := &RegisterProfileInput{Path: initial.Path}
 	fields := []huh.Field{
-		pathDisplayNote(&state.Path, "Profile directory picked in the previous step"),
+		pathDisplayNote(state.Path, "Profile directory picked in the previous step"),
 	}
 	form := huh.NewForm(huh.NewGroup(fields...)).WithTheme(styles.HuhTheme())
-	return form, state, func(*huh.Form) any { return *state }, fields
+	return builtRegisterProfileForm{
+		Form:    form,
+		State:   state,
+		Extract: func(*huh.Form) any { return *state },
+		Fields:  fields,
+	}
 }

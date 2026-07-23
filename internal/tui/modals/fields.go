@@ -37,15 +37,18 @@ func pathInput(value *string, description string) *huh.Input {
 }
 
 // pathDisplayNote renders the pre-picked path from the pathselector step as a
-// non-editable Note in the follow-on form. huh.Note has no value binding so
-// nothing can mutate the path; on any key press it returns NextField, so
-// Enter (or any rune) advances the group without letting the keystroke leak
-// back to the shell — the leak that let step-1's picker re-open on Enter
-// before this swap.
-func pathDisplayNote(value *string, description string) *huh.Note {
+// non-editable Note in the follow-on form. `value` is a snapshot — huh.Note
+// has no runtime value binding, so the caller passes the picked path by
+// value. On any key press Note.Update returns NextField, so Enter (or any
+// rune) advances the group without letting the keystroke leak back to the
+// shell — the leak that let step-1's picker re-open on Enter before this
+// swap. The path is placed in Title(...) so it bypasses the mini-markdown
+// renderer that Description runs on (`*`, `_`, “ ` “, `\`) and stays
+// visually intact for common paths like `~/repos/my_repo`.
+func pathDisplayNote(value string, description string) *huh.Note {
 	return huh.NewNote().
-		Title("Path").
-		Description(description + "\n" + *value)
+		Title(value).
+		Description(description)
 }
 
 func enabledAgentsSelect(value *[]string, description string) *huh.MultiSelect[string] {

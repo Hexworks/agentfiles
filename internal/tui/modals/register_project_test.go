@@ -12,26 +12,26 @@ import (
 )
 
 func TestRegisterProject_PrefillSeedsState(t *testing.T) {
-	_, state, _, _ := buildRegisterProject(RegisterProjectInput{
+	built := buildRegisterProject(RegisterProjectInput{
 		Name:          "Demo",
 		Path:          "/repos/demo",
 		EnabledAgents: []string{AgentClaudeCode},
 	})
-	if state.Name != "Demo" || state.Path != "/repos/demo" ||
-		!reflect.DeepEqual(state.EnabledAgents, []string{AgentClaudeCode}) {
-		t.Errorf("state = %+v", state)
+	if built.State.Name != "Demo" || built.State.Path != "/repos/demo" ||
+		!reflect.DeepEqual(built.State.EnabledAgents, []string{AgentClaudeCode}) {
+		t.Errorf("state = %+v", built.State)
 	}
 }
 
 func TestRegisterProject_PumpResolvesAsValidManifest(t *testing.T) {
-	form, _, extract, _ := buildRegisterProject(RegisterProjectInput{
+	built := buildRegisterProject(RegisterProjectInput{
 		Name:          "Demo",
 		Path:          "/repos/demo",
 		EnabledAgents: []string{AgentClaudeCode, AgentCodex},
 	})
-	submitForm(t, form)
+	submitForm(t, built.Form)
 
-	msg := runResolvedThroughModal(t, "register-project", form, extract)
+	msg := runResolvedThroughModal(t, "register-project", built.Form, built.Extract)
 
 	got, ok := msg.Value.(*project.Manifest)
 	if !ok {
@@ -60,25 +60,25 @@ func TestRegisterProject_PumpResolvesAsValidManifest(t *testing.T) {
 }
 
 func TestRegisterProject_RejectsEmptyRequiredFields(t *testing.T) {
-	form, _, _, _ := buildRegisterProject(RegisterProjectInput{})
-	expectFormStuck(t, form)
+	built := buildRegisterProject(RegisterProjectInput{})
+	expectFormStuck(t, built.Form)
 }
 
 func TestRegisterProject_RejectsEmptyEnabledAgents(t *testing.T) {
-	form, _, _, _ := buildRegisterProject(RegisterProjectInput{
+	built := buildRegisterProject(RegisterProjectInput{
 		Name: "Demo",
 		Path: "/repos/demo",
 	})
-	expectFormStuck(t, form)
+	expectFormStuck(t, built.Form)
 }
 
 func TestRegisterProject_CancelResolvesEmpty(t *testing.T) {
-	form, _, extract, _ := buildRegisterProject(RegisterProjectInput{
+	built := buildRegisterProject(RegisterProjectInput{
 		Name: "x", Path: "/p", EnabledAgents: []string{AgentCodex},
 	})
-	abortForm(form)
+	abortForm(built.Form)
 
-	msg := runResolvedThroughModal(t, "register-project", form, extract)
+	msg := runResolvedThroughModal(t, "register-project", built.Form, built.Extract)
 
 	if msg.Confirmed || msg.Value != nil {
 		t.Errorf("cancel resolved = %#v", msg)
@@ -97,65 +97,70 @@ func TestNewRegisterProject_UsesStableID(t *testing.T) {
 // Name and EnabledAgents, not as an editable Input. The rendered view
 // must include the picked path so the user can confirm it.
 func TestBuildRegisterProject_PathFieldIsNote(t *testing.T) {
-	form, _, _, fields := buildRegisterProject(RegisterProjectInput{
+	built := buildRegisterProject(RegisterProjectInput{
 		Name:          "Demo",
 		Path:          "/repos/seed",
 		EnabledAgents: []string{AgentClaudeCode},
 	})
 
-	if _, ok := fields[1].(*huh.Note); !ok {
-		t.Fatalf("fields[1] type = %T, want *huh.Note", fields[1])
+	if _, ok := built.Fields[1].(*huh.Note); !ok {
+		t.Fatalf("fields[1] type = %T, want *huh.Note", built.Fields[1])
 	}
-	if _, ok := fields[1].(*huh.Input); ok {
+	if _, ok := built.Fields[1].(*huh.Input); ok {
 		t.Fatalf("fields[1] is *huh.Input; task 0040 requires *huh.Note")
 	}
-	form.Init()
-	if view := form.View(); !strings.Contains(view, "/repos/seed") {
+	built.Form.Init()
+	if view := built.Form.View(); !strings.Contains(view, "/repos/seed") {
 		t.Errorf("form view missing picked path %q; got:\n%s", "/repos/seed", view)
 	}
 }
 
-// TestBuildRegisterProject_RuneKeyLeavesStateUnchanged — task 0040:
-// with a huh.Input the picked path was mutated by any keypress. Note
-// has no value binding, so runes fed to the focused form must leave
-// state.Path AND state.EnabledAgents untouched (no key bleed-through in
-// the multi-field case either).
-func TestBuildRegisterProject_RuneKeyLeavesStateUnchanged(t *testing.T) {
+// TestBuildRegisterProject_RuneOnMultiSelectLeavesEnabledAgentsUnchanged
+// — task 0040 multi-field case: after focus advances past the Name
+// Input (skipping the Note, whose Skip() is true when it is not the
+// sole field), focus lands on the EnabledAgents MultiSelect. A rune
+// that is not part of the MultiSelect keymap (Toggle=`space|x`,
+// Filter=`/`, SelectAll=`ctrl+a`, etc.) must not mutate
+// state.EnabledAgents — this is the "no key bleed-through" guarantee
+// for the multi-field shape. The pre-review test asserted state.Path
+// and state.EnabledAgents while focus was still on Name; that
+// combination was unfalsifiable by the Note swap.
+func TestBuildRegisterProject_RuneOnMultiSelectLeavesEnabledAgentsUnchanged(t *testing.T) {
 	seedAgents := []string{AgentClaudeCode}
-	form, state, _, _ := buildRegisterProject(RegisterProjectInput{
+	built := buildRegisterProject(RegisterProjectInput{
 		Name:          "Demo",
 		Path:          "/repos/seed",
 		EnabledAgents: seedAgents,
 	})
-	form.Init()
+	built.Form.Init()
 
-	drainCmd(form, func() tea.Cmd {
-		_, cmd := form.Update(tea.KeyPressMsg{Text: "x", Code: 'x'})
-		return cmd
-	}())
+	// Advance focus off Name onto EnabledAgents (Note is skipped in a
+	// multi-field group).
+	_, cmd := built.Form.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	drainCmd(built.Form, cmd)
 
-	if state.Path != "/repos/seed" {
-		t.Errorf("state.Path = %q, want %q (rune must not mutate a Note)", state.Path, "/repos/seed")
-	}
-	if !reflect.DeepEqual(state.EnabledAgents, seedAgents) {
-		t.Errorf("state.EnabledAgents = %v, want %v (rune must not leak into MultiSelect)", state.EnabledAgents, seedAgents)
+	// `z` is not bound in the MultiSelect keymap; it must be ignored.
+	_, cmd = built.Form.Update(tea.KeyPressMsg{Text: "z", Code: 'z'})
+	drainCmd(built.Form, cmd)
+
+	if !reflect.DeepEqual(built.State.EnabledAgents, seedAgents) {
+		t.Errorf("state.EnabledAgents = %v, want %v (unbound rune must not mutate MultiSelect)",
+			built.State.EnabledAgents, seedAgents)
 	}
 }
 
-// TestBuildRegisterProject_EnterCompletesForm — task 0040: with a
-// valid Name + EnabledAgents seed, driving the form through submitForm
-// must reach StateCompleted. The Note is not the sole field so
-// Note.Skip() is true; the group walks Name → (skip Note) →
-// EnabledAgents → nextGroup and completes.
+// TestBuildRegisterProject_EnterCompletesForm — task 0040: feeding real
+// tea.KeyPressMsg{Code: tea.KeyEnter} events must drive the form to
+// StateCompleted. Enter on Name → NextField (validate ok) → focus on
+// EnabledAgents; Enter on EnabledAgents → NextField (validate ok,
+// non-empty seed) → nextGroup → completed. The submitForm-based variant
+// bypassed the KeyPressMsg dispatch chain and could not have caught the
+// regression.
 func TestBuildRegisterProject_EnterCompletesForm(t *testing.T) {
-	form, _, _, _ := buildRegisterProject(RegisterProjectInput{
+	built := buildRegisterProject(RegisterProjectInput{
 		Name:          "Demo",
 		Path:          "/repos/seed",
 		EnabledAgents: []string{AgentClaudeCode},
 	})
-	submitForm(t, form)
-
-	if form.State != huh.StateCompleted {
-		t.Fatalf("form.State = %v, want StateCompleted", form.State)
-	}
+	pumpEnterUntilCompleted(t, built.Form)
 }

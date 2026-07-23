@@ -92,6 +92,50 @@ func drainCmd(form *huh.Form, cmd tea.Cmd) {
 	}
 }
 
+// drainCmdCollect mirrors [drainCmd] but records each drained message so a
+// test can assert on what the form actually consumed (e.g. that no raw
+// tea.KeyPressMsg leaked back to the caller after a keypress was routed).
+func drainCmdCollect(form *huh.Form, cmd tea.Cmd) []tea.Msg {
+	var drained []tea.Msg
+	for cmd != nil {
+		msg, ok := runCmd(cmd)
+		if !ok || msg == nil {
+			return drained
+		}
+		if batch, isBatch := msg.(tea.BatchMsg); isBatch {
+			for _, sub := range batch {
+				drained = append(drained, drainCmdCollect(form, sub)...)
+			}
+			return drained
+		}
+		drained = append(drained, msg)
+		_, cmd = form.Update(msg)
+	}
+	return drained
+}
+
+// pumpEnterUntilCompleted drives the form to StateCompleted by feeding real
+// tea.KeyPressMsg{Code: tea.KeyEnter} events and draining the resulting
+// commands. Unlike [submitForm] (which dispatches nextFieldMsg directly via
+// form.NextField()), this helper exercises the full
+// KeyPressMsg → Group.Update → focused-field.Update → NextField path — the
+// exact path task 0040's regression lived in.
+func pumpEnterUntilCompleted(t *testing.T, form *huh.Form) {
+	t.Helper()
+	form.Init()
+	for i := 0; form.State == huh.StateNormal; i++ {
+		if i > 20 {
+			t.Fatalf("form did not complete after 20 Enter keypresses; state=%v errors=%v",
+				form.State, form.Errors())
+		}
+		_, cmd := form.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+		drainCmd(form, cmd)
+	}
+	if form.State != huh.StateCompleted {
+		t.Fatalf("form terminated in unexpected state %v (errors=%v)", form.State, form.Errors())
+	}
+}
+
 func runCmd(cmd tea.Cmd) (tea.Msg, bool) {
 	ch := make(chan tea.Msg, 1)
 	go func() {
