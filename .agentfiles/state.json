@@ -1,91 +1,403 @@
 {
   "profile_id": "addamsson",
   "project_id": "agentfiles",
-  "generator_version": "1.0.0",
-  "last_applied_at": "2026-07-23T11:03:08.489049692Z",
+  "generator_version": "2.0.0",
+  "last_applied_at": "2026-07-23T17:25:16.947905428Z",
   "managed_files": {
-    ".claude/skills/af.check-task/SKILL.md": "640eda0eb9f00da60aee520ac4f1c8038aef3af0ca770bcfc99a02b2984b93e7",
-    ".claude/skills/af.cleanup-tasks/SKILL.md": "e49a634b2339f6b2f39833e2d80647420f31024e8ec1a1e403523f05b66b65a5",
-    ".claude/skills/af.cleanup-tasks/cleanup-tasks.sh": "833ede0e3e070fcf7811ca5dd962357cfe5ac127335f09e3711dc494b6386482",
-    ".claude/skills/af.create-pr/SKILL.md": "3f418eaa0a3ae5c2085e43ac3ba4fdf37652f7b3db9bd620aecf506909de69c6",
-    ".claude/skills/af.create-task/SKILL.md": "ab2ebbca60f632f6d4e77e809a830fe74877a59d2e5c7bffa646383fb1269f06",
-    ".claude/skills/af.create-task/example-1-description.md": "c90b97b86ac4eaf939ab45b1e23bc6e5db6cc7821e2f73e4557ae67071aeaf18",
-    ".claude/skills/af.create-task/example-2-description.md": "63b4ff4ba53eb4224b534ea5273dbdcfd10d9f4e2bab2821fb2d81fe9a847795",
-    ".claude/skills/af.drift-cleanup/SKILL.md": "f836441a897262a52632abef497c3cf1ab14fc193743512b2b1295e19d9641b4",
-    ".claude/skills/af.drift-cleanup/docs/README.md": "6746233c61119ae70630bcfc0b696e67cbbe48b8dc0d9d1894afe3893b6c486a",
-    ".claude/skills/af.drift-cleanup/docs/adr/0008-domain-error-everywhere.md": "f06d5956884a0aa205e84ad4ba7dcd434dffd15e4a473f084d912665bd29eba4",
-    ".claude/skills/af.drift-cleanup/docs/adr/0009-edit-files-via-system-editor.md": "5ccfb51fefe6358d7fc10ad6239f1aef274ddd959d2816d38481306581a4eb2a",
-    ".claude/skills/af.drift-cleanup/docs/adr/0010-sync-resolutions-and-first-apply.md": "f2d8ddbda0fb5dc533514fc6ab0d0ea0d1248047278f583ccab5058225bacf7a",
-    ".claude/skills/af.drift-cleanup/docs/adr/0011-tui-screen-router.md": "0df50b524653c8ce5b7847e441a13bc3f1a0d5d6b3e00a73e1800a27c8f57cc2",
-    ".claude/skills/af.drift-cleanup/docs/adr/README.md": "1ee32515387fbf0a83218eb979a476d7dcdb378fcde57a148c47fdfbf6f16dbf",
-    ".claude/skills/af.drift-cleanup/docs/architecture/01-introduction-and-goals.md": "80d3e5e96ce115ba6e92daa951960e9453bbd5cdbb1d46d77ddd198587b338d1",
-    ".claude/skills/af.drift-cleanup/docs/architecture/02-architecture-constraints.md": "a87079a5c26fc6cd50841b29e5f8925f4494aa69a55a0d2d647d941c8ad5996e",
-    ".claude/skills/af.drift-cleanup/docs/architecture/03-context-and-scope.md": "0393a36b6dafc745d3d560611fe71bd4043ce8d5a7609ca7bfe0950cb02b8d09",
-    ".claude/skills/af.drift-cleanup/docs/architecture/04-solution-strategy.md": "3527371d8132f5892f3c5048ace1c25da0c9d39d81bfdc2fc323de7bc9978320",
-    ".claude/skills/af.drift-cleanup/docs/architecture/05-building-block-view.md": "efa466d6b303f9be378709d4fd200aabbdfbd2ecc4feee119c7b9b989d4e7442",
-    ".claude/skills/af.drift-cleanup/docs/architecture/06-runtime-view.md": "2477562c77a1670b1d7950e3c001bb5c8cc9c2ac638ed82aff130d65c00ba25a",
-    ".claude/skills/af.drift-cleanup/docs/architecture/07-deployment-view.md": "b93a1b0b2a4cf91c9981641dc073c8eb7e1dc8e782037ccc9464c69e3535af1f",
-    ".claude/skills/af.drift-cleanup/docs/architecture/08-concepts.md": "b16e60d454a80bd538f57cd8c8349d6ad8a5f3c3b0e4b798a72f611b3917d6dc",
-    ".claude/skills/af.drift-cleanup/docs/architecture/09-architecture-decisions.md": "6fc087b46b256b8166c1008138c984a94a78b20a398205ea754bde5a60f5c28e",
-    ".claude/skills/af.drift-cleanup/docs/architecture/10-quality-requirements.md": "52c9a928fc39556dda0c87a31f0c69cc750fcd52d1bb5fa0ecbb4e5df58d5761",
-    ".claude/skills/af.drift-cleanup/docs/architecture/11-technical-risks.md": "1eef34b574419dfb66ba1d1e3a146276024f4a3f8aae8d8131189a506a5e6f55",
-    ".claude/skills/af.drift-cleanup/docs/architecture/12-glossary.md": "611fb3286f37a756603a6ec81e7ba04cad4eb41ffbceb1fa86a862408bdca3d2",
-    ".claude/skills/af.drift-cleanup/docs/changelog/2026-06-12_0026-edit-profile-layout-cleanup.md": "c8846f641261c567ead8cb2fbfbc8fa0d12b27252d4e95c31beb9ca8a7967b5b",
-    ".claude/skills/af.drift-cleanup/docs/changelog/2026-06-12_0027-edit-asset-screen.md": "2ad231b3593a941d04abf06d3de92944022fec87f9246929b12d41bf3f877eb2",
-    ".claude/skills/af.drift-cleanup/docs/changelog/2026-06-12_0028-select-project-assets-screen.md": "8c4e007eaf30ee6920231c355456e4fc65c9f98791c5558c44c64252f38f8469",
-    ".claude/skills/af.drift-cleanup/docs/changelog/2026-06-13_0029-plan-project-screen.md": "fbe7fa8f6b97d7b993dc87adaf199dc4cfe0afde78e9989d0136186a2a0f7a3a",
-    ".claude/skills/af.drift-cleanup/docs/glossary.md": "6fc0a3d7af8d12cf8141cb5fdf65ce91ade59f0a5435eae360add10a13dbd7dd",
-    ".claude/skills/af.task.implement/SKILL.md": "93dab75003e90d947e7abc04317c976ce4c340fc332ee0a21b217a461e3b10eb",
-    ".claude/skills/af.task.implement/changelog-template.md": "5f103bf4b49285ce0ec53ab82c72cc095105095ffbfd878fd9261417addf8e7a",
-    ".claude/skills/af.task.plan/SKILL.md": "84c7764f386d1eb9e7b647c0125c09a5d74eb73fda3d2daff955eab0e28a0d27",
-    ".claude/skills/af.task.review-apply/SKILL.md": "ed586ab38bbe9625de96f8becdfbf818ff0dc87179598c5feadb626c0249163b",
-    ".claude/skills/af.task.review/SKILL.md": "1c5ea432609063a2aaa6031296afad48b3c7f3a4936ed0e82c9b0bb09cea7c15",
-    ".claude/skills/af.task.review/review-template.md": "3a93c69852cfe9449186a1db444acc7e6eb596d7dad92d500f55b6053c47fe22",
-    ".claude/skills/grill-me/SKILL.md": "6189dfceb7304a6e5558f75d87e68fa3bc7fcf7ba120e44f21f8a61fe01eba54",
-    ".claude/skills/grill-with-docs/SKILL.md": "610d091047bcfb9db0f75c057d15538481a721111579fc5ec7f83ad9131a2165",
-    ".claude/skills/grilling/SKILL.md": "fe00af3e1815f97c0a7644605479328a726b5cd95ba6ef56a4be2a92fae6c20f",
-    ".claude/skills/summarize/SKILL.md": "863c0a2c393bb016ed1429608fa519da0dd423132f00eeba10f741b54f2ff966",
-    ".codex/skills/af.check-task/SKILL.md": "640eda0eb9f00da60aee520ac4f1c8038aef3af0ca770bcfc99a02b2984b93e7",
-    ".codex/skills/af.cleanup-tasks/SKILL.md": "e49a634b2339f6b2f39833e2d80647420f31024e8ec1a1e403523f05b66b65a5",
-    ".codex/skills/af.cleanup-tasks/cleanup-tasks.sh": "833ede0e3e070fcf7811ca5dd962357cfe5ac127335f09e3711dc494b6386482",
-    ".codex/skills/af.create-pr/SKILL.md": "3f418eaa0a3ae5c2085e43ac3ba4fdf37652f7b3db9bd620aecf506909de69c6",
-    ".codex/skills/af.create-task/SKILL.md": "ab2ebbca60f632f6d4e77e809a830fe74877a59d2e5c7bffa646383fb1269f06",
-    ".codex/skills/af.create-task/example-1-description.md": "c90b97b86ac4eaf939ab45b1e23bc6e5db6cc7821e2f73e4557ae67071aeaf18",
-    ".codex/skills/af.create-task/example-2-description.md": "63b4ff4ba53eb4224b534ea5273dbdcfd10d9f4e2bab2821fb2d81fe9a847795",
-    ".codex/skills/af.drift-cleanup/SKILL.md": "f836441a897262a52632abef497c3cf1ab14fc193743512b2b1295e19d9641b4",
-    ".codex/skills/af.drift-cleanup/docs/README.md": "6746233c61119ae70630bcfc0b696e67cbbe48b8dc0d9d1894afe3893b6c486a",
-    ".codex/skills/af.drift-cleanup/docs/adr/0008-domain-error-everywhere.md": "f06d5956884a0aa205e84ad4ba7dcd434dffd15e4a473f084d912665bd29eba4",
-    ".codex/skills/af.drift-cleanup/docs/adr/0009-edit-files-via-system-editor.md": "5ccfb51fefe6358d7fc10ad6239f1aef274ddd959d2816d38481306581a4eb2a",
-    ".codex/skills/af.drift-cleanup/docs/adr/0010-sync-resolutions-and-first-apply.md": "f2d8ddbda0fb5dc533514fc6ab0d0ea0d1248047278f583ccab5058225bacf7a",
-    ".codex/skills/af.drift-cleanup/docs/adr/0011-tui-screen-router.md": "0df50b524653c8ce5b7847e441a13bc3f1a0d5d6b3e00a73e1800a27c8f57cc2",
-    ".codex/skills/af.drift-cleanup/docs/adr/README.md": "1ee32515387fbf0a83218eb979a476d7dcdb378fcde57a148c47fdfbf6f16dbf",
-    ".codex/skills/af.drift-cleanup/docs/architecture/01-introduction-and-goals.md": "80d3e5e96ce115ba6e92daa951960e9453bbd5cdbb1d46d77ddd198587b338d1",
-    ".codex/skills/af.drift-cleanup/docs/architecture/02-architecture-constraints.md": "a87079a5c26fc6cd50841b29e5f8925f4494aa69a55a0d2d647d941c8ad5996e",
-    ".codex/skills/af.drift-cleanup/docs/architecture/03-context-and-scope.md": "0393a36b6dafc745d3d560611fe71bd4043ce8d5a7609ca7bfe0950cb02b8d09",
-    ".codex/skills/af.drift-cleanup/docs/architecture/04-solution-strategy.md": "3527371d8132f5892f3c5048ace1c25da0c9d39d81bfdc2fc323de7bc9978320",
-    ".codex/skills/af.drift-cleanup/docs/architecture/05-building-block-view.md": "efa466d6b303f9be378709d4fd200aabbdfbd2ecc4feee119c7b9b989d4e7442",
-    ".codex/skills/af.drift-cleanup/docs/architecture/06-runtime-view.md": "2477562c77a1670b1d7950e3c001bb5c8cc9c2ac638ed82aff130d65c00ba25a",
-    ".codex/skills/af.drift-cleanup/docs/architecture/07-deployment-view.md": "b93a1b0b2a4cf91c9981641dc073c8eb7e1dc8e782037ccc9464c69e3535af1f",
-    ".codex/skills/af.drift-cleanup/docs/architecture/08-concepts.md": "b16e60d454a80bd538f57cd8c8349d6ad8a5f3c3b0e4b798a72f611b3917d6dc",
-    ".codex/skills/af.drift-cleanup/docs/architecture/09-architecture-decisions.md": "6fc087b46b256b8166c1008138c984a94a78b20a398205ea754bde5a60f5c28e",
-    ".codex/skills/af.drift-cleanup/docs/architecture/10-quality-requirements.md": "52c9a928fc39556dda0c87a31f0c69cc750fcd52d1bb5fa0ecbb4e5df58d5761",
-    ".codex/skills/af.drift-cleanup/docs/architecture/11-technical-risks.md": "1eef34b574419dfb66ba1d1e3a146276024f4a3f8aae8d8131189a506a5e6f55",
-    ".codex/skills/af.drift-cleanup/docs/architecture/12-glossary.md": "611fb3286f37a756603a6ec81e7ba04cad4eb41ffbceb1fa86a862408bdca3d2",
-    ".codex/skills/af.drift-cleanup/docs/changelog/2026-06-12_0026-edit-profile-layout-cleanup.md": "c8846f641261c567ead8cb2fbfbc8fa0d12b27252d4e95c31beb9ca8a7967b5b",
-    ".codex/skills/af.drift-cleanup/docs/changelog/2026-06-12_0027-edit-asset-screen.md": "2ad231b3593a941d04abf06d3de92944022fec87f9246929b12d41bf3f877eb2",
-    ".codex/skills/af.drift-cleanup/docs/changelog/2026-06-12_0028-select-project-assets-screen.md": "8c4e007eaf30ee6920231c355456e4fc65c9f98791c5558c44c64252f38f8469",
-    ".codex/skills/af.drift-cleanup/docs/changelog/2026-06-13_0029-plan-project-screen.md": "fbe7fa8f6b97d7b993dc87adaf199dc4cfe0afde78e9989d0136186a2a0f7a3a",
-    ".codex/skills/af.drift-cleanup/docs/glossary.md": "6fc0a3d7af8d12cf8141cb5fdf65ce91ade59f0a5435eae360add10a13dbd7dd",
-    ".codex/skills/af.task.implement/SKILL.md": "93dab75003e90d947e7abc04317c976ce4c340fc332ee0a21b217a461e3b10eb",
-    ".codex/skills/af.task.implement/changelog-template.md": "5f103bf4b49285ce0ec53ab82c72cc095105095ffbfd878fd9261417addf8e7a",
-    ".codex/skills/af.task.plan/SKILL.md": "84c7764f386d1eb9e7b647c0125c09a5d74eb73fda3d2daff955eab0e28a0d27",
-    ".codex/skills/af.task.review-apply/SKILL.md": "ed586ab38bbe9625de96f8becdfbf818ff0dc87179598c5feadb626c0249163b",
-    ".codex/skills/af.task.review/SKILL.md": "1c5ea432609063a2aaa6031296afad48b3c7f3a4936ed0e82c9b0bb09cea7c15",
-    ".codex/skills/af.task.review/review-template.md": "3a93c69852cfe9449186a1db444acc7e6eb596d7dad92d500f55b6053c47fe22",
-    ".codex/skills/grill-me/SKILL.md": "6189dfceb7304a6e5558f75d87e68fa3bc7fcf7ba120e44f21f8a61fe01eba54",
-    ".codex/skills/grill-with-docs/SKILL.md": "610d091047bcfb9db0f75c057d15538481a721111579fc5ec7f83ad9131a2165",
-    ".codex/skills/grilling/SKILL.md": "fe00af3e1815f97c0a7644605479328a726b5cd95ba6ef56a4be2a92fae6c20f",
-    ".codex/skills/summarize/SKILL.md": "863c0a2c393bb016ed1429608fa519da0dd423132f00eeba10f741b54f2ff966"
+    ".claude/skills/af.check-task/SKILL.md": {
+      "hash": "640eda0eb9f00da60aee520ac4f1c8038aef3af0ca770bcfc99a02b2984b93e7"
+    },
+    ".claude/skills/af.cleanup-tasks/SKILL.md": {
+      "hash": "e49a634b2339f6b2f39833e2d80647420f31024e8ec1a1e403523f05b66b65a5",
+      "asset_id": "af.cleanup-tasks",
+      "source_rel": "SKILL.md"
+    },
+    ".claude/skills/af.cleanup-tasks/cleanup-tasks.sh": {
+      "hash": "833ede0e3e070fcf7811ca5dd962357cfe5ac127335f09e3711dc494b6386482",
+      "asset_id": "af.cleanup-tasks",
+      "source_rel": "cleanup-tasks.sh"
+    },
+    ".claude/skills/af.create-pr/SKILL.md": {
+      "hash": "3f418eaa0a3ae5c2085e43ac3ba4fdf37652f7b3db9bd620aecf506909de69c6",
+      "asset_id": "af.create-pr",
+      "source_rel": "SKILL.md"
+    },
+    ".claude/skills/af.create-task/SKILL.md": {
+      "hash": "ab2ebbca60f632f6d4e77e809a830fe74877a59d2e5c7bffa646383fb1269f06"
+    },
+    ".claude/skills/af.create-task/example-1-description.md": {
+      "hash": "c90b97b86ac4eaf939ab45b1e23bc6e5db6cc7821e2f73e4557ae67071aeaf18"
+    },
+    ".claude/skills/af.create-task/example-2-description.md": {
+      "hash": "63b4ff4ba53eb4224b534ea5273dbdcfd10d9f4e2bab2821fb2d81fe9a847795"
+    },
+    ".claude/skills/af.drift-cleanup/SKILL.md": {
+      "hash": "f836441a897262a52632abef497c3cf1ab14fc193743512b2b1295e19d9641b4",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "SKILL.md"
+    },
+    ".claude/skills/af.drift-cleanup/docs/README.md": {
+      "hash": "6746233c61119ae70630bcfc0b696e67cbbe48b8dc0d9d1894afe3893b6c486a",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/README.md"
+    },
+    ".claude/skills/af.drift-cleanup/docs/adr/0008-domain-error-everywhere.md": {
+      "hash": "f06d5956884a0aa205e84ad4ba7dcd434dffd15e4a473f084d912665bd29eba4",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/adr/0008-domain-error-everywhere.md"
+    },
+    ".claude/skills/af.drift-cleanup/docs/adr/0009-edit-files-via-system-editor.md": {
+      "hash": "5ccfb51fefe6358d7fc10ad6239f1aef274ddd959d2816d38481306581a4eb2a",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/adr/0009-edit-files-via-system-editor.md"
+    },
+    ".claude/skills/af.drift-cleanup/docs/adr/0010-sync-resolutions-and-first-apply.md": {
+      "hash": "f2d8ddbda0fb5dc533514fc6ab0d0ea0d1248047278f583ccab5058225bacf7a",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/adr/0010-sync-resolutions-and-first-apply.md"
+    },
+    ".claude/skills/af.drift-cleanup/docs/adr/0011-tui-screen-router.md": {
+      "hash": "0df50b524653c8ce5b7847e441a13bc3f1a0d5d6b3e00a73e1800a27c8f57cc2",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/adr/0011-tui-screen-router.md"
+    },
+    ".claude/skills/af.drift-cleanup/docs/adr/README.md": {
+      "hash": "1ee32515387fbf0a83218eb979a476d7dcdb378fcde57a148c47fdfbf6f16dbf",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/adr/README.md"
+    },
+    ".claude/skills/af.drift-cleanup/docs/architecture/01-introduction-and-goals.md": {
+      "hash": "80d3e5e96ce115ba6e92daa951960e9453bbd5cdbb1d46d77ddd198587b338d1",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/architecture/01-introduction-and-goals.md"
+    },
+    ".claude/skills/af.drift-cleanup/docs/architecture/02-architecture-constraints.md": {
+      "hash": "a87079a5c26fc6cd50841b29e5f8925f4494aa69a55a0d2d647d941c8ad5996e",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/architecture/02-architecture-constraints.md"
+    },
+    ".claude/skills/af.drift-cleanup/docs/architecture/03-context-and-scope.md": {
+      "hash": "0393a36b6dafc745d3d560611fe71bd4043ce8d5a7609ca7bfe0950cb02b8d09",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/architecture/03-context-and-scope.md"
+    },
+    ".claude/skills/af.drift-cleanup/docs/architecture/04-solution-strategy.md": {
+      "hash": "3527371d8132f5892f3c5048ace1c25da0c9d39d81bfdc2fc323de7bc9978320",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/architecture/04-solution-strategy.md"
+    },
+    ".claude/skills/af.drift-cleanup/docs/architecture/05-building-block-view.md": {
+      "hash": "efa466d6b303f9be378709d4fd200aabbdfbd2ecc4feee119c7b9b989d4e7442",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/architecture/05-building-block-view.md"
+    },
+    ".claude/skills/af.drift-cleanup/docs/architecture/06-runtime-view.md": {
+      "hash": "2477562c77a1670b1d7950e3c001bb5c8cc9c2ac638ed82aff130d65c00ba25a",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/architecture/06-runtime-view.md"
+    },
+    ".claude/skills/af.drift-cleanup/docs/architecture/07-deployment-view.md": {
+      "hash": "b93a1b0b2a4cf91c9981641dc073c8eb7e1dc8e782037ccc9464c69e3535af1f",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/architecture/07-deployment-view.md"
+    },
+    ".claude/skills/af.drift-cleanup/docs/architecture/08-concepts.md": {
+      "hash": "b16e60d454a80bd538f57cd8c8349d6ad8a5f3c3b0e4b798a72f611b3917d6dc",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/architecture/08-concepts.md"
+    },
+    ".claude/skills/af.drift-cleanup/docs/architecture/09-architecture-decisions.md": {
+      "hash": "6fc087b46b256b8166c1008138c984a94a78b20a398205ea754bde5a60f5c28e",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/architecture/09-architecture-decisions.md"
+    },
+    ".claude/skills/af.drift-cleanup/docs/architecture/10-quality-requirements.md": {
+      "hash": "52c9a928fc39556dda0c87a31f0c69cc750fcd52d1bb5fa0ecbb4e5df58d5761",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/architecture/10-quality-requirements.md"
+    },
+    ".claude/skills/af.drift-cleanup/docs/architecture/11-technical-risks.md": {
+      "hash": "1eef34b574419dfb66ba1d1e3a146276024f4a3f8aae8d8131189a506a5e6f55",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/architecture/11-technical-risks.md"
+    },
+    ".claude/skills/af.drift-cleanup/docs/architecture/12-glossary.md": {
+      "hash": "611fb3286f37a756603a6ec81e7ba04cad4eb41ffbceb1fa86a862408bdca3d2",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/architecture/12-glossary.md"
+    },
+    ".claude/skills/af.drift-cleanup/docs/changelog/2026-06-12_0026-edit-profile-layout-cleanup.md": {
+      "hash": "c8846f641261c567ead8cb2fbfbc8fa0d12b27252d4e95c31beb9ca8a7967b5b",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/changelog/2026-06-12_0026-edit-profile-layout-cleanup.md"
+    },
+    ".claude/skills/af.drift-cleanup/docs/changelog/2026-06-12_0027-edit-asset-screen.md": {
+      "hash": "2ad231b3593a941d04abf06d3de92944022fec87f9246929b12d41bf3f877eb2",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/changelog/2026-06-12_0027-edit-asset-screen.md"
+    },
+    ".claude/skills/af.drift-cleanup/docs/changelog/2026-06-12_0028-select-project-assets-screen.md": {
+      "hash": "8c4e007eaf30ee6920231c355456e4fc65c9f98791c5558c44c64252f38f8469",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/changelog/2026-06-12_0028-select-project-assets-screen.md"
+    },
+    ".claude/skills/af.drift-cleanup/docs/changelog/2026-06-13_0029-plan-project-screen.md": {
+      "hash": "fbe7fa8f6b97d7b993dc87adaf199dc4cfe0afde78e9989d0136186a2a0f7a3a",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/changelog/2026-06-13_0029-plan-project-screen.md"
+    },
+    ".claude/skills/af.drift-cleanup/docs/glossary.md": {
+      "hash": "6fc0a3d7af8d12cf8141cb5fdf65ce91ade59f0a5435eae360add10a13dbd7dd"
+    },
+    ".claude/skills/af.task.implement/SKILL.md": {
+      "hash": "93dab75003e90d947e7abc04317c976ce4c340fc332ee0a21b217a461e3b10eb",
+      "asset_id": "af.task.implement",
+      "source_rel": "SKILL.md"
+    },
+    ".claude/skills/af.task.implement/changelog-template.md": {
+      "hash": "5f103bf4b49285ce0ec53ab82c72cc095105095ffbfd878fd9261417addf8e7a",
+      "asset_id": "af.task.implement",
+      "source_rel": "changelog-template.md"
+    },
+    ".claude/skills/af.task.plan/SKILL.md": {
+      "hash": "84c7764f386d1eb9e7b647c0125c09a5d74eb73fda3d2daff955eab0e28a0d27"
+    },
+    ".claude/skills/af.task.review-apply/SKILL.md": {
+      "hash": "ed586ab38bbe9625de96f8becdfbf818ff0dc87179598c5feadb626c0249163b",
+      "asset_id": "af.task.review-apply",
+      "source_rel": "SKILL.md"
+    },
+    ".claude/skills/af.task.review/SKILL.md": {
+      "hash": "1c5ea432609063a2aaa6031296afad48b3c7f3a4936ed0e82c9b0bb09cea7c15"
+    },
+    ".claude/skills/af.task.review/review-template.md": {
+      "hash": "3a93c69852cfe9449186a1db444acc7e6eb596d7dad92d500f55b6053c47fe22",
+      "asset_id": "af.task.review",
+      "source_rel": "review-template.md"
+    },
+    ".claude/skills/grill-me/SKILL.md": {
+      "hash": "6189dfceb7304a6e5558f75d87e68fa3bc7fcf7ba120e44f21f8a61fe01eba54",
+      "asset_id": "grill-me",
+      "source_rel": "SKILL.md"
+    },
+    ".claude/skills/grill-with-docs/SKILL.md": {
+      "hash": "610d091047bcfb9db0f75c057d15538481a721111579fc5ec7f83ad9131a2165",
+      "asset_id": "grill-with-docs",
+      "source_rel": "SKILL.md"
+    },
+    ".claude/skills/grilling/SKILL.md": {
+      "hash": "fe00af3e1815f97c0a7644605479328a726b5cd95ba6ef56a4be2a92fae6c20f",
+      "asset_id": "grilling",
+      "source_rel": "SKILL.md"
+    },
+    ".claude/skills/summarize/SKILL.md": {
+      "hash": "863c0a2c393bb016ed1429608fa519da0dd423132f00eeba10f741b54f2ff966",
+      "asset_id": "summarize",
+      "source_rel": "SKILL.md"
+    },
+    ".codex/skills/af.check-task/SKILL.md": {
+      "hash": "640eda0eb9f00da60aee520ac4f1c8038aef3af0ca770bcfc99a02b2984b93e7",
+      "asset_id": "af.check-task",
+      "source_rel": "SKILL.md"
+    },
+    ".codex/skills/af.cleanup-tasks/SKILL.md": {
+      "hash": "e49a634b2339f6b2f39833e2d80647420f31024e8ec1a1e403523f05b66b65a5",
+      "asset_id": "af.cleanup-tasks",
+      "source_rel": "SKILL.md"
+    },
+    ".codex/skills/af.cleanup-tasks/cleanup-tasks.sh": {
+      "hash": "833ede0e3e070fcf7811ca5dd962357cfe5ac127335f09e3711dc494b6386482",
+      "asset_id": "af.cleanup-tasks",
+      "source_rel": "cleanup-tasks.sh"
+    },
+    ".codex/skills/af.create-pr/SKILL.md": {
+      "hash": "3f418eaa0a3ae5c2085e43ac3ba4fdf37652f7b3db9bd620aecf506909de69c6",
+      "asset_id": "af.create-pr",
+      "source_rel": "SKILL.md"
+    },
+    ".codex/skills/af.create-task/SKILL.md": {
+      "hash": "ab2ebbca60f632f6d4e77e809a830fe74877a59d2e5c7bffa646383fb1269f06",
+      "asset_id": "af.create-task",
+      "source_rel": "SKILL.md"
+    },
+    ".codex/skills/af.create-task/example-1-description.md": {
+      "hash": "c90b97b86ac4eaf939ab45b1e23bc6e5db6cc7821e2f73e4557ae67071aeaf18",
+      "asset_id": "af.create-task",
+      "source_rel": "example-1-description.md"
+    },
+    ".codex/skills/af.create-task/example-2-description.md": {
+      "hash": "63b4ff4ba53eb4224b534ea5273dbdcfd10d9f4e2bab2821fb2d81fe9a847795",
+      "asset_id": "af.create-task",
+      "source_rel": "example-2-description.md"
+    },
+    ".codex/skills/af.drift-cleanup/SKILL.md": {
+      "hash": "f836441a897262a52632abef497c3cf1ab14fc193743512b2b1295e19d9641b4",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "SKILL.md"
+    },
+    ".codex/skills/af.drift-cleanup/docs/README.md": {
+      "hash": "6746233c61119ae70630bcfc0b696e67cbbe48b8dc0d9d1894afe3893b6c486a",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/README.md"
+    },
+    ".codex/skills/af.drift-cleanup/docs/adr/0008-domain-error-everywhere.md": {
+      "hash": "f06d5956884a0aa205e84ad4ba7dcd434dffd15e4a473f084d912665bd29eba4",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/adr/0008-domain-error-everywhere.md"
+    },
+    ".codex/skills/af.drift-cleanup/docs/adr/0009-edit-files-via-system-editor.md": {
+      "hash": "5ccfb51fefe6358d7fc10ad6239f1aef274ddd959d2816d38481306581a4eb2a",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/adr/0009-edit-files-via-system-editor.md"
+    },
+    ".codex/skills/af.drift-cleanup/docs/adr/0010-sync-resolutions-and-first-apply.md": {
+      "hash": "f2d8ddbda0fb5dc533514fc6ab0d0ea0d1248047278f583ccab5058225bacf7a",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/adr/0010-sync-resolutions-and-first-apply.md"
+    },
+    ".codex/skills/af.drift-cleanup/docs/adr/0011-tui-screen-router.md": {
+      "hash": "0df50b524653c8ce5b7847e441a13bc3f1a0d5d6b3e00a73e1800a27c8f57cc2",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/adr/0011-tui-screen-router.md"
+    },
+    ".codex/skills/af.drift-cleanup/docs/adr/README.md": {
+      "hash": "1ee32515387fbf0a83218eb979a476d7dcdb378fcde57a148c47fdfbf6f16dbf",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/adr/README.md"
+    },
+    ".codex/skills/af.drift-cleanup/docs/architecture/01-introduction-and-goals.md": {
+      "hash": "80d3e5e96ce115ba6e92daa951960e9453bbd5cdbb1d46d77ddd198587b338d1",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/architecture/01-introduction-and-goals.md"
+    },
+    ".codex/skills/af.drift-cleanup/docs/architecture/02-architecture-constraints.md": {
+      "hash": "a87079a5c26fc6cd50841b29e5f8925f4494aa69a55a0d2d647d941c8ad5996e",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/architecture/02-architecture-constraints.md"
+    },
+    ".codex/skills/af.drift-cleanup/docs/architecture/03-context-and-scope.md": {
+      "hash": "0393a36b6dafc745d3d560611fe71bd4043ce8d5a7609ca7bfe0950cb02b8d09",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/architecture/03-context-and-scope.md"
+    },
+    ".codex/skills/af.drift-cleanup/docs/architecture/04-solution-strategy.md": {
+      "hash": "3527371d8132f5892f3c5048ace1c25da0c9d39d81bfdc2fc323de7bc9978320",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/architecture/04-solution-strategy.md"
+    },
+    ".codex/skills/af.drift-cleanup/docs/architecture/05-building-block-view.md": {
+      "hash": "efa466d6b303f9be378709d4fd200aabbdfbd2ecc4feee119c7b9b989d4e7442",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/architecture/05-building-block-view.md"
+    },
+    ".codex/skills/af.drift-cleanup/docs/architecture/06-runtime-view.md": {
+      "hash": "2477562c77a1670b1d7950e3c001bb5c8cc9c2ac638ed82aff130d65c00ba25a",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/architecture/06-runtime-view.md"
+    },
+    ".codex/skills/af.drift-cleanup/docs/architecture/07-deployment-view.md": {
+      "hash": "b93a1b0b2a4cf91c9981641dc073c8eb7e1dc8e782037ccc9464c69e3535af1f",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/architecture/07-deployment-view.md"
+    },
+    ".codex/skills/af.drift-cleanup/docs/architecture/08-concepts.md": {
+      "hash": "b16e60d454a80bd538f57cd8c8349d6ad8a5f3c3b0e4b798a72f611b3917d6dc",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/architecture/08-concepts.md"
+    },
+    ".codex/skills/af.drift-cleanup/docs/architecture/09-architecture-decisions.md": {
+      "hash": "6fc087b46b256b8166c1008138c984a94a78b20a398205ea754bde5a60f5c28e",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/architecture/09-architecture-decisions.md"
+    },
+    ".codex/skills/af.drift-cleanup/docs/architecture/10-quality-requirements.md": {
+      "hash": "52c9a928fc39556dda0c87a31f0c69cc750fcd52d1bb5fa0ecbb4e5df58d5761",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/architecture/10-quality-requirements.md"
+    },
+    ".codex/skills/af.drift-cleanup/docs/architecture/11-technical-risks.md": {
+      "hash": "1eef34b574419dfb66ba1d1e3a146276024f4a3f8aae8d8131189a506a5e6f55",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/architecture/11-technical-risks.md"
+    },
+    ".codex/skills/af.drift-cleanup/docs/architecture/12-glossary.md": {
+      "hash": "611fb3286f37a756603a6ec81e7ba04cad4eb41ffbceb1fa86a862408bdca3d2",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/architecture/12-glossary.md"
+    },
+    ".codex/skills/af.drift-cleanup/docs/changelog/2026-06-12_0026-edit-profile-layout-cleanup.md": {
+      "hash": "c8846f641261c567ead8cb2fbfbc8fa0d12b27252d4e95c31beb9ca8a7967b5b",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/changelog/2026-06-12_0026-edit-profile-layout-cleanup.md"
+    },
+    ".codex/skills/af.drift-cleanup/docs/changelog/2026-06-12_0027-edit-asset-screen.md": {
+      "hash": "2ad231b3593a941d04abf06d3de92944022fec87f9246929b12d41bf3f877eb2",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/changelog/2026-06-12_0027-edit-asset-screen.md"
+    },
+    ".codex/skills/af.drift-cleanup/docs/changelog/2026-06-12_0028-select-project-assets-screen.md": {
+      "hash": "8c4e007eaf30ee6920231c355456e4fc65c9f98791c5558c44c64252f38f8469",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/changelog/2026-06-12_0028-select-project-assets-screen.md"
+    },
+    ".codex/skills/af.drift-cleanup/docs/changelog/2026-06-13_0029-plan-project-screen.md": {
+      "hash": "fbe7fa8f6b97d7b993dc87adaf199dc4cfe0afde78e9989d0136186a2a0f7a3a",
+      "asset_id": "af.drift-cleanup",
+      "source_rel": "docs/changelog/2026-06-13_0029-plan-project-screen.md"
+    },
+    ".codex/skills/af.drift-cleanup/docs/glossary.md": {
+      "hash": "6fc0a3d7af8d12cf8141cb5fdf65ce91ade59f0a5435eae360add10a13dbd7dd"
+    },
+    ".codex/skills/af.task.implement/SKILL.md": {
+      "hash": "93dab75003e90d947e7abc04317c976ce4c340fc332ee0a21b217a461e3b10eb",
+      "asset_id": "af.task.implement",
+      "source_rel": "SKILL.md"
+    },
+    ".codex/skills/af.task.implement/changelog-template.md": {
+      "hash": "5f103bf4b49285ce0ec53ab82c72cc095105095ffbfd878fd9261417addf8e7a",
+      "asset_id": "af.task.implement",
+      "source_rel": "changelog-template.md"
+    },
+    ".codex/skills/af.task.plan/SKILL.md": {
+      "hash": "84c7764f386d1eb9e7b647c0125c09a5d74eb73fda3d2daff955eab0e28a0d27",
+      "asset_id": "af.task.plan",
+      "source_rel": "SKILL.md"
+    },
+    ".codex/skills/af.task.review-apply/SKILL.md": {
+      "hash": "ed586ab38bbe9625de96f8becdfbf818ff0dc87179598c5feadb626c0249163b",
+      "asset_id": "af.task.review-apply",
+      "source_rel": "SKILL.md"
+    },
+    ".codex/skills/af.task.review/SKILL.md": {
+      "hash": "1c5ea432609063a2aaa6031296afad48b3c7f3a4936ed0e82c9b0bb09cea7c15",
+      "asset_id": "af.task.review",
+      "source_rel": "SKILL.md"
+    },
+    ".codex/skills/af.task.review/review-template.md": {
+      "hash": "3a93c69852cfe9449186a1db444acc7e6eb596d7dad92d500f55b6053c47fe22",
+      "asset_id": "af.task.review",
+      "source_rel": "review-template.md"
+    },
+    ".codex/skills/grill-me/SKILL.md": {
+      "hash": "6189dfceb7304a6e5558f75d87e68fa3bc7fcf7ba120e44f21f8a61fe01eba54",
+      "asset_id": "grill-me",
+      "source_rel": "SKILL.md"
+    },
+    ".codex/skills/grill-with-docs/SKILL.md": {
+      "hash": "610d091047bcfb9db0f75c057d15538481a721111579fc5ec7f83ad9131a2165",
+      "asset_id": "grill-with-docs",
+      "source_rel": "SKILL.md"
+    },
+    ".codex/skills/grilling/SKILL.md": {
+      "hash": "fe00af3e1815f97c0a7644605479328a726b5cd95ba6ef56a4be2a92fae6c20f",
+      "asset_id": "grilling",
+      "source_rel": "SKILL.md"
+    },
+    ".codex/skills/summarize/SKILL.md": {
+      "hash": "863c0a2c393bb016ed1429608fa519da0dd423132f00eeba10f741b54f2ff966",
+      "asset_id": "summarize",
+      "source_rel": "SKILL.md"
+    }
   },
   "ignored_paths": [
     ".claude/skills/ask-matt",
