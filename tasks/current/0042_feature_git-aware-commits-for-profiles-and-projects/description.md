@@ -1,7 +1,7 @@
 ---
 id: 0042
 type: feature
-status: pending
+status: in-progress
 topics: git, tui, external_tools, sync_and_safety
 notes: |
   I'd like af to be git-aware. This means adding the following functionality:
@@ -156,6 +156,10 @@ user's git identity.
 - Push / pull / branch management — commits stay local.
 - CLI flags for git behavior; all control flows through the Settings
   screen.
+
+## Plan
+
+[plan.md](./plan.md)
 
 ## Verification
 
