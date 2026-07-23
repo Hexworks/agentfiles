@@ -1,7 +1,7 @@
 ---
 id: 0007
 type: task
-status: Pending
+status: pending
 topics: security, go
 ---
 
