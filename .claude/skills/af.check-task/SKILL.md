@@ -1,6 +1,6 @@
 ---
 name: Check Task [Agentfiles]
-description: Use when the user invokes /check-task <task-number> (e.g. /check-task 0001) to audit a task's `description.md` against the format enshrined by `af.create-task`. Locates the task, validates folder + frontmatter + body, reports every deviation, and — when a fix requires user judgement — hands off to the `grilling` skill instead of guessing.
+description: Use when the user invokes /check-task <task-number> (e.g. /check-task 0001) to audit a task's `description.md` against the format enshrined by `af.create-task`. Locates the task, validates folder + frontmatter + body (including the three required sections `## Acceptance Criteria`, `## Out of scope`, `## Verification`), reports every deviation, and — when a fix requires user judgement — hands off to the `grilling` skill instead of guessing.
 disable-model-invocation: true
 ---
 
@@ -25,7 +25,11 @@ If missing, list every task across `tasks/backlog/`, `tasks/current/`, and
 
 ## Task Layout (authoritative)
 
-Same layout as `af.create-task`:
+Mirrors `af.create-task` — keep in lockstep. Two reference examples live at
+`.claude/skills/af.create-task/example-1-description.md` and
+`example-2-description.md`; a compliant task looks like those.
+
+### Folder + frontmatter
 
 - Tasks live in `tasks/backlog/`, `tasks/current/`, or `tasks/done/`.
 - Folder pattern: `NNNN_<type>_<slug>` (e.g. `0029_feature_plan-project-screen`).
@@ -35,11 +39,42 @@ Same layout as `af.create-task`:
 - `description.md` frontmatter fields:
     - `id` (required) — 4-digit string, must match `NNNN` in folder name.
     - `type` (required) — must match `<type>` in folder name.
-    - `status` (required) — `pending` in backlog, `active` in current, `done` in done.
-    - `topics` (required) — comma-separated list; each entry must be a filename (without `.md`) under `docs/guidelines/`, excluding `README`.
-    - `depends_on` (optional) — comma-separated 4-digit ids; every id must exist as a task and be **numerically lower** than `id`.
+    - `status` (required) — one of `pending`, `in-progress`, `blocked`,
+      `in-review`, `done`. Parent folder constrains the allowed set:
+        - `tasks/backlog/` → `pending`.
+        - `tasks/current/` → `pending`, `in-progress`, `blocked`, or
+          `in-review`.
+        - `tasks/done/` → `done`.
+    - `topics` (required) — comma-separated list; each entry must be a
+      filename (without `.md`) under `docs/guidelines/`, excluding `README`.
+    - `depends_on` (optional) — comma-separated 4-digit ids; every id must
+      exist as a task and be **numerically lower** than `id`.
     - `notes` (optional) — freeform text.
 - Body starts with a level-1 heading: `# <Title>`.
+
+### Required body sections
+
+Every task body **must** include these three sections (case-sensitive
+heading text, level-2). They are the task's Definition of Done — `af.task.review`
+gates on them.
+
+- `## Acceptance Criteria` — at least one `- [ ]` (or `- [x]`) checkbox.
+  Every criterion must be **verifiable**: it names a concrete
+  `input → output`, a named test (`TestFoo`, `go test -run TestBar`), or a
+  fixture invocation. Vague statements ("works correctly", "is fast") are
+  not verifiable.
+- `## Out of scope` — a non-empty bullet list. `- none` is allowed **only**
+  when nothing is genuinely excluded.
+- `## Verification` — a **bullet list**, not a shell block. First bullet is
+  the baseline gate `` `make build && make test && make lint` `` (or
+  equivalent). At least one additional bullet must name behavior-specific
+  evidence — a named test (`go test -run TestX`), a reproducible smoke input
+  → output (`./bin/af → screen → action → expected result`), or a fixture
+  invocation. A `## Verification` with **only** the baseline bullet is a
+  hard finding.
+
+Other level-2 sections (`## Background`, `## Tests`, `## Plan`, …) are
+allowed but not required.
 
 ## Step 1 — Locate Task
 
@@ -81,10 +116,9 @@ For each field:
   with the folder id, that is a hard finding: mark it and ask the user which
   side is correct via `grilling`.
 - **`type`** — present, equal to folder `<type>`.
-- **`status`** — present, matches parent folder:
-    - `tasks/backlog/` → `pending`
-    - `tasks/current/` → `active`
-    - `tasks/done/` → `done`
+- **`status`** — present, in the allowed set for the parent folder (see
+  Task Layout above). Status outside `{pending, in-progress, blocked,
+  in-review, done}` or wrong for the parent folder is a hard finding.
 - **`topics`** — present, non-empty. List `docs/guidelines/` at check time.
   Every topic entry must appear (case-sensitive, filename minus `.md`, excluding
   `README`). Unknown topics are hard findings.
@@ -98,12 +132,65 @@ Unknown extra frontmatter keys are soft findings — flag but do not remove.
 
 ## Step 5 — Validate the body
 
+### 5a — Title
+
 - The first non-blank line after the frontmatter must be `# <Title>`. Missing
   title is a hard finding.
 - Derive the expected `<slug>` by kebab-casing the title (lowercase, spaces →
   `-`, drop punctuation). Compare against folder `<slug>`. Divergence is a
   **soft** finding — slugs drift as titles are edited and renaming is a manual
   call; ask via `grilling` before proposing a rename.
+
+### 5b — Required sections present
+
+Verify each of the three required level-2 headings appears **exactly** (case
+and wording, no trailing punctuation):
+
+- `## Acceptance Criteria`
+- `## Out of scope`
+- `## Verification`
+
+A missing heading is a hard finding. A near-miss (`## Acceptance criteria`,
+`## OutOfScope`, `## Verify`) is a hard finding — record the actual heading
+found and the expected form.
+
+### 5c — Acceptance Criteria contents
+
+- Must contain **≥1** checkbox line matching `- [ ]` or `- [x]`. Zero
+  checkboxes → hard finding.
+- Each checkbox line must be **verifiable**. Heuristic: a criterion is
+  verifiable if it names at least one of:
+    - a concrete `input → output` (e.g. arrows `→`, `yields`, `produces`,
+      `emits`, `returns`),
+    - a named test (`TestSomething`, `go test -run …`, or a similar
+      language-specific test name),
+    - a fixture / command invocation with an expected result.
+  Criteria without any of those markers are soft findings — surface the line
+  verbatim and ask the user via `grilling` whether it can be made
+  verifiable.
+
+### 5d — Out of scope contents
+
+- Must contain at least one bullet (`-` or `*`). Empty section → hard
+  finding.
+- A single bullet `- none` is allowed. If the section otherwise contains
+  only whitespace or filler ("N/A", "TBD"), that is a hard finding.
+
+### 5e — Verification contents
+
+- Must be a bullet list. If the section is a fenced code block instead of
+  bullets, that is a hard finding.
+- First bullet must reference the baseline gate — look for
+  `` `make build && make test && make lint` `` (or an equivalent build/test/
+  lint chain the repo uses). Missing baseline → hard finding.
+- Must contain **≥1** additional bullet beyond the baseline that names
+  behavior-specific evidence. Recognisable shapes:
+    - a named test invocation (`go test -run TestX`, `pytest …::test_foo`,
+      etc.),
+    - a smoke path (`./bin/af → <screen> → <action> → <expected result>`),
+    - a fixture invocation with expected output.
+  A `## Verification` section containing only the baseline bullet is a hard
+  finding.
 
 ## Step 6 — Categorise findings
 
@@ -112,10 +199,13 @@ Split findings into two buckets:
 - **Hard** — clearly wrong per the format above (missing required field,
   wrong `status` for parent folder, unknown `type`, unknown topic, forward /
   self dependency, missing title, mismatched `id`/`type` between folder and
-  frontmatter).
+  frontmatter, missing required body section, empty Acceptance Criteria,
+  empty Out of scope, Verification with only the baseline bullet, Verification
+  as a code block instead of bullets).
 - **Soft** — ambiguous or judgement calls (slug drift vs. title, empty
   `notes:`, extra unknown keys, dependencies whose semantic relevance you
-  cannot judge from the outside).
+  cannot judge from the outside, Acceptance-Criteria bullets whose
+  verifiability is unclear).
 
 ## Step 7 — Report
 
@@ -132,16 +222,16 @@ If there are zero findings, say so and stop.
 For every finding whose fix requires user judgement (all soft findings, and
 any hard finding where the correct value is not mechanically obvious — e.g.
 `id` mismatch between folder and frontmatter, unknown topic that might be a
-new guideline), invoke the `grilling` skill and let it interview the user
-one question at a time.
+new guideline, empty section that needs real content), invoke the `grilling`
+skill and let it interview the user one question at a time.
 
 Do **not** batch these into a single multi-question prompt yourself — that is
 exactly the failure mode `grilling` exists to prevent.
 
-Findings whose fix **is** mechanically obvious (e.g. `status: active` but the
-task sits in `tasks/backlog/` — the correct value is unambiguous once the
-user confirms which side to trust) may be proposed directly, but still wait
-for user confirmation before writing.
+Findings whose fix **is** mechanically obvious (e.g. `status: pending` but the
+task sits in `tasks/current/` **and** the user confirms it should be
+`in-progress` — the correct value is unambiguous once the user picks a side)
+may be proposed directly, but still wait for user confirmation before writing.
 
 ## Step 9 — Apply agreed fixes
 
