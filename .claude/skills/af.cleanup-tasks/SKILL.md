@@ -25,9 +25,9 @@ The script is idempotent — re-running it after every task is moved is a no-op.
 1. Make the script executable if needed: `chmod +x .claude/skills/cleanup-tasks/cleanup-tasks.sh`.
 2. Run it from the repository root:
 
-   ```bash
-   .claude/skills/cleanup-tasks/cleanup-tasks.sh
-   ```
+    ```bash
+    .claude/skills/cleanup-tasks/cleanup-tasks.sh
+    ```
 
 3. Report the script's stdout (the `moved:` lines and the `summary:` line) back to the user. If anything was sent to stderr (e.g. skip messages), surface those too.
 

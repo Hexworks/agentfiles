@@ -2,9 +2,10 @@
   "profile_id": "addamsson",
   "project_id": "agentfiles",
   "generator_version": "1.0.0",
-  "last_applied_at": "2026-07-21T13:39:18.130570809Z",
+  "last_applied_at": "2026-07-23T11:03:08.489049692Z",
   "managed_files": {
-    ".claude/skills/af.cleanup-tasks/SKILL.md": "2dbe3a8d3aa5b5f747142977b955eb9f06947c3c94e02d0dfb07a43c4affe207",
+    ".claude/skills/af.check-task/SKILL.md": "640eda0eb9f00da60aee520ac4f1c8038aef3af0ca770bcfc99a02b2984b93e7",
+    ".claude/skills/af.cleanup-tasks/SKILL.md": "e49a634b2339f6b2f39833e2d80647420f31024e8ec1a1e403523f05b66b65a5",
     ".claude/skills/af.cleanup-tasks/cleanup-tasks.sh": "833ede0e3e070fcf7811ca5dd962357cfe5ac127335f09e3711dc494b6386482",
     ".claude/skills/af.create-pr/SKILL.md": "3f418eaa0a3ae5c2085e43ac3ba4fdf37652f7b3db9bd620aecf506909de69c6",
     ".claude/skills/af.create-task/SKILL.md": "ab2ebbca60f632f6d4e77e809a830fe74877a59d2e5c7bffa646383fb1269f06",
@@ -43,7 +44,9 @@
     ".claude/skills/grill-me/SKILL.md": "6189dfceb7304a6e5558f75d87e68fa3bc7fcf7ba120e44f21f8a61fe01eba54",
     ".claude/skills/grill-with-docs/SKILL.md": "610d091047bcfb9db0f75c057d15538481a721111579fc5ec7f83ad9131a2165",
     ".claude/skills/grilling/SKILL.md": "fe00af3e1815f97c0a7644605479328a726b5cd95ba6ef56a4be2a92fae6c20f",
-    ".codex/skills/af.cleanup-tasks/SKILL.md": "2dbe3a8d3aa5b5f747142977b955eb9f06947c3c94e02d0dfb07a43c4affe207",
+    ".claude/skills/summarize/SKILL.md": "863c0a2c393bb016ed1429608fa519da0dd423132f00eeba10f741b54f2ff966",
+    ".codex/skills/af.check-task/SKILL.md": "640eda0eb9f00da60aee520ac4f1c8038aef3af0ca770bcfc99a02b2984b93e7",
+    ".codex/skills/af.cleanup-tasks/SKILL.md": "e49a634b2339f6b2f39833e2d80647420f31024e8ec1a1e403523f05b66b65a5",
     ".codex/skills/af.cleanup-tasks/cleanup-tasks.sh": "833ede0e3e070fcf7811ca5dd962357cfe5ac127335f09e3711dc494b6386482",
     ".codex/skills/af.create-pr/SKILL.md": "3f418eaa0a3ae5c2085e43ac3ba4fdf37652f7b3db9bd620aecf506909de69c6",
     ".codex/skills/af.create-task/SKILL.md": "ab2ebbca60f632f6d4e77e809a830fe74877a59d2e5c7bffa646383fb1269f06",
@@ -81,7 +84,8 @@
     ".codex/skills/af.task.review/review-template.md": "3a93c69852cfe9449186a1db444acc7e6eb596d7dad92d500f55b6053c47fe22",
     ".codex/skills/grill-me/SKILL.md": "6189dfceb7304a6e5558f75d87e68fa3bc7fcf7ba120e44f21f8a61fe01eba54",
     ".codex/skills/grill-with-docs/SKILL.md": "610d091047bcfb9db0f75c057d15538481a721111579fc5ec7f83ad9131a2165",
-    ".codex/skills/grilling/SKILL.md": "fe00af3e1815f97c0a7644605479328a726b5cd95ba6ef56a4be2a92fae6c20f"
+    ".codex/skills/grilling/SKILL.md": "fe00af3e1815f97c0a7644605479328a726b5cd95ba6ef56a4be2a92fae6c20f",
+    ".codex/skills/summarize/SKILL.md": "863c0a2c393bb016ed1429608fa519da0dd423132f00eeba10f741b54f2ff966"
   },
   "ignored_paths": [
     ".claude/skills/ask-matt",
