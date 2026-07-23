@@ -10,7 +10,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/hexworks/agentfiles/internal/actions"
-	"github.com/hexworks/agentfiles/internal/app"
+	"github.com/hexworks/agentfiles/internal/appapi"
 	"github.com/hexworks/agentfiles/internal/asset"
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/project"
@@ -28,7 +28,7 @@ import (
 // glance which interface widening reflects an own dependency versus a
 // child-screen pass-through.
 type editProfileOwnActions interface {
-	LoadProfile(in actions.LoadProfileInput) (*app.LoadedProfile, errs.DomainError)
+	LoadProfile(in actions.LoadProfileInput) (*appapi.LoadedProfile, errs.DomainError)
 	CreateAsset(in actions.CreateAssetInput) (string, errs.DomainError)
 	DeleteAsset(in actions.DeleteAssetInput) (struct{}, errs.DomainError)
 	AddProject(in actions.AddProjectInput) (*project.Manifest, errs.DomainError)
@@ -118,7 +118,7 @@ type editProfileScreen struct {
 // editProfileLoadedMsg carries the loaded profile (or load error) that
 // Init's command produces.
 type editProfileLoadedMsg struct {
-	prof *app.LoadedProfile
+	prof *appapi.LoadedProfile
 	err  errs.DomainError
 }
 
@@ -457,9 +457,9 @@ func applyTable(t *table.Model, cols []table.Column, rows []table.Row) {
 // rebuildLists materializes ordered slices of assets and projects from
 // the freshly-loaded profile so the tables (and tests) see a stable
 // iteration order. Domain ordering is owned by profile.AssetList and
-// app.LoadedProfile.ProjectList — the screen does not re-implement sort
+// appapi.LoadedProfile.ProjectList — the screen does not re-implement sort
 // rules.
-func (s *editProfileScreen) rebuildLists(loaded *app.LoadedProfile) {
+func (s *editProfileScreen) rebuildLists(loaded *appapi.LoadedProfile) {
 	if loaded == nil {
 		s.assets = nil
 		s.projects = nil

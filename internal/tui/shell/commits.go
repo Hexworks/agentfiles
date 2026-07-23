@@ -3,26 +3,30 @@ package shell
 import (
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/hexworks/agentfiles/internal/app"
+	"github.com/hexworks/agentfiles/internal/appapi"
 	"github.com/hexworks/agentfiles/internal/errs"
 )
 
 // notificationText composes the merged save-plus-commit toast text a
-// git-aware screen surfaces after a successful mutation. When the
-// commit succeeded, base becomes "<base> (committed <sha>)" so the
-// existing save toast picks up the commit signal without a second
-// notification. When the commit failed, base stays untouched and the
-// second return carries the warn toast the caller batches alongside
-// it. When no commit was attempted (feature disabled or dir not a
-// repo) base is returned unchanged and the second value is nil.
-func notificationText(base string, outcome app.CommitOutcome) (string, tea.Cmd) {
-	if outcome.SHA != "" {
-		return base + " (committed " + outcome.SHA + ")", nil
+// git-aware screen surfaces after a successful mutation.
+//
+// The discriminated CommitOutcome resolves to one of three branches:
+//   - appapi.Committed → base becomes "<base> (committed <sha>)" so
+//     the existing save toast picks up the commit signal without a
+//     second notification.
+//   - appapi.Failed → base stays untouched and the second return
+//     carries the warn toast the caller batches alongside it.
+//   - appapi.Skipped (any reason) or nil → base returned unchanged
+//     and the second value is nil (silent skip per ADR 0019).
+func notificationText(base string, outcome appapi.CommitOutcome) (string, tea.Cmd) {
+	switch v := outcome.(type) {
+	case appapi.Committed:
+		return base + " (committed " + v.SHA + ")", nil
+	case appapi.Failed:
+		return base, notificationCmd(v.Err.Severity(), v.Err.Error())
+	default: // appapi.Skipped or nil
+		return base, nil
 	}
-	if outcome.Err != nil {
-		return base, notificationCmd(outcome.Err.Severity(), outcome.Err.Error())
-	}
-	return base, nil
 }
 
 // commitOutcomeCmd is a convenience wrapper for post-mutation screens
@@ -30,7 +34,7 @@ func notificationText(base string, outcome app.CommitOutcome) (string, tea.Cmd) 
 // warn toast in one tea.Batch. severity is always errs.SeverityInfo for
 // the info toast because the save itself succeeded — the commit
 // failure rides on the second toast.
-func commitOutcomeCmd(base string, outcome app.CommitOutcome) tea.Cmd {
+func commitOutcomeCmd(base string, outcome appapi.CommitOutcome) tea.Cmd {
 	text, warn := notificationText(base, outcome)
 	info := notificationCmd(errs.SeverityInfo, text)
 	if warn == nil {

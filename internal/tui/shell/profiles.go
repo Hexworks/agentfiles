@@ -11,7 +11,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/hexworks/agentfiles/internal/actions"
-	"github.com/hexworks/agentfiles/internal/app"
+	"github.com/hexworks/agentfiles/internal/appapi"
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/tui/components/help"
 	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
@@ -30,7 +30,7 @@ import (
 // composite over the screen body; no sub-screen is pushed for them.
 type profilesScreen struct {
 	actions  *actions.Actions
-	profiles []*app.LoadedProfile
+	profiles []*appapi.LoadedProfile
 	table    table.Model
 
 	modal             *modal.Modal
@@ -59,7 +59,7 @@ type profilesScreen struct {
 // It carries every Profile pointer LoadProfiles produced plus any domain
 // error so Update can both rebuild the table and emit a notification.
 type profilesLoadedMsg struct {
-	profiles []*app.LoadedProfile
+	profiles []*appapi.LoadedProfile
 	err      errs.DomainError
 }
 
@@ -311,7 +311,7 @@ func (s *profilesScreen) actionsCellContent() string {
 
 // selectedProfile returns the profile under the table cursor. Returns
 // ok=false when the table is empty so callers can no-op the row action.
-func (s *profilesScreen) selectedProfile() (*app.LoadedProfile, bool) {
+func (s *profilesScreen) selectedProfile() (*appapi.LoadedProfile, bool) {
 	if len(s.profiles) == 0 {
 		return nil, false
 	}

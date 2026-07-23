@@ -13,6 +13,13 @@ const Version = 1
 // schema migration.
 type GitSettings struct {
 	Enabled bool `json:"enabled"`
+	// RunHooks opts the automated commit path into the repository's
+	// commit-time hooks (pre-commit, prepare-commit-msg, commit-msg).
+	// Default is false so `Repo.Commit` passes `--no-verify` and hostile
+	// hook scripts checked out on a branch cannot execute silently
+	// (ADR 0019). Users who rely on hooks (e.g. GPG signing enforcement)
+	// enable this explicitly.
+	RunHooks bool `json:"run_hooks"`
 }
 
 // Settings is the value persisted to settings.json. Zero-value is the

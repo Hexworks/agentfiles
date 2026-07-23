@@ -151,7 +151,7 @@ func (ProfileFolderNotARootError) Severity() errs.Severity {
 }
 
 // SettingsUnavailableError reports an UpdateSettings call against a
-// Service whose SettingsStore was never wired. Surfaces a wiring bug so
+// Service whose settings store was never wired. Surfaces a wiring bug so
 // the TUI shows a clear error instead of a nil-pointer panic.
 type SettingsUnavailableError struct{}
 

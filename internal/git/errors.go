@@ -57,29 +57,32 @@ func (UnrelatedStagedChangesError) Severity() errs.Severity {
 	return errs.SeverityWarning
 }
 
-// HookFailedError reports a non-zero commit exit whose stderr begins
-// with a hook diagnostic. Surfaced separately from CommitError so the
-// TUI can show the hook message plainly.
+// HookFailedError reports a non-zero commit exit that classifyHookFailure
+// attributed to a repo-supplied hook. Surfaced separately from
+// CommitError so the TUI can render the hook diagnostic plainly. Detail
+// holds git's stderr (or the exec fallback summary when stderr was
+// empty).
 type HookFailedError struct {
-	Stderr string
+	Detail string
 }
 
 func (e HookFailedError) Error() string {
-	return "git hook rejected commit: " + firstLine(e.Stderr)
+	return "git hook rejected commit: " + firstLine(e.Detail)
 }
 
 func (HookFailedError) Severity() errs.Severity {
 	return errs.SeverityWarning
 }
 
-// CommitError reports a generic commit failure. Stderr carries the raw
-// git output so the TUI can render it.
+// CommitError reports a generic commit failure. Detail holds either
+// git's stderr text or the exec fallback summary ("exit status N")
+// when stderr was empty.
 type CommitError struct {
-	Stderr string
+	Detail string
 }
 
 func (e CommitError) Error() string {
-	return "git commit failed: " + firstLine(e.Stderr)
+	return "git commit failed: " + firstLine(e.Detail)
 }
 
 func (CommitError) Severity() errs.Severity {

@@ -264,6 +264,20 @@ func classifyDesired(file render.RenderedFile, desiredHash, projectPath string, 
 	return FileChange{Path: file.Path, Kind: ChangeUpdate, Reason: ReasonContentDiffers}, false, nil
 }
 
+// ApplyResult is the by-mutation output of Apply. Mutated lists every
+// managed file the engine created, updated, deleted, drift-overwrote,
+// or unknown-deleted this call, in stable sort order. StatePath is the
+// absolute path to the `.agentfiles/state.json` snapshot the engine
+// rewrote after the file loop (always populated on success or partial
+// success, even if no managed files changed). Callers compose the two
+// into a pathspec — the split lets subject templates count real
+// managed-file mutations without off-by-one arithmetic on a hardcoded
+// state entry (see ADR 0019 commit trigger).
+type ApplyResult struct {
+	Mutated   []string
+	StatePath string
+}
+
 // Apply materializes the preview into the repository using the user's
 // per-file resolutions and then records a new ManagedState snapshot.
 //
@@ -282,7 +296,11 @@ func classifyDesired(file render.RenderedFile, desiredHash, projectPath string, 
 // surfaces.IsAllowed produce OutsideSurfaceError. Errors accumulate;
 // state is still rewritten so the recorded baseline reflects whatever
 // the apply loop actually wrote.
-func Apply(preview *Preview, r Resolutions) errs.DomainError {
+//
+// The returned ApplyResult records what actually changed on disk so
+// downstream steps (e.g. the ADR 0019 auto-commit) do not have to
+// reconstruct the drift/unknown decision matrix a second time.
+func Apply(preview *Preview, r Resolutions) (ApplyResult, errs.DomainError) {
 	driftByPath, validationErrs := indexDriftResolutions(r.Drift)
 	unknownByPath, unknownErrs := indexUnknownResolutions(r.Unknown)
 	validationErrs = append(validationErrs, unknownErrs...)
@@ -292,7 +310,7 @@ func Apply(preview *Preview, r Resolutions) errs.DomainError {
 		}
 	}
 	if len(validationErrs) > 0 {
-		return errs.Errors(validationErrs)
+		return ApplyResult{}, errs.Errors(validationErrs)
 	}
 	bodiesByPath := map[string]render.RenderedFile{}
 	// Pre-fill the state baseline with the rendered hash of every
@@ -304,7 +322,13 @@ func Apply(preview *Preview, r Resolutions) errs.DomainError {
 		bodiesByPath[f.Path] = f
 		recordedHashes[f.Path] = utils.HashBytes(f.Body)
 	}
-	var domainErrs []errs.DomainError
+	var (
+		domainErrs []errs.DomainError
+		mutated    []string
+	)
+	track := func(rel string) {
+		mutated = append(mutated, filepath.Join(preview.ProjectPath, filepath.FromSlash(rel)))
+	}
 	for _, change := range preview.Changes {
 		if !surfaces.IsAllowed(change.Path) {
 			domainErrs = append(domainErrs, OutsideSurfaceError{Path: change.Path})
@@ -314,13 +338,17 @@ func Apply(preview *Preview, r Resolutions) errs.DomainError {
 		case ChangeCreate, ChangeUpdate:
 			if err := writeRendered(preview.ProjectPath, bodiesByPath[change.Path]); err != nil {
 				domainErrs = append(domainErrs, err)
+				continue
 			}
+			track(change.Path)
 			// Hash already pre-filled with rendered body.
 		case ChangeDrift:
 			if driftByPath[change.Path] == DriftOverwrite {
 				if err := writeRendered(preview.ProjectPath, bodiesByPath[change.Path]); err != nil {
 					domainErrs = append(domainErrs, err)
+					continue
 				}
+				track(change.Path)
 				// Pre-filled rendered hash is correct after overwrite.
 				continue
 			}
@@ -347,7 +375,9 @@ func Apply(preview *Preview, r Resolutions) errs.DomainError {
 		case ChangeDelete:
 			if err := removeFile(preview.ProjectPath, change.Path); err != nil {
 				domainErrs = append(domainErrs, err)
+				continue
 			}
+			track(change.Path)
 			// Deleted paths are never in preview.Files, so the
 			// pre-filled map already excludes them.
 		case ChangeUnknown:
@@ -356,7 +386,9 @@ func Apply(preview *Preview, r Resolutions) errs.DomainError {
 			}
 			if err := removeFile(preview.ProjectPath, change.Path); err != nil {
 				domainErrs = append(domainErrs, err)
+				continue
 			}
+			track(change.Path)
 			// Unknown files were never in preview.Files; nothing to
 			// record either way.
 		}
@@ -369,16 +401,19 @@ func Apply(preview *Preview, r Resolutions) errs.DomainError {
 		ManagedFiles:     recordedHashes,
 		IgnoredPaths:     normalizeIgnoredPaths(r.IgnoredPaths),
 	}
-	if err := utils.WriteJSON(filepath.Join(preview.ProjectPath, config.StateDirName, config.StateFileName), state); err != nil {
+	statePath := filepath.Join(preview.ProjectPath, config.StateDirName, config.StateFileName)
+	if err := utils.WriteJSON(statePath, state); err != nil {
 		domainErrs = append(domainErrs, err)
 	}
+	slices.Sort(mutated)
+	result := ApplyResult{Mutated: mutated, StatePath: statePath}
 	if len(domainErrs) == 0 {
-		return nil
+		return result, nil
 	}
 	if len(domainErrs) == 1 {
-		return domainErrs[0]
+		return result, domainErrs[0]
 	}
-	return errs.Errors(domainErrs)
+	return result, errs.Errors(domainErrs)
 }
 
 // normalizeIgnoredPaths writes the incoming ignored set verbatim (replace, not

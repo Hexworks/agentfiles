@@ -12,6 +12,7 @@ import (
 
 	"github.com/hexworks/agentfiles/internal/actions"
 	"github.com/hexworks/agentfiles/internal/app"
+	"github.com/hexworks/agentfiles/internal/appapi"
 	"github.com/hexworks/agentfiles/internal/asset"
 	"github.com/hexworks/agentfiles/internal/config"
 	"github.com/hexworks/agentfiles/internal/errs"
@@ -87,7 +88,7 @@ func (f *editProfileFixture) seedProject(t *testing.T, name, path string) *proje
 // withProfile bypasses the load command and pushes a pre-loaded
 // profile + sorted asset / project slices into the screen so UI-state
 // tests run without spinning the registry.
-func withProfile(s *editProfileScreen, loaded *app.LoadedProfile) {
+func withProfile(s *editProfileScreen, loaded *appapi.LoadedProfile) {
 	s.rebuildLists(loaded)
 	s.rebuildAssetsTable()
 	s.rebuildProjectsTable()
@@ -95,7 +96,7 @@ func withProfile(s *editProfileScreen, loaded *app.LoadedProfile) {
 	s.rebuildSet()
 }
 
-func fakeLoadedProfile(t *testing.T, root string, assets []*asset.Asset, projects []*project.Manifest) *app.LoadedProfile {
+func fakeLoadedProfile(t *testing.T, root string, assets []*asset.Asset, projects []*project.Manifest) *appapi.LoadedProfile {
 	t.Helper()
 	prof := &profile.Profile{
 		Root:     root,
@@ -109,7 +110,7 @@ func fakeLoadedProfile(t *testing.T, root string, assets []*asset.Asset, project
 	for _, p := range projects {
 		byID[p.ID] = p
 	}
-	return &app.LoadedProfile{Profile: prof, Projects: byID}
+	return &appapi.LoadedProfile{Profile: prof, Projects: byID}
 }
 
 func TestEditProfileScreen_InitLoadsProfileFromActions(t *testing.T) {

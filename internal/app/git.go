@@ -3,35 +3,33 @@ package app
 import (
 	"errors"
 
+	"github.com/hexworks/agentfiles/internal/appapi"
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/git"
 )
 
 // GitCommitter records a scoped commit inside a specific directory.
-// Implementations return ("", nil) when the operation is a silent skip
-// (dir not a git repo, or empty diff for the given pathspec) and a
-// typed domain error otherwise. The interface lives here so app.Service
-// depends on the seam, not the concrete git package — unit tests inject
-// a fake committer that records the (dir, pathspec, msg) tuple.
+// The port shape returns appapi.CommitOutcome directly so the
+// implementation owns the full anti-corruption translation from the
+// git wrapper's typed errors (NotARepoError, HookFailedError,
+// CommitError, UnrelatedStagedChangesError) into the boundary domain
+// values (Committed / Skipped / Failed). Service.runCommit shrinks to
+// "if feature is off → Skipped{SkipDisabled}; else committer.Commit".
+//
+// BinaryAvailable lets the Settings screen's pre-flight run through
+// the same seam as commit calls so the entire git dependency stays
+// injectable — no `internal/git` import in service.go, no test that
+// has to touch $PATH.
 type GitCommitter interface {
-	Commit(dir string, pathspec []string, msg string) (string, errs.DomainError)
-}
-
-// CommitOutcome is the value each git-aware Service method returns so
-// callers compose the merged save-plus-commit toast without importing
-// internal/git types. Zero-value means "no commit was attempted"
-// (feature disabled or dir not a repo). SHA carries the short hash on
-// success; Err carries a typed domain error when a commit was attempted
-// and failed.
-type CommitOutcome struct {
-	SHA string
-	Err errs.DomainError
+	Commit(dir string, pathspec []string, msg string, runHooks bool) appapi.CommitOutcome
+	BinaryAvailable() errs.DomainError
 }
 
 // gitBinaryCommitter is the production GitCommitter wired in
-// cmd/af/main.go. It swallows NotARepoError so "the folder is not a git
-// repo" stays a silent skip at the boundary; every other typed error
-// from internal/git surfaces on CommitOutcome.Err.
+// cmd/af/main.go. It is the sole anti-corruption layer between
+// internal/git's typed errors and appapi's discriminated commit
+// outcome — every caller downstream sees Committed / Skipped / Failed
+// only.
 type gitBinaryCommitter struct{}
 
 // NewGitCommitter returns the production committer that wraps
@@ -39,14 +37,25 @@ type gitBinaryCommitter struct{}
 // fake without touching wiring in main.
 func NewGitCommitter() GitCommitter { return gitBinaryCommitter{} }
 
-func (gitBinaryCommitter) Commit(dir string, pathspec []string, msg string) (string, errs.DomainError) {
+func (gitBinaryCommitter) BinaryAvailable() errs.DomainError {
+	return git.BinaryAvailable()
+}
+
+func (gitBinaryCommitter) Commit(dir string, pathspec []string, msg string, runHooks bool) appapi.CommitOutcome {
 	repo, err := git.Detect(dir)
 	if err != nil {
 		var notRepo git.NotARepoError
 		if errors.As(err, &notRepo) {
-			return "", nil
+			return appapi.Skipped{Reason: appapi.SkipNotARepo}
 		}
-		return "", err
+		return appapi.Failed{Err: err}
 	}
-	return repo.Commit(pathspec, msg)
+	sha, commitErr := repo.Commit(pathspec, msg, runHooks)
+	if commitErr != nil {
+		return appapi.Failed{Err: commitErr}
+	}
+	if sha == "" {
+		return appapi.Skipped{Reason: appapi.SkipEmptyDiff}
+	}
+	return appapi.Committed{SHA: sha}
 }

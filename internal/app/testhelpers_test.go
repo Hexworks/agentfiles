@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/hexworks/agentfiles/internal/appapi"
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/projectstore"
 	"github.com/hexworks/agentfiles/internal/registry"
@@ -12,31 +13,45 @@ import (
 
 // recordedCommit captures a Commit call made by fakeCommitter so tests
 // can assert every git-aware trigger produced the expected (dir,
-// pathspec, msg) tuple. The struct is exported inside the test package
-// so table-driven tests can compare via reflect.DeepEqual.
+// pathspec, msg, runHooks) tuple. The struct is exported inside the
+// test package so table-driven tests can compare via reflect.DeepEqual.
 type recordedCommit struct {
 	Dir      string
 	Pathspec []string
 	Msg      string
+	RunHooks bool
 }
 
 // fakeCommitter is the GitCommitter injected into every service test.
-// SHA / Err drive the fake's return; Calls records every invocation.
-// Zero-value returns ("", nil) — a silent skip — which is safe for tests
-// that do not care about the commit path.
+// Outcome (if non-nil) drives the Commit return; when nil the fake
+// synthesizes an appapi.Committed with the SHA field. BinaryErr drives
+// BinaryAvailable so tests can exercise the settings pre-flight
+// refusal path without touching $PATH. Calls records every invocation.
 type fakeCommitter struct {
-	SHA   string
-	Err   errs.DomainError
-	Calls []recordedCommit
+	SHA       string
+	Outcome   appapi.CommitOutcome
+	BinaryErr errs.DomainError
+	Calls     []recordedCommit
 }
 
-func (f *fakeCommitter) Commit(dir string, pathspec []string, msg string) (string, errs.DomainError) {
+func (f *fakeCommitter) Commit(dir string, pathspec []string, msg string, runHooks bool) appapi.CommitOutcome {
 	f.Calls = append(f.Calls, recordedCommit{
 		Dir:      dir,
 		Pathspec: append([]string(nil), pathspec...),
 		Msg:      msg,
+		RunHooks: runHooks,
 	})
-	return f.SHA, f.Err
+	if f.Outcome != nil {
+		return f.Outcome
+	}
+	if f.SHA != "" {
+		return appapi.Committed{SHA: f.SHA}
+	}
+	return appapi.Skipped{Reason: appapi.SkipEmptyDiff}
+}
+
+func (f *fakeCommitter) BinaryAvailable() errs.DomainError {
+	return f.BinaryErr
 }
 
 // newSvc is the shared test factory that assembles the three centralized

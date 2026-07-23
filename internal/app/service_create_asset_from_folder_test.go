@@ -7,6 +7,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/hexworks/agentfiles/internal/appapi"
 	"github.com/hexworks/agentfiles/internal/asset"
 	"github.com/hexworks/agentfiles/internal/surfaces"
 )
@@ -35,7 +36,7 @@ func seedFolderRegisterProject(t *testing.T, files map[string]string) (svc *Serv
 	// the unknown-detection pass (skipped on first apply). Only then will the
 	// files below be classified as unknown, which is what makes their parent
 	// folders registerable.
-	if _, _, err := svc.Apply(profileID, projectID, Resolutions{}); err != nil {
+	if _, _, err := svc.Apply(profileID, projectID, appapi.Resolutions{}); err != nil {
 		t.Fatalf("initial apply: %v", err)
 	}
 	for rel, body := range files {
@@ -51,20 +52,20 @@ func seedFolderRegisterProject(t *testing.T, files map[string]string) (svc *Serv
 }
 
 func TestRegisterableDirs(t *testing.T) {
-	changes := []FileChange{
+	changes := []appapi.FileChange{
 		// .claude/skills/foo — all-unknown, direct child of a container root → OK
-		{Path: ".claude/skills/foo/SKILL.md", Kind: ChangeUnknown},
-		{Path: ".claude/skills/foo/helper.md", Kind: ChangeUnknown},
+		{Path: ".claude/skills/foo/SKILL.md", Kind: appapi.ChangeUnknown},
+		{Path: ".claude/skills/foo/helper.md", Kind: appapi.ChangeUnknown},
 		// .claude/skills/bar — partly-managed → excluded
-		{Path: ".claude/skills/bar/SKILL.md", Kind: ChangeUnknown},
-		{Path: ".claude/skills/bar/managed.md", Kind: ChangeCreate},
+		{Path: ".claude/skills/bar/SKILL.md", Kind: appapi.ChangeUnknown},
+		{Path: ".claude/skills/bar/managed.md", Kind: appapi.ChangeCreate},
 		// nested — .claude/skills/nest is a direct child of root (OK);
 		// .claude/skills/nest/deep is nested one level deeper (NOT OK).
-		{Path: ".claude/skills/nest/deep/f.md", Kind: ChangeUnknown},
+		{Path: ".claude/skills/nest/deep/f.md", Kind: appapi.ChangeUnknown},
 		// outside any container root → excluded
-		{Path: "docs/whatever/notes.md", Kind: ChangeUnknown},
+		{Path: "docs/whatever/notes.md", Kind: appapi.ChangeUnknown},
 	}
-	got := RegisterableDirs(changes)
+	got := appapi.RegisterableDirs(changes)
 
 	cases := []struct {
 		name   string

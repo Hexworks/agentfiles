@@ -51,12 +51,33 @@ persistent setting.
   per `docs/guidelines/external_tools.md`, exposing `Detect(dir)`,
   `BinaryAvailable()`, and `Repo.Commit(pathspec, msg)`. It is the
   only place in the codebase that talks to `git`.
-- `app.Service` gains a `GitCommitter` interface seam plus a
-  `CommitOutcome{SHA, Err}` return value. `Service.UpdateAsset`,
+- `app.Service` gains a `GitCommitter` interface seam whose
+  `Commit(dir, pathspec, msg, runHooks) appapi.CommitOutcome` returns a
+  discriminated boundary value (`appapi.Committed{SHA}`,
+  `appapi.Skipped{Reason SkipReason}`, `appapi.Failed{Err}`) so the
+  compiler enforces coverage of the three skip flavors (feature
+  disabled, dir not a repo, empty diff). `Service.UpdateAsset`,
   `Service.SaveAssetFilesEdit` (new, for the editor-return flow), and
   `Service.Apply` return `CommitOutcome` alongside their existing
-  outputs. A production wrapper implements the interface by delegating
-  to `internal/git`; unit tests inject a fake committer.
+  outputs. `GitCommitter.BinaryAvailable() errs.DomainError` folds the
+  pre-flight through the same seam so the pre-flight is testable
+  without touching `$PATH`. A production wrapper (`gitBinaryCommitter`)
+  implements the interface as the sole anti-corruption layer between
+  `internal/git`'s typed errors and the boundary values; unit tests
+  inject a fake committer.
+- The boundary value types (`CommitOutcome`, `Preview`, `FileChange`,
+  `DriftDecision`, `UnknownDecision`, `LoadedProfile`, plus the
+  helpers `RegisterableDirs`, `DesiredIgnored`,
+  `DriftResolutionsFromMap`, `SanitizeSubject`) live in
+  `internal/appapi` so the documented `tui/shell → actions → app` edge
+  stays honest — the shell reads value types from the leaf and never
+  imports `internal/app` (see arc42 chapter 5).
+- Commit-trigger templates live once in `internal/app/triggers.go` as
+  three package-level `commitTrigger` values (`triggerSyncProject`,
+  `triggerAssetManifest`, `triggerAssetFiles`); every subject
+  interpolation flows through `appapi.SanitizeSubject` so a stray
+  newline / control char / paste-accident value can never split the
+  subject or blow past the 50-char Conventional-Commits norm.
 - Commit messages follow **Conventional Commits** with the scope
   `agentfiles`:
   - `chore(agentfiles): update asset <id> manifest`
@@ -71,10 +92,41 @@ persistent setting.
   auto-commit cannot silently absorb unrelated user work.
 - `Repo.Commit` returns `("", nil)` when nothing in the pathspec
   differs from HEAD/index — a silent skip, no `--allow-empty`.
-- Pre-commit hooks are honored (no `--no-verify`). A non-zero commit
-  exit while a commit-time hook is installed surfaces as
-  `HookFailedError`; anything else surfaces as `CommitError`. Neither
-  rolls back the file writes that already succeeded.
+- Pre-commit hooks are **bypassed by default** (`git commit --no-verify`).
+  Users who rely on hooks (GPG-signing enforcement, formatters,
+  compliance checks) opt back in via `git.run_hooks: true` in
+  `settings.json`. Rationale: target-repo hooks come from
+  user-checked-out code, so a hostile branch could ship a
+  `.git/hooks/pre-commit` that runs the moment `af` records its next
+  auto-commit — an execution path the user's mental model ("typed a
+  comment into the TUI") does not cover. The opt-in narrows the
+  attack surface to the users who explicitly accept it.
+- When hooks are enabled, a non-zero commit exit is classified as
+  `HookFailedError` when the stderr text carries a well-known marker
+  (`hook exited`, `cannot spawn`, `error running .git/hooks`,
+  `hook declined`, `failed to exec .git/hooks`) or, as a fallback,
+  when a commit-time hook is present on disk. Anything else surfaces
+  as `CommitError`. Neither rolls back the file writes that already
+  succeeded.
+- `internal/git` filters the child process environment through an
+  allow-list so an inherited `GIT_DIR`, `GIT_WORK_TREE`,
+  `GIT_INDEX_FILE`, `GIT_CONFIG_*`, `GIT_ALTERNATE_OBJECT_DIRECTORIES`,
+  `GIT_TEMPLATE_DIR`, or similar cannot silently redirect the child
+  away from the wrapper's declared work tree. `GIT_OPTIONAL_LOCKS=0`
+  is forced so a background editor session does not race the commit
+  sequence.
+- `Repo.Root` is `EvalSymlinks`-resolved at `Detect` time, and
+  `toRepoRelative` resolves the caller's pathspec entries (or their
+  nearest existing ancestor) before the containment check. A
+  symlinked profile folder that lexically sits under the repo but
+  whose target escapes it is rejected as
+  `UnrelatedStagedChangesError` rather than committed.
+- After `git add` and before `git commit`, `Repo.Commit` re-verifies
+  the index against the pathspec. A concurrent `git add` (another
+  shell, a second `af` instance) between the initial check and the
+  add is caught here and aborts the commit with
+  `UnrelatedStagedChangesError` instead of silently absorbing the
+  extra path.
 - Enabling the setting runs a pre-flight `exec.LookPath("git")`.
   Failure refuses the save with the setting untouched so the toggle
   can never enter an unusable state.
@@ -96,7 +148,10 @@ Positive:
   keeps its testable, in-memory shape.
 - The typed errors (`UnrelatedStagedChangesError`, `HookFailedError`,
   `CommitError`, `BinaryMissingError`, `NotARepoError`) let the TUI
-  render specific messages without introspecting on strings.
+  render specific messages without introspecting on strings. The
+  `Detail` field on `HookFailedError` / `CommitError` (renamed from
+  `Stderr`) is honest about carrying either the wrapped stderr or the
+  exec fallback summary.
 - Settings persistence is symmetric with the existing registry /
   projects stores so wiring stays uniform.
 

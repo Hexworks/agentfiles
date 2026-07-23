@@ -13,14 +13,28 @@ flowchart TD
     cmdaf --> projectstore
     cmdaf --> migrate
     tui_shell --> actions
+    tui_shell --> appapi
     tui_shell --> tui_notifications["tui/notifications"]
     tui_shell --> tui_mnemonic["tui/components/mnemonic"]
     tui_shell --> tui_styles["tui/styles"]
     tui_shell --> tui_components_panel["tui/components/panel"]
     actions --> app
+    actions --> appapi
+    app --> appapi
+    app --> git
+    app --> settings
     app --> render
     app --> sync
     app --> projectstore
+    appapi --> profile
+    appapi --> project
+    appapi --> surfaces
+    appapi --> errs
+    settings --> config
+    settings --> errs
+    settings --> utils
+    git --> errs
+    cmdaf --> settings
     render --> profile
     render --> project
     render --> asset
@@ -41,7 +55,7 @@ flowchart TD
     tui_shell --> tui_components_modal["tui/components/modal"]
 
     classDef leaf fill:#eef,stroke:#88a;
-    class config,errs,utils,tui_components_modal,tui_styles,tui_components_panel leaf;
+    class config,errs,utils,tui_components_modal,tui_styles,tui_components_panel,appapi,git,settings leaf;
 ```
 
 The shell imports the component packages directly: `mnemonic` for labelled
@@ -185,35 +199,70 @@ return `[]errs.DomainError`; non-accumulator calls wrap render slices in
 [`docs/guidelines/errors.md`](../guidelines/errors.md).
 
 `app.Service` also owns the `GitCommitter` seam (`internal/app/git.go`)
-and the `CommitOutcome{SHA, Err}` value that `Service.UpdateAsset`,
-`Service.SaveAssetFilesEdit`, and `Service.Apply` return alongside their
-existing outputs. The concrete committer wraps `internal/git`; unit
-tests inject a fake. `Service.Settings()` and `Service.UpdateSettings()`
-expose the loaded settings and persist changes through the settings
-store, running a `git.BinaryAvailable()` pre-flight when the toggle is
-about to enable git integration. See ADR 0019.
+and the discriminated `appapi.CommitOutcome` value (`appapi.Committed`,
+`appapi.Skipped`, `appapi.Failed`) that `Service.UpdateAsset`,
+`Service.SaveAssetFilesEdit`, and `Service.Apply` return alongside
+their existing outputs. The concrete committer (`gitBinaryCommitter`)
+wraps `internal/git` and is the sole anti-corruption layer between the
+git wrapper's typed errors and the boundary values; unit tests inject
+a fake. `Service.Settings()` and `Service.UpdateSettings()` expose the
+loaded settings and persist changes through the settings store,
+running `GitCommitter.BinaryAvailable()` as an injectable pre-flight
+when the toggle is about to enable git integration (no `internal/git`
+import in `service.go`). All reads and writes to the cached settings
+value go through an `RWMutex` so concurrent Bubble Tea cmds
+(`PlanProject` reading `commitEnabled()` on one goroutine while
+`UpdateSettings` runs on another) serialize. See ADR 0019.
+
+### `appapi`
+
+Boundary value types shared by the TUI, the actions layer, and the
+app service — `CommitOutcome` (discriminated: `Committed`, `Skipped`,
+`Failed` with a `SkipReason` for each skip flavor), `Preview`,
+`FileChange`, `ChangeKind`, `DriftDecision` / `UnknownDecision`,
+`LoadedProfile`, `Resolutions`, plus the helpers `RegisterableDirs`,
+`DesiredIgnored`, `DriftResolutionsFromMap`, and `SanitizeSubject`.
+The leaf lives here so the documented `tui/shell → actions → app`
+edge stays honest: shell reads value types from this package and
+never imports `internal/app`. Depends only on `profile`, `project`,
+`surfaces`, and `errs`.
 
 ### `settings`
 
 Owns `~/.agentfiles/settings.json`, the persistent user-preferences file
-introduced by ADR 0019. Schema `{version:1, git:{enabled}}`. `Store`
-mirrors `projectstore.Store` / `registry.Store` shape (`Load`, `Save`,
-`DefaultPath`, `NewStore`) so `cmd/af/main.go` wires all three the
-same way. Missing file → `Default()` with no error so first-time users
-start with the safe (git-disabled) default.
+introduced by ADR 0019. Schema `{version:1, git:{enabled, run_hooks}}`.
+`Store` mirrors `projectstore.Store` / `registry.Store` shape (`Load`,
+`Save`, `DefaultPath`, `NewStore`) so `cmd/af/main.go` wires all three
+the same way. Missing file → `Default()` with no error so first-time
+users start with the safe (git-disabled) default. `run_hooks` defaults
+to `false` so the auto-commit path passes `--no-verify` and cannot
+execute a hostile checked-out `.git/hooks/pre-commit`; users who
+depend on hooks opt in explicitly (ADR 0019).
 
 ### `git`
 
 Narrow wrapper around the `git` binary via `os/exec`, per
-`docs/guidelines/external_tools.md`. Exposes `Detect(dir) *Repo`,
-`BinaryAvailable()`, and `Repo.Commit(pathspec, msg) (shortSHA, error)`.
-Typed errors (`BinaryMissingError`, `NotARepoError`,
-`UnrelatedStagedChangesError`, `HookFailedError`, `CommitError`) let
-the TUI render specific messages. `Repo.Commit` refuses when staged
-paths lie outside the pathspec, returns `("", nil)` on an empty diff
-(silent skip), and honors user hooks (no `--no-verify`). Consumed only
-by `internal/app` — the rest of the codebase sees the `GitCommitter`
-seam instead.
+`docs/guidelines/external_tools.md`. Files: `git.go` (`Repo`,
+`Detect`, `BinaryAvailable`, filtered exec adapter), `commit.go`
+(`Repo.Commit` + `ensureCoveredBy` / `commitOrSkip` helpers),
+`pathspec.go` (`Covers`, `toRepoRelative`, `toGitPathspec`, symlink
+resolution), `hooks.go` (hook-stderr marker classifier +
+`hookInstalled` fallback), `errors.go` (typed errors).
+`Repo.Commit(pathspec, msg, runHooks)` refuses when staged paths lie
+outside the pathspec, returns `("", nil)` on an empty diff (silent
+skip), re-verifies the staged index after `git add` to close the
+TOCTOU window against a concurrent `git add`, and passes
+`--no-verify` unless `runHooks` is true (ADR 0019). The child
+environment is filtered so inherited `GIT_*` variables cannot
+redirect the child; `filepath.EvalSymlinks` resolves both `Repo.Root`
+and each pathspec entry so a symlinked profile folder cannot smuggle
+paths outside the work tree. Typed errors (`BinaryMissingError`,
+`NotARepoError`, `UnrelatedStagedChangesError`, `HookFailedError`,
+`CommitError`) let the TUI render specific messages;
+`HookFailedError` / `CommitError` carry a `Detail` field (renamed
+from `Stderr`) that holds either git's stderr or the exec fallback
+summary. Consumed only by `internal/app` — the rest of the codebase
+sees the `GitCommitter` seam instead.
 
 ### `tui/shell`
 

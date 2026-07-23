@@ -267,7 +267,7 @@ func TestApply_DriftOverwrite_RewritesDrift(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Apply(preview, Resolutions{Drift: []DriftResolution{{Path: "AGENTS.md", Decision: DriftOverwrite}}}); err != nil {
+	if _, err := Apply(preview, Resolutions{Drift: []DriftResolution{{Path: "AGENTS.md", Decision: DriftOverwrite}}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -299,7 +299,7 @@ func TestApply_DefaultUnknown_LeavesAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Apply(preview, Resolutions{}); err != nil {
+	if _, err := Apply(preview, Resolutions{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -327,7 +327,7 @@ func TestApply_UnknownDelete_RemovesUnknown(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Apply(preview, Resolutions{Unknown: []UnknownResolution{{Path: ".codex/stray.txt", Decision: UnknownDelete}}}); err != nil {
+	if _, err := Apply(preview, Resolutions{Unknown: []UnknownResolution{{Path: ".codex/stray.txt", Decision: UnknownDelete}}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -358,7 +358,7 @@ func TestApply_StateDeleteRemovesFileAndDropsEntry(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Apply(preview, Resolutions{}); err != nil {
+	if _, err := Apply(preview, Resolutions{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -403,7 +403,7 @@ func TestApply_StateRewritten(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Apply(preview, Resolutions{}); err != nil {
+	if _, err := Apply(preview, Resolutions{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -435,7 +435,7 @@ func TestApply_DriftKeep_PreservesPriorBaseline(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Apply(preview, Resolutions{Drift: []DriftResolution{{Path: "AGENTS.md", Decision: DriftKeep}}}); err != nil {
+	if _, err := Apply(preview, Resolutions{Drift: []DriftResolution{{Path: "AGENTS.md", Decision: DriftKeep}}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -470,7 +470,7 @@ func TestApply_DefaultDrift_LeavesAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Apply(preview, Resolutions{}); err != nil {
+	if _, err := Apply(preview, Resolutions{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -517,7 +517,7 @@ func TestApply_NoResolutions_LeavesDriftBaselineUntouched(t *testing.T) {
 
 	// Un-ignore the persisted folder by sending an empty ignored set; drift
 	// row gets no resolution, so it must fall through to the preserve default.
-	if err := Apply(preview, Resolutions{}); err != nil {
+	if _, err := Apply(preview, Resolutions{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -554,7 +554,7 @@ func TestApply_DuplicateResolutions_LastWins(t *testing.T) {
 	}
 
 	// First entry says Keep, second says Overwrite — Overwrite wins.
-	if err := Apply(preview, Resolutions{Drift: []DriftResolution{
+	if _, err := Apply(preview, Resolutions{Drift: []DriftResolution{
 		{Path: "AGENTS.md", Decision: DriftKeep},
 		{Path: "AGENTS.md", Decision: DriftOverwrite},
 	}}); err != nil {
@@ -584,7 +584,7 @@ func TestApply_UnknownResolutionPath_IsIgnored(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Apply(preview, Resolutions{Unknown: []UnknownResolution{{Path: ".codex/does-not-exist.txt", Decision: UnknownDelete}}}); err != nil {
+	if _, err := Apply(preview, Resolutions{Unknown: []UnknownResolution{{Path: ".codex/does-not-exist.txt", Decision: UnknownDelete}}}); err != nil {
 		t.Fatalf("expected no error for stray resolution path, got %v", err)
 	}
 
@@ -607,7 +607,7 @@ func TestApply_InvalidResolutionPath_ReturnsTypedError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	applyErr := Apply(preview, Resolutions{Unknown: []UnknownResolution{{Path: "/etc/passwd", Decision: UnknownDelete}}})
+	_, applyErr := Apply(preview, Resolutions{Unknown: []UnknownResolution{{Path: "/etc/passwd", Decision: UnknownDelete}}})
 	if applyErr == nil {
 		t.Fatalf("expected InvalidPathError for absolute path, got nil")
 	}
@@ -696,7 +696,7 @@ func TestApply_ReplacesIgnoredPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Apply(preview, Resolutions{IgnoredPaths: []string{".codex/new"}}); err != nil {
+	if _, err := Apply(preview, Resolutions{IgnoredPaths: []string{".codex/new"}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -726,7 +726,7 @@ func TestApply_InvalidIgnoredPath_ReturnsTypedError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	applyErr := Apply(preview, Resolutions{IgnoredPaths: []string{"/etc/passwd"}})
+	_, applyErr := Apply(preview, Resolutions{IgnoredPaths: []string{"/etc/passwd"}})
 	var invalid InvalidPathError
 	if !errors.As(applyErr, &invalid) {
 		t.Fatalf("expected InvalidPathError, got %T: %v", applyErr, applyErr)
@@ -810,7 +810,7 @@ func TestApply_FirstApply_SerializesIgnoredPathsNull(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Apply(preview, Resolutions{}); err != nil {
+	if _, err := Apply(preview, Resolutions{}); err != nil {
 		t.Fatal(err)
 	}
 

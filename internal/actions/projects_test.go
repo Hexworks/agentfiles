@@ -9,6 +9,7 @@ import (
 
 	"github.com/hexworks/agentfiles/internal/actions"
 	"github.com/hexworks/agentfiles/internal/app"
+	"github.com/hexworks/agentfiles/internal/appapi"
 	"github.com/hexworks/agentfiles/internal/config"
 	"github.com/hexworks/agentfiles/internal/errs"
 )
@@ -206,11 +207,11 @@ func TestActions_SyncProject_PassesDriftAndUnknownResolutions(t *testing.T) {
 	_, _, err := f.A.SyncProject(actions.SyncProjectInput{
 		ProfileRef: "personal",
 		ProjectID:  "repo",
-		Drift: []app.DriftResolution{
-			{Path: "AGENTS.md", Decision: app.DriftKeep},
+		Drift: []appapi.DriftResolution{
+			{Path: "AGENTS.md", Decision: appapi.DriftKeep},
 		},
-		Unknown: []app.UnknownResolution{
-			{Path: ".codex/unrelated.md", Decision: app.UnknownKeep},
+		Unknown: []appapi.UnknownResolution{
+			{Path: ".codex/unrelated.md", Decision: appapi.UnknownKeep},
 		},
 	})
 	if err != nil {

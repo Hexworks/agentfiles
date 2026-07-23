@@ -11,7 +11,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/hexworks/agentfiles/internal/actions"
-	"github.com/hexworks/agentfiles/internal/app"
+	"github.com/hexworks/agentfiles/internal/appapi"
 	"github.com/hexworks/agentfiles/internal/asset"
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/tui/components/focus"
@@ -31,8 +31,8 @@ import (
 // without depending on the full Actions surface.
 type editAssetActions interface {
 	LoadAsset(in actions.LoadAssetInput) (*asset.Asset, errs.DomainError)
-	UpdateAsset(in actions.UpdateAssetInput) (app.CommitOutcome, errs.DomainError)
-	SaveAssetFilesEdit(in actions.SaveAssetFilesEditInput) (app.CommitOutcome, errs.DomainError)
+	UpdateAsset(in actions.UpdateAssetInput) (appapi.CommitOutcome, errs.DomainError)
+	SaveAssetFilesEdit(in actions.SaveAssetFilesEditInput) (appapi.CommitOutcome, errs.DomainError)
 	AddAssetFile(in actions.AddAssetFileInput) (struct{}, errs.DomainError)
 	RemoveAssetFile(in actions.RemoveAssetFileInput) (struct{}, errs.DomainError)
 }
@@ -163,7 +163,7 @@ type filesChangedMsg struct {
 type saveSucceededMsg struct {
 	snapshot editAssetForm
 	info     string
-	outcome  app.CommitOutcome
+	outcome  appapi.CommitOutcome
 }
 
 func newEditAssetScreen(a editAssetActions, profileID, assetID string) *editAssetScreen {

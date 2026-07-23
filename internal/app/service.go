@@ -5,18 +5,16 @@ package app
 
 import (
 	"errors"
-	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
-	"time"
+	"sync"
 
+	"github.com/hexworks/agentfiles/internal/appapi"
 	"github.com/hexworks/agentfiles/internal/asset"
 	"github.com/hexworks/agentfiles/internal/config"
 	"github.com/hexworks/agentfiles/internal/errs"
-	"github.com/hexworks/agentfiles/internal/git"
 	"github.com/hexworks/agentfiles/internal/profile"
 	"github.com/hexworks/agentfiles/internal/project"
 	"github.com/hexworks/agentfiles/internal/projectstore"
@@ -25,32 +23,8 @@ import (
 	"github.com/hexworks/agentfiles/internal/surfaces"
 	llmsync "github.com/hexworks/agentfiles/internal/sync"
 	"github.com/hexworks/agentfiles/internal/utils"
+	"time"
 )
-
-// LoadedProfile pairs a profile aggregate with the per-user project
-// selections that live in a separate aggregate on disk. Callers get one
-// value that carries both boundaries so they do not have to compose
-// (profile + projects) themselves; the composition is a read-time
-// convenience — writes still route through the owning aggregate
-// (profile assets in the profile folder, project manifests in the
-// projects store). See ADR 0017.
-type LoadedProfile struct {
-	Profile  *profile.Profile
-	Projects map[string]*project.Manifest
-}
-
-// ProjectList returns the loaded projects sorted by display name so
-// callers get a stable order without re-implementing the rule.
-func (l *LoadedProfile) ProjectList() []*project.Manifest {
-	list := make([]*project.Manifest, 0, len(l.Projects))
-	for _, p := range l.Projects {
-		list = append(list, p)
-	}
-	slices.SortFunc(list, func(a, b *project.Manifest) int {
-		return strings.Compare(a.Name, b.Name)
-	})
-	return list
-}
 
 // Service is the thin application layer used by the TUI.
 //
@@ -62,15 +36,20 @@ func (l *LoadedProfile) ProjectList() []*project.Manifest {
 //   - sync compares and writes project files
 //
 // Service ties those packages together into user-facing operations. It
-// holds the two centralized stores (profiles + projects) so every
-// operation runs against the same aggregate root.
+// holds the two centralized stores (profiles + projects) plus the
+// settings store and the git committer seam, and guards live-settings
+// reads/writes with an RWMutex so concurrent Bubble Tea cmds (planning
+// on one goroutine while UpdateSettings runs on another) do not race.
 type Service struct {
-	Registry      *registry.Store
-	Projects      *projectstore.Store
-	SettingsStore *settings.Store
+	Registry     *registry.Store
+	Projects     *projectstore.Store
+	profilesRoot string
+
+	settingsStore *settings.Store
+	settingsMu    sync.RWMutex
 	settings      settings.Settings
-	committer     GitCommitter
-	profilesRoot  string
+
+	committer GitCommitter
 }
 
 // NewWithStores wires the three centralized stores plus the initial
@@ -86,7 +65,7 @@ func NewWithStores(reg *registry.Store, proj *projectstore.Store, sset *settings
 	svc := &Service{
 		Registry:      reg,
 		Projects:      proj,
-		SettingsStore: sset,
+		settingsStore: sset,
 		settings:      s,
 		committer:     committer,
 	}
@@ -151,7 +130,7 @@ func (s *Service) RegisterProfile(path string) (*registry.ProfileRef, errs.Domai
 // project selections (composed from the projects store). The
 // composition is a read-time convenience — writes still route through
 // the owning aggregate.
-func (s *Service) LoadProfile(ref string) (*LoadedProfile, errs.DomainError) {
+func (s *Service) LoadProfile(ref string) (*appapi.LoadedProfile, errs.DomainError) {
 	profileRef, err := s.Registry.Resolve(ref)
 	if err != nil {
 		return nil, err
@@ -171,7 +150,7 @@ func (s *Service) LoadProfile(ref string) (*LoadedProfile, errs.DomainError) {
 	for _, p := range projects {
 		byID[p.ID] = p
 	}
-	return &LoadedProfile{Profile: loaded, Projects: byID}, nil
+	return &appapi.LoadedProfile{Profile: loaded, Projects: byID}, nil
 }
 
 // AddProject creates a per-profile project manifest. Domain failures
@@ -226,24 +205,6 @@ func (s *Service) InitAsset(profileRef string, manifest asset.Manifest) (string,
 	return asset.Init(loaded.Profile.Root, manifest)
 }
 
-// RegisterableDirs returns the set of directory keys in changes that
-// are eligible for asset registration. Thin adapter over
-// surfaces.RegisterableFolders: copies the change-kind classification
-// into surfaces.Leaf so the eligibility rule and its container-root
-// data live together in surfaces, while app keeps its
-// FileChange/ChangeKind vocabulary intact.
-func RegisterableDirs(changes []FileChange) map[string]bool {
-	return surfaces.RegisterableFolders(leavesFromChanges(changes))
-}
-
-func leavesFromChanges(changes []FileChange) []surfaces.Leaf {
-	leaves := make([]surfaces.Leaf, len(changes))
-	for i, ch := range changes {
-		leaves[i] = surfaces.Leaf{Path: ch.Path, IsUnknown: ch.Kind == ChangeUnknown}
-	}
-	return leaves
-}
-
 // CreateAssetFromFolder creates a profile-owned asset whose content is copied
 // from the project folder identified by dirKey (a project-relative,
 // forward-slash key) and selects it for the project in one step. The three
@@ -252,7 +213,7 @@ func leavesFromChanges(changes []FileChange) []surfaces.Leaf {
 // reclassifies those files as managed instead of unknown.
 //
 // The service re-plans and re-asserts the folder is registerable
-// (RegisterableDirs) rather than trusting the caller, then resolves the
+// (appapi.RegisterableDirs) rather than trusting the caller, then resolves the
 // absolute source by joining dirKey against the project root it loaded — a
 // tampered caller cannot redirect the copy outside the repo. If the project
 // save fails after the asset is written, the half-created asset is rolled back
@@ -267,7 +228,7 @@ func (s *Service) CreateAssetFromFolder(profileRef, projectID string, manifest a
 	if planErr != nil {
 		return "", planErr
 	}
-	leaves := leavesFromChanges(previewFromSync(syncPreview).Changes)
+	leaves := appapi.LeavesFromChanges(previewFromSync(syncPreview).Changes)
 	if !surfaces.RegisterableFolders(leaves)[dirKey] {
 		return "", FolderNotRegisterableError{
 			DirKey: dirKey,
@@ -298,7 +259,7 @@ func (s *Service) CreateAssetFromFolder(profileRef, projectID string, manifest a
 
 // Plan builds a sync preview for one project. This is the read-only half of the
 // pipeline: load profile -> render desired files -> compare with the repo.
-func (s *Service) Plan(profileRef, projectID string) (*Preview, errs.DomainError) {
+func (s *Service) Plan(profileRef, projectID string) (*appapi.Preview, errs.DomainError) {
 	syncPreview, err := s.planSync(profileRef, projectID)
 	if err != nil {
 		return nil, err
@@ -307,7 +268,7 @@ func (s *Service) Plan(profileRef, projectID string) (*Preview, errs.DomainError
 }
 
 // planSync is the internal helper that returns the full domain Preview
-// needed by Apply. Public callers receive the app-layer mirror via Plan
+// needed by Apply. Public callers receive the boundary mirror via Plan
 // so the TUI never has to import internal/sync.
 func (s *Service) planSync(profileRef, projectID string) (*llmsync.Preview, errs.DomainError) {
 	loaded, err := s.LoadProfile(profileRef)
@@ -321,104 +282,24 @@ func (s *Service) planSync(profileRef, projectID string) (*llmsync.Preview, errs
 	return llmsync.Plan(loaded.Profile, proj)
 }
 
-// ChangeKind mirrors llmsync.ChangeKind. The TUI consumes the app
-// vocabulary so it never imports internal/sync directly, keeping the
-// documented tui → app dependency edge true.
-type ChangeKind string
-
-// Possible ChangeKind values mirror llmsync.ChangeKind.
-const (
-	ChangeCreate  ChangeKind = "create"
-	ChangeUpdate  ChangeKind = "update"
-	ChangeDrift   ChangeKind = "drift"
-	ChangeDelete  ChangeKind = "delete"
-	ChangeUnknown ChangeKind = "unknown"
-)
-
-// FileChange is the app-layer mirror of llmsync.FileChange. Only the
-// fields the TUI consumes are exposed; render leaves and managed-state
-// metadata stay inside the domain.
-type FileChange struct {
-	Path string
-	Kind ChangeKind
-}
-
-// Preview is the app-layer mirror of llmsync.Preview. It carries the
-// change list the TUI renders plus the identifying ids; render leaves
-// and managed-state stay inside the domain.
-type Preview struct {
-	ProfileID string
-	ProjectID string
-	Changes   []FileChange
-	// IgnoredPaths mirrors the persisted ManagedState.IgnoredPaths: the folder
-	// keys whose unknown subtree the plan suppressed. The Plan Project screen
-	// surfaces these so the user can view and un-ignore them; nil when the
-	// project has no managed state yet.
-	IgnoredPaths []string
-}
-
-func previewFromSync(p *llmsync.Preview) *Preview {
+func previewFromSync(p *llmsync.Preview) *appapi.Preview {
 	if p == nil {
 		return nil
 	}
-	changes := make([]FileChange, len(p.Changes))
+	changes := make([]appapi.FileChange, len(p.Changes))
 	for i, ch := range p.Changes {
-		changes[i] = FileChange{Path: ch.Path, Kind: ChangeKind(ch.Kind)}
+		changes[i] = appapi.FileChange{Path: ch.Path, Kind: appapi.ChangeKind(ch.Kind)}
 	}
 	var ignored []string
 	if p.ManagedState != nil {
 		ignored = slices.Clone(p.ManagedState.IgnoredPaths)
 	}
-	return &Preview{
+	return &appapi.Preview{
 		ProfileID:    p.ProfileID,
 		ProjectID:    p.ProjectID,
 		Changes:      changes,
 		IgnoredPaths: ignored,
 	}
-}
-
-// DriftDecision is the app-layer mirror of llmsync.DriftDecision. The
-// TUI consumes the app vocabulary so it never imports `internal/sync`
-// directly, keeping the documented `tui → app` dependency edge true.
-type DriftDecision string
-
-// Possible DriftDecision values mirror llmsync.DriftDecision.
-const (
-	DriftKeep      DriftDecision = "keep"
-	DriftOverwrite DriftDecision = "overwrite"
-)
-
-// UnknownDecision is the app-layer mirror of llmsync.UnknownDecision.
-type UnknownDecision string
-
-// Possible UnknownDecision values mirror llmsync.UnknownDecision.
-const (
-	UnknownKeep   UnknownDecision = "keep"
-	UnknownDelete UnknownDecision = "delete"
-)
-
-// DriftResolution pairs a drifted path with the user's per-file
-// decision. Service.Apply translates these into the corresponding
-// sync types before invoking the engine.
-type DriftResolution struct {
-	Path     string
-	Decision DriftDecision
-}
-
-// UnknownResolution pairs an unknown path with the user's per-file
-// decision.
-type UnknownResolution struct {
-	Path     string
-	Decision UnknownDecision
-}
-
-// Resolutions is the app-layer mirror of llmsync.Resolutions: the drift
-// and unknown per-file choices plus the folder keys to ignore, bundled so
-// Apply's signature stays stable as resolution kinds grow.
-type Resolutions struct {
-	Drift        []DriftResolution
-	Unknown      []UnknownResolution
-	IgnoredPaths []string
 }
 
 // Apply executes the write half of the pipeline by first building a preview
@@ -438,133 +319,129 @@ type Resolutions struct {
 // When git integration is enabled and the project's target repo is a git
 // repository, a single scoped commit is recorded after sync succeeds
 // covering every mutated file plus `.agentfiles/state.json`. The
-// returned CommitOutcome carries the short SHA on success; a hard
-// commit failure surfaces on CommitOutcome.Err but does not roll back
-// the file writes (they already happened).
-func (s *Service) Apply(profileRef, projectID string, r Resolutions) (*Preview, CommitOutcome, errs.DomainError) {
+// returned CommitOutcome carries the specific outcome (Committed,
+// Skipped, or Failed); a hard commit failure never rolls back the file
+// writes (they already happened).
+func (s *Service) Apply(profileRef, projectID string, r appapi.Resolutions) (*appapi.Preview, appapi.CommitOutcome, errs.DomainError) {
 	loaded, proj, projErr := s.resolveProject(profileRef, projectID)
 	if projErr != nil {
-		return nil, CommitOutcome{}, projErr
+		return nil, appapi.Skipped{Reason: appapi.SkipDisabled}, projErr
 	}
 	syncPreview, err := llmsync.Plan(loaded.Profile, proj)
 	if err != nil {
-		return nil, CommitOutcome{}, err
+		return nil, appapi.Skipped{Reason: appapi.SkipDisabled}, err
 	}
 	if eligErr := s.assertIgnoredRegisterable(syncPreview, r.IgnoredPaths); eligErr != nil {
-		return nil, CommitOutcome{}, eligErr
+		return nil, appapi.Skipped{Reason: appapi.SkipDisabled}, eligErr
 	}
 	syncResolutions := llmsync.Resolutions{
 		Drift:        toSyncDriftResolutions(r.Drift),
 		Unknown:      toSyncUnknownResolutions(r.Unknown),
 		IgnoredPaths: r.IgnoredPaths,
 	}
-	if err := llmsync.Apply(syncPreview, syncResolutions); err != nil {
-		return nil, CommitOutcome{}, err
+	result, applyErr := llmsync.Apply(syncPreview, syncResolutions)
+	if applyErr != nil {
+		return nil, appapi.Skipped{Reason: appapi.SkipDisabled}, applyErr
 	}
-	appPreview := previewFromSync(syncPreview)
-	mutated := mutatedPaths(appPreview, r, proj.Path)
-	// Subtract one for the state.json entry so the subject counts real
-	// managed-file mutations, not the bookkeeping snapshot itself.
-	msg := fmt.Sprintf("chore(agentfiles): sync project %s (%d files)", proj.Name, len(mutated)-1)
-	outcome := s.runCommit(proj.Path, mutated, msg)
-	return appPreview, outcome, nil
-}
-
-// mutatedPaths returns the pathspec the plan-apply commit covers: every
-// file the sync engine created / updated / deleted or the caller
-// resolved as overwrite / delete, plus the managed-state snapshot at
-// `.agentfiles/state.json`. Each returned path is absolute so the git
-// wrapper converts it to repo-relative once against the actual
-// worktree top-level (projRoot may sit deep inside a larger repo).
-func mutatedPaths(preview *Preview, r Resolutions, projRoot string) []string {
-	stateAbs := filepath.Join(projRoot, config.StateDirName, config.StateFileName)
-	if preview == nil {
-		return []string{stateAbs}
-	}
-	drift := map[string]DriftDecision{}
-	for _, d := range r.Drift {
-		drift[d.Path] = d.Decision
-	}
-	unknown := map[string]UnknownDecision{}
-	for _, u := range r.Unknown {
-		unknown[u.Path] = u.Decision
-	}
-	seen := map[string]bool{}
-	out := make([]string, 0, len(preview.Changes)+1)
-	add := func(rel string) {
-		abs := filepath.Join(projRoot, filepath.FromSlash(rel))
-		if seen[abs] {
-			return
-		}
-		seen[abs] = true
-		out = append(out, abs)
-	}
-	for _, ch := range preview.Changes {
-		switch ch.Kind {
-		case ChangeCreate, ChangeUpdate, ChangeDelete:
-			add(ch.Path)
-		case ChangeDrift:
-			if drift[ch.Path] == DriftOverwrite {
-				add(ch.Path)
-			}
-		case ChangeUnknown:
-			if unknown[ch.Path] == UnknownDelete {
-				add(ch.Path)
-			}
-		}
-	}
-	if !seen[stateAbs] {
-		out = append(out, stateAbs)
-	}
-	return out
+	outcome := s.runCommit(triggerSyncProject, commitTriggerCtx{
+		ProjectName:  proj.Name,
+		MutatedFiles: result.Mutated,
+		StatePath:    result.StatePath,
+	}, proj.Path)
+	return previewFromSync(syncPreview), outcome, nil
 }
 
 // commitEnabled reports whether git-aware commits should run: the
-// setting is on and a committer is wired.
+// setting is on and a committer is wired. Read under settingsMu.
 func (s *Service) commitEnabled() bool {
-	return s != nil && s.settings.Git.Enabled && s.committer != nil
+	if s == nil || s.committer == nil {
+		return false
+	}
+	s.settingsMu.RLock()
+	defer s.settingsMu.RUnlock()
+	return s.settings.Git.Enabled
 }
 
 // runCommit is the shared adapter between service methods and the
-// GitCommitter seam. When the feature is disabled or no committer is
-// wired it returns a zero-value CommitOutcome so callers still see a
-// consistent shape. Typed commit failures ride on CommitOutcome.Err;
-// they are never returned as domain errors from the parent method
-// because the file write already succeeded.
-func (s *Service) runCommit(dir string, pathspec []string, msg string) CommitOutcome {
+// GitCommitter seam. When the feature is disabled it returns
+// Skipped{SkipDisabled}; otherwise it delegates to the injected
+// committer and returns whatever discriminated outcome it produces.
+// The pathspec + subject come from the injected trigger, so the three
+// call sites do not spell out the template rule twice (see triggers.go).
+func (s *Service) runCommit(t commitTrigger, ctx commitTriggerCtx, dir string) appapi.CommitOutcome {
 	if !s.commitEnabled() {
-		return CommitOutcome{}
+		return appapi.Skipped{Reason: appapi.SkipDisabled}
 	}
-	sha, err := s.committer.Commit(dir, pathspec, msg)
-	if err != nil {
-		return CommitOutcome{Err: err}
-	}
-	return CommitOutcome{SHA: sha}
+	pathspec := t.Pathspec(ctx)
+	subject := t.Subject(ctx)
+	return s.committer.Commit(dir, pathspec, subject, s.runHooksEnabled())
 }
 
-// Settings returns a read-only copy of the currently active settings.
-// The Settings TUI screen consumes it on entry; there is no live-reload
-// path from disk while the app is running (see ADR 0019).
-func (s *Service) Settings() settings.Settings { return s.settings }
+// runHooksEnabled snapshots the git.run_hooks setting under the same
+// lock that commitEnabled uses so a Save on another goroutine cannot
+// race it.
+func (s *Service) runHooksEnabled() bool {
+	s.settingsMu.RLock()
+	defer s.settingsMu.RUnlock()
+	return s.settings.Git.RunHooks
+}
 
-// UpdateSettings persists new to disk and swaps it in. When enabling
+// Settings returns a snapshot of the currently active settings. The
+// Settings TUI screen consumes it on entry; there is no live-reload
+// path from disk while the app is running (see ADR 0019).
+func (s *Service) Settings() settings.Settings {
+	s.settingsMu.RLock()
+	defer s.settingsMu.RUnlock()
+	return s.settings
+}
+
+// UpdateSettings persists next to disk and swaps it in. When enabling
 // git for the first time the pre-flight rejects the save if the git
 // binary is missing so the toggle can never enter an unusable state.
-// The store is required — a nil settings store is a wiring bug.
+// The store is required — a nil settings store is a wiring bug. All
+// reads and writes to the cached settings value go through
+// settingsMu; concurrent commit-path reads and settings-screen writes
+// therefore serialize.
 func (s *Service) UpdateSettings(next settings.Settings) errs.DomainError {
-	if s.SettingsStore == nil {
+	if s.settingsStore == nil {
 		return SettingsUnavailableError{}
 	}
-	if next.Git.Enabled && !s.settings.Git.Enabled {
-		if err := git.BinaryAvailable(); err != nil {
+	s.settingsMu.RLock()
+	priorEnabled := s.settings.Git.Enabled
+	s.settingsMu.RUnlock()
+	if next.Git.Enabled && !priorEnabled {
+		if err := s.probeGitBinary(); err != nil {
 			return err
 		}
 	}
-	if err := s.SettingsStore.Save(next); err != nil {
+	if err := s.settingsStore.Save(next); err != nil {
 		return err
 	}
+	s.settingsMu.Lock()
 	s.settings = next
+	s.settingsMu.Unlock()
 	return nil
+}
+
+// SettingsPath exposes the on-disk location of the settings store for
+// diagnostics (never for read/write bypass). Callers must not use it
+// to hand-parse the file — the cached value in Service is the truth.
+func (s *Service) SettingsPath() string {
+	if s.settingsStore == nil {
+		return ""
+	}
+	return s.settingsStore.Path
+}
+
+// probeGitBinary runs the injectable pre-flight through the committer
+// seam. A wired committer answers on behalf of internal/git; when no
+// committer is wired (test-only case) the pre-flight is a no-op — the
+// commit path is disabled anyway.
+func (s *Service) probeGitBinary() errs.DomainError {
+	if s.committer == nil {
+		return nil
+	}
+	return s.committer.BinaryAvailable()
 }
 
 // assertIgnoredRegisterable verifies every newly selected ignored key is an
@@ -580,7 +457,7 @@ func (s *Service) assertIgnoredRegisterable(syncPreview *llmsync.Preview, ignore
 	if syncPreview.ManagedState != nil {
 		prior = syncPreview.ManagedState.IgnoredPaths
 	}
-	leaves := leavesFromChanges(previewFromSync(syncPreview).Changes)
+	leaves := appapi.LeavesFromChanges(previewFromSync(syncPreview).Changes)
 	registerable := surfaces.RegisterableFolders(leaves)
 	var failures errs.Errors
 	for _, p := range ignoredPaths {
@@ -600,61 +477,7 @@ func (s *Service) assertIgnoredRegisterable(syncPreview *llmsync.Preview, ignore
 	return failures
 }
 
-// DesiredIgnored computes the complete persisted ignored set a project should
-// have after the user's in-session edits on the Plan Project screen:
-// (persisted − unignored) ∪ newlyIgnored, deduplicated and sorted. The TUI
-// sends the result on Apply and sync writes it verbatim (replace semantics), so
-// dropping a key here un-ignores that folder on the next plan. The rule lives
-// here, in the stable layer, rather than inside a Bubble Tea screen so it is
-// testable without the TUI and sits next to assertIgnoredRegisterable, which
-// guards the same set. Returns nil when the desired set is empty.
-func DesiredIgnored(persisted, unignored, newlyIgnored []string) []string {
-	drop := make(map[string]bool, len(unignored))
-	for _, p := range unignored {
-		drop[p] = true
-	}
-	desired := make(map[string]bool, len(persisted)+len(newlyIgnored))
-	for _, p := range persisted {
-		if !drop[p] {
-			desired[p] = true
-		}
-	}
-	for _, p := range newlyIgnored {
-		desired[p] = true
-	}
-	if len(desired) == 0 {
-		return nil
-	}
-	out := make([]string, 0, len(desired))
-	for p := range desired {
-		out = append(out, p)
-	}
-	slices.Sort(out)
-	return out
-}
-
-// DriftResolutionsFromMap encodes the ADR 0015 emission contract: a
-// drift row emits a resolution only when the user picked DriftOverwrite;
-// DriftKeep (and "no choice") stays absent so sync preserves the prior
-// baseline. Callers assembling the Apply resolutions from a change list
-// and a path→decision map use this instead of open-coding the rule so
-// the domain contract lives one hop from sync rather than in each UI.
-// Returns nil when no row would emit.
-func DriftResolutionsFromMap(changes []FileChange, decisions map[string]DriftDecision) []DriftResolution {
-	var out []DriftResolution
-	for _, ch := range changes {
-		if ch.Kind != ChangeDrift {
-			continue
-		}
-		if decisions[ch.Path] != DriftOverwrite {
-			continue
-		}
-		out = append(out, DriftResolution{Path: ch.Path, Decision: DriftOverwrite})
-	}
-	return out
-}
-
-func toSyncDriftResolutions(in []DriftResolution) []llmsync.DriftResolution {
+func toSyncDriftResolutions(in []appapi.DriftResolution) []llmsync.DriftResolution {
 	if len(in) == 0 {
 		return nil
 	}
@@ -665,7 +488,7 @@ func toSyncDriftResolutions(in []DriftResolution) []llmsync.DriftResolution {
 	return out
 }
 
-func toSyncUnknownResolutions(in []UnknownResolution) []llmsync.UnknownResolution {
+func toSyncUnknownResolutions(in []appapi.UnknownResolution) []llmsync.UnknownResolution {
 	if len(in) == 0 {
 		return nil
 	}
@@ -682,7 +505,7 @@ func toSyncUnknownResolutions(in []UnknownResolution) []llmsync.UnknownResolutio
 // error type is returned unchanged. The invariant itself lives inside
 // projectstore.Store.Add/Update (see ADR 0017 Aggregate boundaries) —
 // this method only translates for presentation.
-func (s *Service) translateStoreError(err errs.DomainError, loaded *LoadedProfile) errs.DomainError {
+func (s *Service) translateStoreError(err errs.DomainError, loaded *appapi.LoadedProfile) errs.DomainError {
 	if err == nil {
 		return nil
 	}
@@ -764,12 +587,12 @@ func (s *Service) profileNameByID() map[string]string {
 // name by registry.Store.Save). The error slice is the accumulator shape
 // described in docs/guidelines/errors.md §"Accumulator Functions Return
 // `[]errs.DomainError`"; an empty slice means full success.
-func (s *Service) LoadProfiles() ([]*LoadedProfile, []errs.DomainError) {
+func (s *Service) LoadProfiles() ([]*appapi.LoadedProfile, []errs.DomainError) {
 	reg, err := s.Registry.Load()
 	if err != nil {
 		return nil, []errs.DomainError{err}
 	}
-	loaded := make([]*LoadedProfile, 0, len(reg.Profiles))
+	loaded := make([]*appapi.LoadedProfile, 0, len(reg.Profiles))
 	var loadErrs []errs.DomainError
 	for _, ref := range reg.Profiles {
 		p, loadErr := profile.Load(ref.Path)
@@ -786,7 +609,7 @@ func (s *Service) LoadProfiles() ([]*LoadedProfile, []errs.DomainError) {
 		for _, pj := range projects {
 			byID[pj.ID] = pj
 		}
-		loaded = append(loaded, &LoadedProfile{Profile: p, Projects: byID})
+		loaded = append(loaded, &appapi.LoadedProfile{Profile: p, Projects: byID})
 	}
 	return loaded, loadErrs
 }
@@ -903,7 +726,7 @@ func (s *Service) isUnsafeProfilePath(p string) (string, bool) {
 // the profile then look up the asset id, returning the canonical typed
 // error if either step fails. Keeps the public CRUD methods readable as
 // "load → act → return" one-liners.
-func (s *Service) resolveAsset(profileRef, assetID string) (*LoadedProfile, *asset.Asset, errs.DomainError) {
+func (s *Service) resolveAsset(profileRef, assetID string) (*appapi.LoadedProfile, *asset.Asset, errs.DomainError) {
 	loaded, err := s.LoadProfile(profileRef)
 	if err != nil {
 		return nil, nil, err
@@ -916,7 +739,7 @@ func (s *Service) resolveAsset(profileRef, assetID string) (*LoadedProfile, *ass
 }
 
 // resolveProject mirrors resolveAsset for the project CRUD methods.
-func (s *Service) resolveProject(profileRef, projectID string) (*LoadedProfile, *project.Manifest, errs.DomainError) {
+func (s *Service) resolveProject(profileRef, projectID string) (*appapi.LoadedProfile, *project.Manifest, errs.DomainError) {
 	loaded, err := s.LoadProfile(profileRef)
 	if err != nil {
 		return nil, nil, err
@@ -943,28 +766,30 @@ func (s *Service) LoadAsset(profileRef, assetID string) (*asset.Asset, errs.Doma
 // from the loaded profile, so a tampered caller cannot redirect the
 // write outside the profile root.
 //
-// The returned CommitOutcome carries the short SHA on a successful
-// commit, is zero-value when the commit path is a silent skip (feature
-// disabled, dir not a repo, empty diff), and carries a typed domain
-// error on a hard commit failure. A CommitOutcome.Err is never a save
-// failure — the manifest is already on disk by then.
+// The returned CommitOutcome is one of appapi.Committed, appapi.Skipped
+// (feature disabled, dir not a repo, empty diff), or appapi.Failed for
+// a hard commit failure. A Failed outcome is never a save failure —
+// the manifest is already on disk by then.
 //
 // Panics if manifest is nil: a nil pointer is a programmer bug per
 // docs/guidelines/errors.md, not a recoverable not-found.
-func (s *Service) UpdateAsset(profileRef string, manifest *asset.Manifest) (CommitOutcome, errs.DomainError) {
+func (s *Service) UpdateAsset(profileRef string, manifest *asset.Manifest) (appapi.CommitOutcome, errs.DomainError) {
 	if manifest == nil {
 		panic("app.Service.UpdateAsset: nil manifest")
 	}
 	loaded, target, err := s.resolveAsset(profileRef, manifest.ID)
 	if err != nil {
-		return CommitOutcome{}, err
+		return appapi.Skipped{Reason: appapi.SkipDisabled}, err
 	}
 	if saveErr := asset.SaveManifest(target.Dir, *manifest); saveErr != nil {
-		return CommitOutcome{}, saveErr
+		return appapi.Skipped{Reason: appapi.SkipDisabled}, saveErr
 	}
-	pathspec := []string{filepath.Join(target.Dir, config.AssetManifestFileName)}
-	msg := fmt.Sprintf("chore(agentfiles): update asset %s manifest", manifest.ID)
-	return s.runCommit(loaded.Profile.Root, pathspec, msg), nil
+	outcome := s.runCommit(triggerAssetManifest, commitTriggerCtx{
+		AssetID:      manifest.ID,
+		AssetDir:     target.Dir,
+		ManifestPath: filepath.Join(target.Dir, config.AssetManifestFileName),
+	}, loaded.Profile.Root)
+	return outcome, nil
 }
 
 // SaveAssetFilesEdit persists the caller's manifest edits then records a
@@ -974,20 +799,22 @@ func (s *Service) UpdateAsset(profileRef string, manifest *asset.Manifest) (Comm
 // the manifest and every file inside the asset directory via a
 // recursive pathspec. Same panic contract as UpdateAsset for a nil
 // manifest.
-func (s *Service) SaveAssetFilesEdit(profileRef string, manifest *asset.Manifest) (CommitOutcome, errs.DomainError) {
+func (s *Service) SaveAssetFilesEdit(profileRef string, manifest *asset.Manifest) (appapi.CommitOutcome, errs.DomainError) {
 	if manifest == nil {
 		panic("app.Service.SaveAssetFilesEdit: nil manifest")
 	}
 	loaded, target, err := s.resolveAsset(profileRef, manifest.ID)
 	if err != nil {
-		return CommitOutcome{}, err
+		return appapi.Skipped{Reason: appapi.SkipDisabled}, err
 	}
 	if saveErr := asset.SaveManifest(target.Dir, *manifest); saveErr != nil {
-		return CommitOutcome{}, saveErr
+		return appapi.Skipped{Reason: appapi.SkipDisabled}, saveErr
 	}
-	pathspec := []string{target.Dir + "/**"}
-	msg := fmt.Sprintf("chore(agentfiles): edit asset %s files", manifest.ID)
-	return s.runCommit(loaded.Profile.Root, pathspec, msg), nil
+	outcome := s.runCommit(triggerAssetFiles, commitTriggerCtx{
+		AssetID:  manifest.ID,
+		AssetDir: target.Dir,
+	}, loaded.Profile.Root)
+	return outcome, nil
 }
 
 // AddAssetFile creates an empty file at rel inside the asset folder.

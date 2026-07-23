@@ -1,7 +1,7 @@
 package actions
 
 import (
-	"github.com/hexworks/agentfiles/internal/app"
+	"github.com/hexworks/agentfiles/internal/appapi"
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/project"
 )
@@ -25,7 +25,7 @@ func (a *Actions) DeleteProject(in DeleteProjectInput) (struct{}, errs.DomainErr
 	return struct{}{}, a.svc.DeleteProject(in.ProfileRef, in.ProjectID)
 }
 
-func (a *Actions) PlanProject(in PlanProjectInput) (*app.Preview, errs.DomainError) {
+func (a *Actions) PlanProject(in PlanProjectInput) (*appapi.Preview, errs.DomainError) {
 	return a.svc.Plan(in.ProfileRef, in.ProjectID)
 }
 
@@ -35,8 +35,8 @@ func (a *Actions) PlanProject(in PlanProjectInput) (*app.Preview, errs.DomainErr
 // target repo is a git repository a single scoped commit is recorded
 // after the file writes succeed; the outcome rides on the returned
 // CommitOutcome.
-func (a *Actions) SyncProject(in SyncProjectInput) (*app.Preview, app.CommitOutcome, errs.DomainError) {
-	return a.svc.Apply(in.ProfileRef, in.ProjectID, app.Resolutions{
+func (a *Actions) SyncProject(in SyncProjectInput) (*appapi.Preview, appapi.CommitOutcome, errs.DomainError) {
+	return a.svc.Apply(in.ProfileRef, in.ProjectID, appapi.Resolutions{
 		Drift:        in.Drift,
 		Unknown:      in.Unknown,
 		IgnoredPaths: in.IgnoredPaths,

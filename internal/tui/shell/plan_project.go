@@ -13,7 +13,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/hexworks/agentfiles/internal/actions"
-	"github.com/hexworks/agentfiles/internal/app"
+	"github.com/hexworks/agentfiles/internal/appapi"
 	"github.com/hexworks/agentfiles/internal/asset"
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/project"
@@ -32,10 +32,10 @@ import (
 // dependency direction tui→app explicit and lets tests substitute a
 // fake.
 type planProjectActions interface {
-	LoadProfile(in actions.LoadProfileInput) (*app.LoadedProfile, errs.DomainError)
+	LoadProfile(in actions.LoadProfileInput) (*appapi.LoadedProfile, errs.DomainError)
 	LoadProject(in actions.LoadProjectInput) (*project.Manifest, errs.DomainError)
-	PlanProject(in actions.PlanProjectInput) (*app.Preview, errs.DomainError)
-	SyncProject(in actions.SyncProjectInput) (*app.Preview, app.CommitOutcome, errs.DomainError)
+	PlanProject(in actions.PlanProjectInput) (*appapi.Preview, errs.DomainError)
+	SyncProject(in actions.SyncProjectInput) (*appapi.Preview, appapi.CommitOutcome, errs.DomainError)
 	CreateAssetFromFolder(in actions.CreateAssetFromFolderInput) (string, errs.DomainError)
 }
 
@@ -60,7 +60,7 @@ const (
 )
 
 // planNode is the payload attached to every treetable node. path is the
-// forward-slash relative key from app.FileChange.Path on file rows and
+// forward-slash relative key from appapi.FileChange.Path on file rows and
 // the accumulated directory key on dir rows (preserved so a future
 // per-directory bulk action can target the subtree without rebuilding
 // the path from labels); change is the originating FileChange on file
@@ -68,7 +68,7 @@ const (
 type planNode struct {
 	kind   planNodeKind
 	path   string
-	change app.FileChange
+	change appapi.FileChange
 	// persistedIgnored marks a dir row injected from the project's persisted
 	// ignored_paths (not from a FileChange). Such a row is always a collapsed
 	// leaf — Plan suppressed its subtree so no children data exists — and
@@ -100,9 +100,9 @@ func planDirNode(n *treetable.Node) (planNode, bool) {
 // resolving the project, profile, and preview triplet. Either every
 // field is set or err carries the first failure.
 type planProjectLoadedMsg struct {
-	prof    *app.LoadedProfile
+	prof    *appapi.LoadedProfile
 	proj    *project.Manifest
-	preview *app.Preview
+	preview *appapi.Preview
 	err     errs.DomainError
 }
 
@@ -120,16 +120,16 @@ type planProjectScreen struct {
 	projectName string
 	projectPath string
 	profileName string
-	preview     *app.Preview
+	preview     *appapi.Preview
 	// driftResolutions stores only off-default drift selections
-	// (app.DriftOverwrite). Default DriftKeep is encoded as map
+	// (appapi.DriftOverwrite). Default DriftKeep is encoded as map
 	// absence so an empty map means the user wants Keep everywhere.
-	driftResolutions map[string]app.DriftDecision
+	driftResolutions map[string]appapi.DriftDecision
 	// unknownResolutions stores only off-default unknown selections
-	// (app.UnknownDelete). Same absence-as-default convention as
+	// (appapi.UnknownDelete). Same absence-as-default convention as
 	// driftResolutions, and the two distinct maps mirror the domain's
 	// two-enum decision space (see docs/architecture/12-glossary.md).
-	unknownResolutions map[string]app.UnknownDecision
+	unknownResolutions map[string]appapi.UnknownDecision
 
 	tree           *treetable.Model
 	applyBtn       *mnemonic.Button
@@ -139,7 +139,7 @@ type planProjectScreen struct {
 
 	// registerableDirs is the set of directory keys whose subtree is all
 	// unknown/unmanaged, derived from the loaded preview via
-	// app.RegisterableDirs. The eligibility rule lives in app; the screen
+	// appapi.RegisterableDirs. The eligibility rule lives in app; the screen
 	// renders the [Register] and [Ignore] buttons on rows the set contains.
 	registerableDirs map[string]bool
 
@@ -150,7 +150,7 @@ type planProjectScreen struct {
 	ignoredPaths map[string]bool
 
 	// persistedIgnored is the sorted set of folder keys already persisted in the
-	// project's ignored_paths (seeded from app.Preview.IgnoredPaths each load).
+	// project's ignored_paths (seeded from appapi.Preview.IgnoredPaths each load).
 	// Plan suppressed their subtrees, so they carry no FileChange; they are
 	// injected into the tree as collapsed "! ignored" leaves when visible.
 	persistedIgnored []string
@@ -192,8 +192,8 @@ func newPlanProjectScreen(a planProjectActions, profileID, projectID string) *pl
 		actions:            a,
 		profileID:          profileID,
 		projectID:          projectID,
-		driftResolutions:   map[string]app.DriftDecision{},
-		unknownResolutions: map[string]app.UnknownDecision{},
+		driftResolutions:   map[string]appapi.DriftDecision{},
+		unknownResolutions: map[string]appapi.UnknownDecision{},
 		ignoredPaths:       map[string]bool{},
 		unignored:          map[string]bool{},
 		pinned:             map[string]bool{},
@@ -379,7 +379,7 @@ func (s *planProjectScreen) handleLoaded(m planProjectLoadedMsg) (Screen, tea.Cm
 	s.projectName = m.proj.Name
 	s.projectPath = m.proj.Path
 	s.preview = m.preview
-	s.registerableDirs = app.RegisterableDirs(m.preview.Changes)
+	s.registerableDirs = appapi.RegisterableDirs(m.preview.Changes)
 	s.ignoredPaths = map[string]bool{}
 	s.persistedIgnored = append([]string(nil), m.preview.IgnoredPaths...)
 	slices.Sort(s.persistedIgnored)
@@ -507,15 +507,15 @@ func (s *planProjectScreen) statusValue(n *treetable.Node) string {
 		return ""
 	}
 	switch d.change.Kind {
-	case app.ChangeCreate:
+	case appapi.ChangeCreate:
 		return "+ add"
-	case app.ChangeUpdate:
+	case appapi.ChangeUpdate:
 		return "~ update"
-	case app.ChangeDelete:
+	case appapi.ChangeDelete:
 		return "- delete"
-	case app.ChangeDrift:
+	case appapi.ChangeDrift:
 		return "* drift"
-	case app.ChangeUnknown:
+	case appapi.ChangeUnknown:
 		return "? unknown"
 	}
 	return ""
@@ -533,15 +533,15 @@ func (s *planProjectScreen) statusStyle(n *treetable.Node) lipgloss.Style {
 		return lipgloss.NewStyle()
 	}
 	switch d.change.Kind {
-	case app.ChangeCreate:
+	case appapi.ChangeCreate:
 		return styles.CreateStyle
-	case app.ChangeUpdate:
+	case appapi.ChangeUpdate:
 		return styles.UpdateStyle
-	case app.ChangeDelete:
+	case appapi.ChangeDelete:
 		return styles.DeleteStyle
-	case app.ChangeDrift:
+	case appapi.ChangeDrift:
 		return styles.DriftStyle
-	case app.ChangeUnknown:
+	case appapi.ChangeUnknown:
 		return styles.MutedStyle
 	}
 	return lipgloss.NewStyle()
@@ -553,15 +553,15 @@ func (s *planProjectScreen) actionValue(n *treetable.Node) string {
 		return ""
 	}
 	switch d.change.Kind {
-	case app.ChangeCreate, app.ChangeUpdate, app.ChangeDelete:
+	case appapi.ChangeCreate, appapi.ChangeUpdate, appapi.ChangeDelete:
 		return "-"
-	case app.ChangeDrift:
-		if s.driftResolutions[d.path] == app.DriftOverwrite {
+	case appapi.ChangeDrift:
+		if s.driftResolutions[d.path] == appapi.DriftOverwrite {
 			return "Overwrite"
 		}
 		return "Keep"
-	case app.ChangeUnknown:
-		if s.unknownResolutions[d.path] == app.UnknownDelete {
+	case appapi.ChangeUnknown:
+		if s.unknownResolutions[d.path] == appapi.UnknownDelete {
 			return "Delete"
 		}
 		return "Keep"
@@ -596,9 +596,9 @@ func (s *planProjectScreen) treeActionsFn() treetable.ActionsFunc {
 		}
 		btns := []*mnemonic.Button{s.openFileBtn(d.path)}
 		switch d.change.Kind {
-		case app.ChangeDrift:
+		case appapi.ChangeDrift:
 			btns = append(btns, s.driftToggleBtn(d.path))
-		case app.ChangeUnknown:
+		case appapi.ChangeUnknown:
 			btns = append(btns, s.unknownToggleBtn(d.path))
 		}
 		return btns
@@ -628,17 +628,17 @@ func (s *planProjectScreen) openFileBtn(path string) *mnemonic.Button {
 }
 
 func (s *planProjectScreen) driftToggleBtn(path string) *mnemonic.Button {
-	if s.driftResolutions[path] == app.DriftOverwrite {
-		return mnemonic.New("Keep", 'p', func() tea.Cmd { return s.toggleDrift(path, app.DriftKeep) })
+	if s.driftResolutions[path] == appapi.DriftOverwrite {
+		return mnemonic.New("Keep", 'p', func() tea.Cmd { return s.toggleDrift(path, appapi.DriftKeep) })
 	}
-	return mnemonic.New("Overwrite", 'w', func() tea.Cmd { return s.toggleDrift(path, app.DriftOverwrite) })
+	return mnemonic.New("Overwrite", 'w', func() tea.Cmd { return s.toggleDrift(path, appapi.DriftOverwrite) })
 }
 
 func (s *planProjectScreen) unknownToggleBtn(path string) *mnemonic.Button {
-	if s.unknownResolutions[path] == app.UnknownDelete {
-		return mnemonic.New("Keep", 'p', func() tea.Cmd { return s.toggleUnknown(path, app.UnknownKeep) })
+	if s.unknownResolutions[path] == appapi.UnknownDelete {
+		return mnemonic.New("Keep", 'p', func() tea.Cmd { return s.toggleUnknown(path, appapi.UnknownKeep) })
 	}
-	return mnemonic.New("Delete", 'd', func() tea.Cmd { return s.toggleUnknown(path, app.UnknownDelete) })
+	return mnemonic.New("Delete", 'd', func() tea.Cmd { return s.toggleUnknown(path, appapi.UnknownDelete) })
 }
 
 // onOpen suspends the program in the system editor pointed at the
@@ -653,8 +653,8 @@ func (s *planProjectScreen) onOpen(path string) tea.Cmd {
 	return editor.Open(filepath.Join(s.projectPath, path))
 }
 
-func (s *planProjectScreen) toggleDrift(path string, next app.DriftDecision) tea.Cmd {
-	if next == app.DriftKeep {
+func (s *planProjectScreen) toggleDrift(path string, next appapi.DriftDecision) tea.Cmd {
+	if next == appapi.DriftKeep {
 		delete(s.driftResolutions, path)
 	} else {
 		s.driftResolutions[path] = next
@@ -664,8 +664,8 @@ func (s *planProjectScreen) toggleDrift(path string, next app.DriftDecision) tea
 	return nil
 }
 
-func (s *planProjectScreen) toggleUnknown(path string, next app.UnknownDecision) tea.Cmd {
-	if next == app.UnknownKeep {
+func (s *planProjectScreen) toggleUnknown(path string, next appapi.UnknownDecision) tea.Cmd {
+	if next == appapi.UnknownKeep {
 		delete(s.unknownResolutions, path)
 	} else {
 		s.unknownResolutions[path] = next
@@ -732,7 +732,7 @@ type registerAssetDoneMsg struct {
 // and, on commit failure, batches a warn toast.
 type syncDoneMsg struct {
 	info    string
-	outcome app.CommitOutcome
+	outcome appapi.CommitOutcome
 	err     errs.DomainError
 }
 
@@ -832,7 +832,7 @@ func (s *planProjectScreen) handleRegisterAssetDone(m registerAssetDoneMsg) (Scr
 
 // onApply iterates preview.Changes (not the resolution maps) so the
 // output order is deterministic. Drift emission delegates to
-// app.DriftResolutionsFromMap so the ADR 0015 "emit only Overwrite" rule
+// appapi.DriftResolutionsFromMap so the ADR 0015 "emit only Overwrite" rule
 // lives next to the domain. Unknown rows still emit an explicit
 // UnknownKeep for every row because that default is a no-op on state.
 func (s *planProjectScreen) onApply() tea.Cmd {
@@ -846,22 +846,22 @@ func (s *planProjectScreen) onApply() tea.Cmd {
 	if len(s.preview.Changes) == 0 && !hasIgnoreChange {
 		return nil
 	}
-	drift := app.DriftResolutionsFromMap(s.preview.Changes, s.driftResolutions)
-	var unknown []app.UnknownResolution
+	drift := appapi.DriftResolutionsFromMap(s.preview.Changes, s.driftResolutions)
+	var unknown []appapi.UnknownResolution
 	for _, ch := range s.preview.Changes {
-		if ch.Kind != app.ChangeUnknown {
+		if ch.Kind != appapi.ChangeUnknown {
 			continue
 		}
-		decision := app.UnknownKeep
-		if s.unknownResolutions[ch.Path] == app.UnknownDelete {
-			decision = app.UnknownDelete
+		decision := appapi.UnknownKeep
+		if s.unknownResolutions[ch.Path] == appapi.UnknownDelete {
+			decision = appapi.UnknownDelete
 		}
-		unknown = append(unknown, app.UnknownResolution{Path: ch.Path, Decision: decision})
+		unknown = append(unknown, appapi.UnknownResolution{Path: ch.Path, Decision: decision})
 	}
 	// Desired ignored set = (persisted − unignored) ∪ live-ignored, computed by
 	// the app layer. sync writes it verbatim (replace semantics), so dropping a
 	// persisted key here removes it from ignored_paths on the next Apply.
-	ignored := app.DesiredIgnored(
+	ignored := appapi.DesiredIgnored(
 		s.persistedIgnored,
 		slices.Collect(maps.Keys(s.unignored)),
 		slices.Collect(maps.Keys(s.ignoredPaths)),
@@ -886,7 +886,7 @@ func (s *planProjectScreen) onApply() tea.Cmd {
 // buildPlanTree turns the preview's FileChange list into a directory tree
 // rooted at the project name, with the persisted-ignored folders in
 // injectedIgnored interleaved at their natural nested/sorted positions. Paths
-// are split on "/" because app.FileChange.Path is forward-slash relative per
+// are split on "/" because appapi.FileChange.Path is forward-slash relative per
 // the domain's validatePathKey rule.
 //
 // A directory key present in collapsed renders as a collapsed leaf (no trailing
@@ -896,7 +896,7 @@ func (s *planProjectScreen) onApply() tea.Cmd {
 // there are no children to show. Changes and injected keys are merged into one
 // path-sorted pass over a shared dirs map so the two kinds of rows interleave
 // under common parents.
-func buildPlanTree(projectName string, changes []app.FileChange, collapsed map[string]bool, injectedIgnored []string) *treetable.Node {
+func buildPlanTree(projectName string, changes []appapi.FileChange, collapsed map[string]bool, injectedIgnored []string) *treetable.Node {
 	label := "(plan)"
 	if projectName != "" {
 		label = projectName + "/"
@@ -909,7 +909,7 @@ func buildPlanTree(projectName string, changes []app.FileChange, collapsed map[s
 
 	type planItem struct {
 		path    string
-		change  app.FileChange
+		change  appapi.FileChange
 		ignored bool
 	}
 	items := make([]planItem, 0, len(changes)+len(injectedIgnored))

@@ -8,7 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/hexworks/agentfiles/internal/actions"
-	"github.com/hexworks/agentfiles/internal/app"
+	"github.com/hexworks/agentfiles/internal/appapi"
 	"github.com/hexworks/agentfiles/internal/asset"
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/profile"
@@ -25,7 +25,7 @@ var _ Screen = (*selectProjectAssetsScreen)(nil)
 // SelectAsset / UnselectAsset is the post-persistence selection — the
 // real service returns the same shape so the screen can trust it.
 type fakeSelectActions struct {
-	prof           *app.LoadedProfile
+	prof           *appapi.LoadedProfile
 	loadErr        errs.DomainError
 	loadProjectErr errs.DomainError
 	selectResult   []string
@@ -34,13 +34,13 @@ type fakeSelectActions struct {
 	unselectErr    errs.DomainError
 	selectInputs   []actions.SelectAssetInput
 	unselectInputs []actions.UnselectAssetInput
-	preview        *app.Preview
+	preview        *appapi.Preview
 	planErr        errs.DomainError
 	syncErr        errs.DomainError
 	syncInputs     []actions.SyncProjectInput
 }
 
-func (f *fakeSelectActions) LoadProfile(in actions.LoadProfileInput) (*app.LoadedProfile, errs.DomainError) {
+func (f *fakeSelectActions) LoadProfile(in actions.LoadProfileInput) (*appapi.LoadedProfile, errs.DomainError) {
 	return f.prof, f.loadErr
 }
 
@@ -70,19 +70,19 @@ func (f *fakeSelectActions) UnselectAsset(in actions.UnselectAssetInput) ([]stri
 	return append([]string(nil), f.unselectResult...), nil
 }
 
-func (f *fakeSelectActions) PlanProject(in actions.PlanProjectInput) (*app.Preview, errs.DomainError) {
+func (f *fakeSelectActions) PlanProject(in actions.PlanProjectInput) (*appapi.Preview, errs.DomainError) {
 	if f.planErr != nil {
 		return nil, f.planErr
 	}
 	return f.preview, nil
 }
 
-func (f *fakeSelectActions) SyncProject(in actions.SyncProjectInput) (*app.Preview, app.CommitOutcome, errs.DomainError) {
+func (f *fakeSelectActions) SyncProject(in actions.SyncProjectInput) (*appapi.Preview, appapi.CommitOutcome, errs.DomainError) {
 	f.syncInputs = append(f.syncInputs, in)
 	if f.syncErr != nil {
-		return nil, app.CommitOutcome{}, f.syncErr
+		return nil, appapi.Skipped{Reason: appapi.SkipDisabled}, f.syncErr
 	}
-	return f.preview, app.CommitOutcome{}, nil
+	return f.preview, appapi.Skipped{Reason: appapi.SkipDisabled}, nil
 }
 
 func (f *fakeSelectActions) CreateAssetFromFolder(in actions.CreateAssetFromFolderInput) (string, errs.DomainError) {
@@ -98,7 +98,7 @@ func newSelectActionsFake(assets []*asset.Asset, proj *project.Manifest) *fakeSe
 	for _, a := range assets {
 		prof.Assets[a.ID] = a
 	}
-	loaded := &app.LoadedProfile{
+	loaded := &appapi.LoadedProfile{
 		Profile:  prof,
 		Projects: map[string]*project.Manifest{},
 	}

@@ -1,7 +1,7 @@
 package actions
 
 import (
-	"github.com/hexworks/agentfiles/internal/app"
+	"github.com/hexworks/agentfiles/internal/appapi"
 	"github.com/hexworks/agentfiles/internal/asset"
 	"github.com/hexworks/agentfiles/internal/errs"
 )
@@ -24,10 +24,9 @@ func (a *Actions) CreateAssetFromFolder(in CreateAssetFromFolderInput) (string, 
 
 // UpdateAsset persists the manifest edit and, when git integration is
 // enabled and the profile is a git repo, records a manifest-scoped
-// commit. The returned CommitOutcome carries the short SHA on success
-// and Err on a hard commit failure; a zero-value CommitOutcome means
-// "no commit path was attempted" (feature disabled or dir not a repo).
-func (a *Actions) UpdateAsset(in UpdateAssetInput) (app.CommitOutcome, errs.DomainError) {
+// commit. The returned CommitOutcome is one of appapi.Committed,
+// appapi.Skipped, or appapi.Failed (see appapi.CommitOutcome).
+func (a *Actions) UpdateAsset(in UpdateAssetInput) (appapi.CommitOutcome, errs.DomainError) {
 	return a.svc.UpdateAsset(in.ProfileRef, in.Manifest)
 }
 
@@ -35,7 +34,7 @@ func (a *Actions) UpdateAsset(in UpdateAssetInput) (app.CommitOutcome, errs.Doma
 // files-scoped commit against `assets/<asset-id>/**`, used by the
 // editor-return flow after the user finishes editing an asset file. See
 // UpdateAsset for the CommitOutcome semantics.
-func (a *Actions) SaveAssetFilesEdit(in SaveAssetFilesEditInput) (app.CommitOutcome, errs.DomainError) {
+func (a *Actions) SaveAssetFilesEdit(in SaveAssetFilesEditInput) (appapi.CommitOutcome, errs.DomainError) {
 	return a.svc.SaveAssetFilesEdit(in.ProfileRef, in.Manifest)
 }
 

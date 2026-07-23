@@ -1,7 +1,7 @@
 package actions
 
 import (
-	"github.com/hexworks/agentfiles/internal/app"
+	"github.com/hexworks/agentfiles/internal/appapi"
 	"github.com/hexworks/agentfiles/internal/asset"
 )
 
@@ -73,8 +73,8 @@ type PlanProjectInput struct {
 type SyncProjectInput struct {
 	ProfileRef string
 	ProjectID  string
-	Drift      []app.DriftResolution
-	Unknown    []app.UnknownResolution
+	Drift      []appapi.DriftResolution
+	Unknown    []appapi.UnknownResolution
 	// IgnoredPaths carries repo-relative folder keys the user chose to ignore;
 	// they are persisted so future plans suppress unknowns under them.
 	IgnoredPaths []string

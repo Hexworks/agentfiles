@@ -5,23 +5,24 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hexworks/agentfiles/internal/appapi"
 	llmsync "github.com/hexworks/agentfiles/internal/sync"
 )
 
 // TestDesiredIgnored pins the reconciliation rule the Plan Project screen sends
 // on Apply: (persisted − unignored) ∪ newlyIgnored, deduplicated and sorted.
 func TestDesiredIgnored(t *testing.T) {
-	got := DesiredIgnored(
+	got := appapi.DesiredIgnored(
 		[]string{"keep", "drop"},
 		[]string{"drop"},
 		[]string{"live", "keep"}, // "keep" overlaps persisted → dedup
 	)
 	want := []string{"keep", "live"}
 	if !slices.Equal(got, want) {
-		t.Fatalf("DesiredIgnored = %v, want %v", got, want)
+		t.Fatalf("appapi.DesiredIgnored = %v, want %v", got, want)
 	}
 
-	if got := DesiredIgnored([]string{"only"}, []string{"only"}, nil); got != nil {
+	if got := appapi.DesiredIgnored([]string{"only"}, []string{"only"}, nil); got != nil {
 		t.Fatalf("DesiredIgnored (all dropped) = %v, want nil", got)
 	}
 }

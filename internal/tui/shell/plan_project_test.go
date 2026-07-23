@@ -7,7 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/hexworks/agentfiles/internal/actions"
-	"github.com/hexworks/agentfiles/internal/app"
+	"github.com/hexworks/agentfiles/internal/appapi"
 	"github.com/hexworks/agentfiles/internal/asset"
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/profile"
@@ -28,11 +28,11 @@ var _ Screen = (*planProjectScreen)(nil)
 // syncOutcome + syncErr drive the SyncProject result so tests can
 // exercise the git-aware toast paths.
 type fakePlanActions struct {
-	prof        *app.LoadedProfile
+	prof        *appapi.LoadedProfile
 	proj        *project.Manifest
-	preview     *app.Preview
-	syncResult  *app.Preview
-	syncOutcome app.CommitOutcome
+	preview     *appapi.Preview
+	syncResult  *appapi.Preview
+	syncOutcome appapi.CommitOutcome
 	syncErr     errs.DomainError
 	planErr     errs.DomainError
 	syncInputs  []actions.SyncProjectInput
@@ -42,7 +42,7 @@ type fakePlanActions struct {
 	createErr    errs.DomainError
 }
 
-func (f *fakePlanActions) LoadProfile(in actions.LoadProfileInput) (*app.LoadedProfile, errs.DomainError) {
+func (f *fakePlanActions) LoadProfile(in actions.LoadProfileInput) (*appapi.LoadedProfile, errs.DomainError) {
 	return f.prof, nil
 }
 
@@ -50,14 +50,14 @@ func (f *fakePlanActions) LoadProject(in actions.LoadProjectInput) (*project.Man
 	return f.proj, nil
 }
 
-func (f *fakePlanActions) PlanProject(in actions.PlanProjectInput) (*app.Preview, errs.DomainError) {
+func (f *fakePlanActions) PlanProject(in actions.PlanProjectInput) (*appapi.Preview, errs.DomainError) {
 	if f.planErr != nil {
 		return nil, f.planErr
 	}
 	return f.preview, nil
 }
 
-func (f *fakePlanActions) SyncProject(in actions.SyncProjectInput) (*app.Preview, app.CommitOutcome, errs.DomainError) {
+func (f *fakePlanActions) SyncProject(in actions.SyncProjectInput) (*appapi.Preview, appapi.CommitOutcome, errs.DomainError) {
 	f.syncInputs = append(f.syncInputs, in)
 	return f.syncResult, f.syncOutcome, f.syncErr
 }
@@ -70,14 +70,14 @@ func (f *fakePlanActions) CreateAssetFromFolder(in actions.CreateAssetFromFolder
 	return f.createID, nil
 }
 
-func newPlanActionsFake(projName string, changes []app.FileChange) *fakePlanActions {
+func newPlanActionsFake(projName string, changes []appapi.FileChange) *fakePlanActions {
 	return &fakePlanActions{
-		prof: &app.LoadedProfile{
+		prof: &appapi.LoadedProfile{
 			Profile: &profile.Profile{Manifest: profile.Manifest{ID: "alpha", Name: "Alpha"}},
 		},
 		proj:       &project.Manifest{ID: "proj-1", Name: projName},
-		preview:    &app.Preview{ProfileID: "alpha", ProjectID: "proj-1", Changes: changes},
-		syncResult: &app.Preview{ProfileID: "alpha", ProjectID: "proj-1"},
+		preview:    &appapi.Preview{ProfileID: "alpha", ProjectID: "proj-1", Changes: changes},
+		syncResult: &appapi.Preview{ProfileID: "alpha", ProjectID: "proj-1"},
 	}
 }
 
@@ -117,7 +117,7 @@ func TestPlanProjectScreen_Title(t *testing.T) {
 }
 
 func TestPlanProjectScreen_InitDispatchesLoad(t *testing.T) {
-	changes := []app.FileChange{{Path: "foo.md", Kind: app.ChangeCreate}}
+	changes := []appapi.FileChange{{Path: "foo.md", Kind: appapi.ChangeCreate}}
 	f := newPlanActionsFake("Proj", changes)
 	s := newPlanProjectScreen(f, "alpha", "proj-1")
 
@@ -166,7 +166,7 @@ func TestPlanProjectScreen_BodyPreLoadShowsLoading(t *testing.T) {
 }
 
 func TestPlanProjectScreen_BodyLoadedContainsProjectAndButtons(t *testing.T) {
-	changes := []app.FileChange{{Path: "foo.md", Kind: app.ChangeCreate}}
+	changes := []appapi.FileChange{{Path: "foo.md", Kind: appapi.ChangeCreate}}
 	f := newPlanActionsFake("Proj", changes)
 	s := newPlanProjectScreen(f, "alpha", "proj-1")
 	planLoadInto(t, s, f)
@@ -188,18 +188,18 @@ func TestPlanProjectScreen_StatusValueForEachKind(t *testing.T) {
 	f := newPlanActionsFake("Proj", nil)
 	s := newPlanProjectScreen(f, "alpha", "proj-1")
 	cases := []struct {
-		kind app.ChangeKind
+		kind appapi.ChangeKind
 		want string
 	}{
-		{app.ChangeCreate, "+ add"},
-		{app.ChangeUpdate, "~ update"},
-		{app.ChangeDelete, "- delete"},
-		{app.ChangeDrift, "* drift"},
-		{app.ChangeUnknown, "? unknown"},
+		{appapi.ChangeCreate, "+ add"},
+		{appapi.ChangeUpdate, "~ update"},
+		{appapi.ChangeDelete, "- delete"},
+		{appapi.ChangeDrift, "* drift"},
+		{appapi.ChangeUnknown, "? unknown"},
 	}
 	for _, tc := range cases {
 		t.Run(string(tc.kind), func(t *testing.T) {
-			n := &treetable.Node{Data: planNode{kind: planNodeFile, path: "p", change: app.FileChange{Kind: tc.kind}}}
+			n := &treetable.Node{Data: planNode{kind: planNodeFile, path: "p", change: appapi.FileChange{Kind: tc.kind}}}
 			if got := s.statusValue(n); got != tc.want {
 				t.Errorf("statusValue(%s) = %q, want %q", tc.kind, got, tc.want)
 			}
@@ -217,18 +217,18 @@ func TestPlanProjectScreen_ActionValueDefaultsToKeepForDriftAndUnknown(t *testin
 	f := newPlanActionsFake("Proj", nil)
 	s := newPlanProjectScreen(f, "alpha", "proj-1")
 	cases := []struct {
-		kind app.ChangeKind
+		kind appapi.ChangeKind
 		want string
 	}{
-		{app.ChangeCreate, "-"},
-		{app.ChangeUpdate, "-"},
-		{app.ChangeDelete, "-"},
-		{app.ChangeDrift, "Keep"},
-		{app.ChangeUnknown, "Keep"},
+		{appapi.ChangeCreate, "-"},
+		{appapi.ChangeUpdate, "-"},
+		{appapi.ChangeDelete, "-"},
+		{appapi.ChangeDrift, "Keep"},
+		{appapi.ChangeUnknown, "Keep"},
 	}
 	for _, tc := range cases {
 		t.Run(string(tc.kind), func(t *testing.T) {
-			n := &treetable.Node{Data: planNode{kind: planNodeFile, path: "p", change: app.FileChange{Path: "p", Kind: tc.kind}}}
+			n := &treetable.Node{Data: planNode{kind: planNodeFile, path: "p", change: appapi.FileChange{Path: "p", Kind: tc.kind}}}
 			if got := s.actionValue(n); got != tc.want {
 				t.Errorf("actionValue(%s) = %q, want %q", tc.kind, got, tc.want)
 			}
@@ -247,8 +247,8 @@ func TestPlanProjectScreen_ActionValueReflectsResolutionMap(t *testing.T) {
 	_ = s.driftToggleBtn("drift.md").Trigger()
 	_ = s.unknownToggleBtn("unknown.md").Trigger()
 
-	drift := &treetable.Node{Data: planNode{kind: planNodeFile, path: "drift.md", change: app.FileChange{Path: "drift.md", Kind: app.ChangeDrift}}}
-	unknown := &treetable.Node{Data: planNode{kind: planNodeFile, path: "unknown.md", change: app.FileChange{Path: "unknown.md", Kind: app.ChangeUnknown}}}
+	drift := &treetable.Node{Data: planNode{kind: planNodeFile, path: "drift.md", change: appapi.FileChange{Path: "drift.md", Kind: appapi.ChangeDrift}}}
+	unknown := &treetable.Node{Data: planNode{kind: planNodeFile, path: "unknown.md", change: appapi.FileChange{Path: "unknown.md", Kind: appapi.ChangeUnknown}}}
 
 	if got := s.actionValue(drift); got != "Overwrite" {
 		t.Errorf("drift Overwrite = %q, want Overwrite", got)
@@ -262,7 +262,7 @@ func TestPlanProjectScreen_TreeActionsFnDriftKeepRendersOpenAndOverwriteBtn(t *t
 	f := newPlanActionsFake("Proj", nil)
 	s := newPlanProjectScreen(f, "alpha", "proj-1")
 	fn := s.treeActionsFn()
-	n := &treetable.Node{Data: planNode{kind: planNodeFile, path: "p", change: app.FileChange{Path: "p", Kind: app.ChangeDrift}}}
+	n := &treetable.Node{Data: planNode{kind: planNodeFile, path: "p", change: appapi.FileChange{Path: "p", Kind: appapi.ChangeDrift}}}
 	got := fn(n)
 	if len(got) != 2 {
 		t.Fatalf("got %d buttons, want 2", len(got))
@@ -277,7 +277,7 @@ func TestPlanProjectScreen_TreeActionsFnDriftOverwriteRendersOpenAndKeepBtn(t *t
 	_ = s.driftToggleBtn("p").Trigger()
 
 	fn := s.treeActionsFn()
-	n := &treetable.Node{Data: planNode{kind: planNodeFile, path: "p", change: app.FileChange{Path: "p", Kind: app.ChangeDrift}}}
+	n := &treetable.Node{Data: planNode{kind: planNodeFile, path: "p", change: appapi.FileChange{Path: "p", Kind: appapi.ChangeDrift}}}
 	got := fn(n)
 	if len(got) != 2 {
 		t.Fatalf("got %d buttons, want 2", len(got))
@@ -290,7 +290,7 @@ func TestPlanProjectScreen_TreeActionsFnUnknownKeepRendersOpenAndDeleteBtn(t *te
 	f := newPlanActionsFake("Proj", nil)
 	s := newPlanProjectScreen(f, "alpha", "proj-1")
 	fn := s.treeActionsFn()
-	n := &treetable.Node{Data: planNode{kind: planNodeFile, path: "p", change: app.FileChange{Path: "p", Kind: app.ChangeUnknown}}}
+	n := &treetable.Node{Data: planNode{kind: planNodeFile, path: "p", change: appapi.FileChange{Path: "p", Kind: appapi.ChangeUnknown}}}
 	got := fn(n)
 	if len(got) != 2 {
 		t.Fatalf("got %d buttons, want 2", len(got))
@@ -305,7 +305,7 @@ func TestPlanProjectScreen_TreeActionsFnUnknownDeleteRendersOpenAndKeepBtn(t *te
 	_ = s.unknownToggleBtn("p").Trigger()
 
 	fn := s.treeActionsFn()
-	n := &treetable.Node{Data: planNode{kind: planNodeFile, path: "p", change: app.FileChange{Path: "p", Kind: app.ChangeUnknown}}}
+	n := &treetable.Node{Data: planNode{kind: planNodeFile, path: "p", change: appapi.FileChange{Path: "p", Kind: appapi.ChangeUnknown}}}
 	got := fn(n)
 	if len(got) != 2 {
 		t.Fatalf("got %d buttons, want 2", len(got))
@@ -318,9 +318,9 @@ func TestPlanProjectScreen_TreeActionsFnFileRowsAlwaysGetOpen(t *testing.T) {
 	f := newPlanActionsFake("Proj", nil)
 	s := newPlanProjectScreen(f, "alpha", "proj-1")
 	fn := s.treeActionsFn()
-	for _, kind := range []app.ChangeKind{app.ChangeCreate, app.ChangeUpdate, app.ChangeDelete} {
+	for _, kind := range []appapi.ChangeKind{appapi.ChangeCreate, appapi.ChangeUpdate, appapi.ChangeDelete} {
 		t.Run(string(kind), func(t *testing.T) {
-			n := &treetable.Node{Data: planNode{kind: planNodeFile, path: "p", change: app.FileChange{Path: "p", Kind: kind}}}
+			n := &treetable.Node{Data: planNode{kind: planNodeFile, path: "p", change: appapi.FileChange{Path: "p", Kind: kind}}}
 			got := fn(n)
 			if len(got) != 1 {
 				t.Fatalf("fn(%s) returned %d buttons, want 1", kind, len(got))
@@ -338,8 +338,8 @@ func TestPlanProjectScreen_TreeActionsFnFileRowsAlwaysGetOpen(t *testing.T) {
 	}
 }
 
-func fileNode(p string, kind app.ChangeKind) *treetable.Node {
-	return &treetable.Node{Data: planNode{kind: planNodeFile, path: p, change: app.FileChange{Path: p, Kind: kind}}}
+func fileNode(p string, kind appapi.ChangeKind) *treetable.Node {
+	return &treetable.Node{Data: planNode{kind: planNodeFile, path: p, change: appapi.FileChange{Path: p, Kind: kind}}}
 }
 
 func dirNode(p string, children ...*treetable.Node) *treetable.Node {
@@ -351,7 +351,7 @@ func TestPlanProjectScreen_TreeActionsFnRegisterableDirGetsRegisterAndIgnoreBtns
 	s := newPlanProjectScreen(f, "alpha", "proj-1")
 	s.registerableDirs = map[string]bool{"sub": true}
 	fn := s.treeActionsFn()
-	got := fn(dirNode("sub", fileNode("sub/a.md", app.ChangeUnknown)))
+	got := fn(dirNode("sub", fileNode("sub/a.md", appapi.ChangeUnknown)))
 	if len(got) != 2 {
 		t.Fatalf("got %d buttons, want 2", len(got))
 	}
@@ -365,7 +365,7 @@ func TestPlanProjectScreen_TreeActionsFnIgnoredDirGetsShowBtnOnly(t *testing.T) 
 	s.registerableDirs = map[string]bool{"sub": true}
 	s.ignoredPaths = map[string]bool{"sub": true}
 	fn := s.treeActionsFn()
-	got := fn(dirNode("sub", fileNode("sub/a.md", app.ChangeUnknown)))
+	got := fn(dirNode("sub", fileNode("sub/a.md", appapi.ChangeUnknown)))
 	if len(got) != 1 {
 		t.Fatalf("got %d buttons, want 1", len(got))
 	}
@@ -377,7 +377,7 @@ func TestPlanProjectScreen_TreeActionsFnNonRegisterableDirGetsNoBtn(t *testing.T
 	s := newPlanProjectScreen(f, "alpha", "proj-1")
 	s.registerableDirs = map[string]bool{"other": true}
 	fn := s.treeActionsFn()
-	if got := fn(dirNode("sub", fileNode("sub/a.md", app.ChangeUnknown))); got != nil {
+	if got := fn(dirNode("sub", fileNode("sub/a.md", appapi.ChangeUnknown))); got != nil {
 		t.Errorf("fn(non-registerable dir) = %v, want nil", got)
 	}
 }
@@ -426,7 +426,7 @@ func TestPlanProjectScreen_AfterRegisterAssetCancelDoesNothing(t *testing.T) {
 }
 
 func TestPlanProjectScreen_ToggleDriftSwapsState(t *testing.T) {
-	changes := []app.FileChange{{Path: "p", Kind: app.ChangeDrift}}
+	changes := []appapi.FileChange{{Path: "p", Kind: appapi.ChangeDrift}}
 	f := newPlanActionsFake("Proj", changes)
 	s := newPlanProjectScreen(f, "alpha", "proj-1")
 	planLoadInto(t, s, f)
@@ -438,7 +438,7 @@ func TestPlanProjectScreen_ToggleDriftSwapsState(t *testing.T) {
 	// resolution toggle which flips between Overwrite and Keep.
 	btn := fn(n)[1]
 	_ = btn.Trigger()
-	if s.driftResolutions["p"] != app.DriftOverwrite {
+	if s.driftResolutions["p"] != appapi.DriftOverwrite {
 		t.Fatalf("after first toggle: state = %v, want DriftOverwrite", s.driftResolutions["p"])
 	}
 
@@ -450,7 +450,7 @@ func TestPlanProjectScreen_ToggleDriftSwapsState(t *testing.T) {
 }
 
 func TestPlanProjectScreen_ToggleUnknownSwapsState(t *testing.T) {
-	changes := []app.FileChange{{Path: "p", Kind: app.ChangeUnknown}}
+	changes := []appapi.FileChange{{Path: "p", Kind: appapi.ChangeUnknown}}
 	f := newPlanActionsFake("Proj", changes)
 	s := newPlanProjectScreen(f, "alpha", "proj-1")
 	planLoadInto(t, s, f)
@@ -462,7 +462,7 @@ func TestPlanProjectScreen_ToggleUnknownSwapsState(t *testing.T) {
 	// unknown resolution toggle which flips between Delete and Keep.
 	btn := fn(n)[1]
 	_ = btn.Trigger()
-	if s.unknownResolutions["p"] != app.UnknownDelete {
+	if s.unknownResolutions["p"] != appapi.UnknownDelete {
 		t.Fatalf("after first toggle: state = %v, want UnknownDelete", s.unknownResolutions["p"])
 	}
 
@@ -492,10 +492,10 @@ func TestPlanProjectScreen_OnApplyEmptyPreviewDoesNotCallSyncProject(t *testing.
 // silently rebaselining — bug 0033). Unknown rows still emit an explicit
 // UnknownKeep for every row because that default is a state no-op.
 func TestPlanProjectScreen_OnApplyEmptyMapOmitsDriftKeepAndKeepsUnknown(t *testing.T) {
-	changes := []app.FileChange{
-		{Path: "create.md", Kind: app.ChangeCreate},
-		{Path: "drift.md", Kind: app.ChangeDrift},
-		{Path: "unknown.md", Kind: app.ChangeUnknown},
+	changes := []appapi.FileChange{
+		{Path: "create.md", Kind: appapi.ChangeCreate},
+		{Path: "drift.md", Kind: appapi.ChangeDrift},
+		{Path: "unknown.md", Kind: appapi.ChangeUnknown},
 	}
 	f := newPlanActionsFake("Proj", changes)
 	s := newPlanProjectScreen(f, "alpha", "proj-1")
@@ -522,32 +522,32 @@ func TestPlanProjectScreen_OnApplyEmptyMapOmitsDriftKeepAndKeepsUnknown(t *testi
 	if len(in.Drift) != 0 {
 		t.Errorf("Drift = %+v, want [] (untouched drift must not emit a resolution)", in.Drift)
 	}
-	if len(in.Unknown) != 1 || in.Unknown[0].Path != "unknown.md" || in.Unknown[0].Decision != app.UnknownKeep {
+	if len(in.Unknown) != 1 || in.Unknown[0].Path != "unknown.md" || in.Unknown[0].Decision != appapi.UnknownKeep {
 		t.Errorf("Unknown = %+v, want [{unknown.md keep}]", in.Unknown)
 	}
 }
 
 func TestPlanProjectScreen_OnApplyWithSelectionsBuildsCorrectSlices(t *testing.T) {
-	changes := []app.FileChange{
-		{Path: "a/drift.md", Kind: app.ChangeDrift},
-		{Path: "b/unknown.md", Kind: app.ChangeUnknown},
-		{Path: "c/create.md", Kind: app.ChangeCreate},
+	changes := []appapi.FileChange{
+		{Path: "a/drift.md", Kind: appapi.ChangeDrift},
+		{Path: "b/unknown.md", Kind: appapi.ChangeUnknown},
+		{Path: "c/create.md", Kind: appapi.ChangeCreate},
 	}
 	f := newPlanActionsFake("Proj", changes)
 	s := newPlanProjectScreen(f, "alpha", "proj-1")
 	planLoadInto(t, s, f)
-	s.driftResolutions["a/drift.md"] = app.DriftOverwrite
-	s.unknownResolutions["b/unknown.md"] = app.UnknownDelete
+	s.driftResolutions["a/drift.md"] = appapi.DriftOverwrite
+	s.unknownResolutions["b/unknown.md"] = appapi.UnknownDelete
 
 	_ = s.onApply()()
 	if len(f.syncInputs) != 1 {
 		t.Fatalf("syncInputs len = %d, want 1", len(f.syncInputs))
 	}
 	in := f.syncInputs[0]
-	if len(in.Drift) != 1 || in.Drift[0].Path != "a/drift.md" || in.Drift[0].Decision != app.DriftOverwrite {
+	if len(in.Drift) != 1 || in.Drift[0].Path != "a/drift.md" || in.Drift[0].Decision != appapi.DriftOverwrite {
 		t.Errorf("Drift = %+v, want [{a/drift.md overwrite}]", in.Drift)
 	}
-	if len(in.Unknown) != 1 || in.Unknown[0].Path != "b/unknown.md" || in.Unknown[0].Decision != app.UnknownDelete {
+	if len(in.Unknown) != 1 || in.Unknown[0].Path != "b/unknown.md" || in.Unknown[0].Decision != appapi.UnknownDelete {
 		t.Errorf("Unknown = %+v, want [{b/unknown.md delete}]", in.Unknown)
 	}
 }
@@ -568,9 +568,9 @@ func findPlanNode(n *treetable.Node, path string) *treetable.Node {
 }
 
 func TestBuildPlanTree_IgnoredFolderCollapsesAndDropsSlash(t *testing.T) {
-	changes := []app.FileChange{
-		{Path: "sub/a.md", Kind: app.ChangeUnknown},
-		{Path: "sub/b.md", Kind: app.ChangeUnknown},
+	changes := []appapi.FileChange{
+		{Path: "sub/a.md", Kind: appapi.ChangeUnknown},
+		{Path: "sub/b.md", Kind: appapi.ChangeUnknown},
 	}
 
 	open := buildPlanTree("Proj", changes, map[string]bool{}, nil)
@@ -599,7 +599,7 @@ func TestBuildPlanTree_IgnoredFolderCollapsesAndDropsSlash(t *testing.T) {
 }
 
 func TestPlanProjectScreen_ToggleIgnoreCollapsesAndRestores(t *testing.T) {
-	changes := []app.FileChange{{Path: "sub/a.md", Kind: app.ChangeUnknown}}
+	changes := []appapi.FileChange{{Path: "sub/a.md", Kind: appapi.ChangeUnknown}}
 	f := newPlanActionsFake("Proj", changes)
 	s := newPlanProjectScreen(f, "alpha", "proj-1")
 	planLoadInto(t, s, f)
@@ -623,9 +623,9 @@ func TestPlanProjectScreen_ToggleIgnoreCollapsesAndRestores(t *testing.T) {
 }
 
 func TestPlanProjectScreen_OnApplyForwardsIgnoredDirsSorted(t *testing.T) {
-	changes := []app.FileChange{
-		{Path: "b/x.md", Kind: app.ChangeUnknown},
-		{Path: "a/y.md", Kind: app.ChangeUnknown},
+	changes := []appapi.FileChange{
+		{Path: "b/x.md", Kind: appapi.ChangeUnknown},
+		{Path: "a/y.md", Kind: appapi.ChangeUnknown},
 	}
 	f := newPlanActionsFake("Proj", changes)
 	s := newPlanProjectScreen(f, "alpha", "proj-1")
@@ -713,24 +713,24 @@ func TestPlanProjectScreen_OnApplyFailureEmitsNotificationOnly(t *testing.T) {
 // actually reached a drift/unknown row (otherwise the inner uniqueness
 // would be trivial — only [Apply] and [Back] registered).
 func TestPlanProjectScreen_MnemonicUniquenessExhaustive(t *testing.T) {
-	changes := []app.FileChange{
-		{Path: "a/add.md", Kind: app.ChangeCreate},
-		{Path: "b/upd.md", Kind: app.ChangeUpdate},
-		{Path: "c/del.md", Kind: app.ChangeDelete},
-		{Path: "d/drift.md", Kind: app.ChangeDrift},
-		{Path: "e/unknown.md", Kind: app.ChangeUnknown},
+	changes := []appapi.FileChange{
+		{Path: "a/add.md", Kind: appapi.ChangeCreate},
+		{Path: "b/upd.md", Kind: appapi.ChangeUpdate},
+		{Path: "c/del.md", Kind: appapi.ChangeDelete},
+		{Path: "d/drift.md", Kind: appapi.ChangeDrift},
+		{Path: "e/unknown.md", Kind: appapi.ChangeUnknown},
 	}
 	type override struct {
-		drift   map[string]app.DriftDecision
-		unknown map[string]app.UnknownDecision
+		drift   map[string]appapi.DriftDecision
+		unknown map[string]appapi.UnknownDecision
 	}
 	overrides := []override{
 		{},
-		{drift: map[string]app.DriftDecision{"d/drift.md": app.DriftOverwrite}},
-		{unknown: map[string]app.UnknownDecision{"e/unknown.md": app.UnknownDelete}},
+		{drift: map[string]appapi.DriftDecision{"d/drift.md": appapi.DriftOverwrite}},
+		{unknown: map[string]appapi.UnknownDecision{"e/unknown.md": appapi.UnknownDelete}},
 		{
-			drift:   map[string]app.DriftDecision{"d/drift.md": app.DriftOverwrite},
-			unknown: map[string]app.UnknownDecision{"e/unknown.md": app.UnknownDelete},
+			drift:   map[string]appapi.DriftDecision{"d/drift.md": appapi.DriftOverwrite},
+			unknown: map[string]appapi.UnknownDecision{"e/unknown.md": appapi.UnknownDelete},
 		},
 	}
 	sawToggleLabel := false
@@ -786,7 +786,7 @@ func assertUniquePlanMnemonics(t *testing.T, set *mnemonic.Set, override, row in
 }
 
 func TestBuildPlanTree_InjectsPersistedIgnoredLeafAtSortedPosition(t *testing.T) {
-	changes := []app.FileChange{{Path: "a/file.md", Kind: app.ChangeCreate}}
+	changes := []appapi.FileChange{{Path: "a/file.md", Kind: appapi.ChangeCreate}}
 
 	root := buildPlanTree("Proj", changes, map[string]bool{}, []string{"a/ignored"})
 
@@ -813,7 +813,7 @@ func TestBuildPlanTree_InjectsPersistedIgnoredLeafAtSortedPosition(t *testing.T)
 }
 
 func TestPlanProjectScreen_ShowIgnoredTogglesVisibility(t *testing.T) {
-	f := newPlanActionsFake("Proj", []app.FileChange{{Path: "x.md", Kind: app.ChangeCreate}})
+	f := newPlanActionsFake("Proj", []appapi.FileChange{{Path: "x.md", Kind: appapi.ChangeCreate}})
 	f.preview.IgnoredPaths = []string{"sub"}
 	s := newPlanProjectScreen(f, "alpha", "proj-1")
 	planLoadInto(t, s, f)
@@ -832,7 +832,7 @@ func TestPlanProjectScreen_ShowIgnoredTogglesVisibility(t *testing.T) {
 }
 
 func TestPlanProjectScreen_ShownRowStaysPinnedAfterHide(t *testing.T) {
-	f := newPlanActionsFake("Proj", []app.FileChange{{Path: "x.md", Kind: app.ChangeCreate}})
+	f := newPlanActionsFake("Proj", []appapi.FileChange{{Path: "x.md", Kind: appapi.ChangeCreate}})
 	f.preview.IgnoredPaths = []string{"sub"}
 	s := newPlanProjectScreen(f, "alpha", "proj-1")
 	planLoadInto(t, s, f)
@@ -920,7 +920,7 @@ func TestPlanProjectScreen_ShowIgnoredButtonFlipsLabelAndMnemonic(t *testing.T) 
 }
 
 func TestPlanProjectScreen_OnApplyBuildsDesiredIgnoredSet(t *testing.T) {
-	changes := []app.FileChange{{Path: "live/u.md", Kind: app.ChangeUnknown}}
+	changes := []appapi.FileChange{{Path: "live/u.md", Kind: appapi.ChangeUnknown}}
 	f := newPlanActionsFake("Proj", changes)
 	f.preview.IgnoredPaths = []string{"keep", "drop"}
 	s := newPlanProjectScreen(f, "alpha", "proj-1")
@@ -974,9 +974,9 @@ func TestPlanProjectScreen_OnApplyPureIgnoreChangeApplies(t *testing.T) {
 // states and asserts the registered mnemonics stay unique, covering the new
 // 'g'/'h' (screen toggle) and 'w'/'i' (row) candidates.
 func TestPlanProjectScreen_MnemonicUniquenessOnPersistedIgnoredRow(t *testing.T) {
-	changes := []app.FileChange{
-		{Path: "d/drift.md", Kind: app.ChangeDrift},
-		{Path: "e/unknown.md", Kind: app.ChangeUnknown},
+	changes := []appapi.FileChange{
+		{Path: "d/drift.md", Kind: appapi.ChangeDrift},
+		{Path: "e/unknown.md", Kind: appapi.ChangeUnknown},
 	}
 	for state, unignore := range []bool{false, true} {
 		f := newPlanActionsFake("Proj", changes)
@@ -1016,9 +1016,9 @@ func TestPlanProjectScreen_MnemonicUniquenessOnPersistedIgnoredRow(t *testing.T)
 // cursor on the pinned row in both its [Show] ('w') and [Ignore] ('i') button
 // states and asserts 'g' coexists uniquely with the row rune plus 'a'/'b'.
 func TestPlanProjectScreen_MnemonicUniquenessOnPinnedRowWhileHidden(t *testing.T) {
-	changes := []app.FileChange{
-		{Path: "d/drift.md", Kind: app.ChangeDrift},
-		{Path: "e/unknown.md", Kind: app.ChangeUnknown},
+	changes := []appapi.FileChange{
+		{Path: "d/drift.md", Kind: appapi.ChangeDrift},
+		{Path: "e/unknown.md", Kind: appapi.ChangeUnknown},
 	}
 	for state, reignore := range []bool{false, true} {
 		f := newPlanActionsFake("Proj", changes)

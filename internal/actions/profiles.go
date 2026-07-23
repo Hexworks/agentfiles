@@ -1,7 +1,7 @@
 package actions
 
 import (
-	"github.com/hexworks/agentfiles/internal/app"
+	"github.com/hexworks/agentfiles/internal/appapi"
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/registry"
 )
@@ -10,7 +10,7 @@ import (
 // per-user project selections composed on the side. Per-profile load
 // errors are collapsed into a single errs.Errors so the action surface
 // stays uniform.
-func (a *Actions) LoadProfiles() ([]*app.LoadedProfile, errs.DomainError) {
+func (a *Actions) LoadProfiles() ([]*appapi.LoadedProfile, errs.DomainError) {
 	profiles, es := a.svc.LoadProfiles()
 	return collapse(profiles, es)
 }
@@ -19,7 +19,7 @@ func (a *Actions) LoadProfiles() ([]*app.LoadedProfile, errs.DomainError) {
 // aggregate for the given ref (id, name, or path). Callers read
 // project selections through the returned LoadedProfile — the profile
 // itself no longer carries them (ADR 0017).
-func (a *Actions) LoadProfile(in LoadProfileInput) (*app.LoadedProfile, errs.DomainError) {
+func (a *Actions) LoadProfile(in LoadProfileInput) (*appapi.LoadedProfile, errs.DomainError) {
 	return a.svc.LoadProfile(in.ProfileRef)
 }
 
