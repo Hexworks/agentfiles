@@ -14,10 +14,11 @@ Actions column width was bumped 22 → 26 to fit the widest legitimate combinati
 
 A small domain change carries the drift-row eligibility signal through to the
 TUI without asking it to inspect state.json: `sync.FileChange` and
-`appapi.FileChange` gain `AdoptEligible bool`, populated only for `ChangeDrift`
-rows whose state entry carries non-empty `AssetID` **and** `SourceRel` (v3
-provenance). The TUI degrades to bilean when the flag is false, so legacy v2
-entries no longer surface a doomed `[Adopt]` button; `sync.Apply` still returns
+`appapi.FileChange` gain an `AdoptProvenance struct{AssetID, SourceRel string}`,
+populated only for `ChangeDrift` rows whose state entry carries both keys (v3
+provenance). Its `Available()` method answers "may this row offer Adopt?"; the
+TUI degrades to bilean when it returns false, so legacy v2 entries no longer
+surface a doomed `[Adopt]` button. `sync.Apply` still returns
 `AdoptUnavailableError` as defense-in-depth.
 
 ## Decisions
@@ -32,10 +33,12 @@ entries no longer surface a doomed `[Adopt]` button; `sync.Apply` still returns
   legacy v2 entries flip to v3 on the next re-apply, so the missing `[Adopt]`
   is transient. Adding a badge would need to be removed once v2 is fully aged
   out.
-- `AdoptEligible` flag lives on `sync.FileChange` (not derived at TUI time from
+- `AdoptProvenance` lives on `sync.FileChange` (not derived at TUI time from
   `preview.ManagedState`) — **Why:** the boundary types intentionally hide
-  ManagedState from the TUI. Adding a flag to the boundary mirror keeps the
-  TUI ignorant of provenance schema while giving it the yes/no answer it needs.
+  ManagedState from the TUI. Adding it to the boundary mirror keeps the TUI
+  ignorant of provenance schema while giving it (via `Available()`) the answer
+  it needs. Carrying the keys rather than a bare bool keeps the shape symmetric
+  with `OwningAssetID` on unknown rows.
 
 ## Assumptions
 
@@ -59,9 +62,7 @@ entries no longer surface a doomed `[Adopt]` button; `sync.Apply` still returns
   `TestPlanProjectScreen_TreeActionsFnDriftAdoptRendersOpenAndKeepBtn`,
   `TestPlanProjectScreen_TreeActionsFnUnknownKeepRendersOpenAndDeleteBtn`,
   `TestPlanProjectScreen_TreeActionsFnUnknownDeleteRendersOpenAndKeepBtn`) were
-  rewritten or replaced. The old `MnemonicUniquenessExhaustive` sweep was kept
-  but extended to include Adopt and to seed `AdoptEligible=true` on the drift
-  row so the trilean button set is exercised.
+  rewritten or replaced.
 - No ADR / arc42 / glossary update. This is a rendering fix; the matrices in
   `tasks/current/0044_bug_show-non-selected-trilean-buttons/description.md`
   plus the test tables are the canonical spec.
@@ -150,8 +151,12 @@ func (s *planProjectScreen) driftToggleButtons(path string, adoptEligible bool) 
 }
 ```
 
-The unknown factory follows the same shape, gated on
-`s.unknownOwners[path] != ""` instead of `AdoptEligible`.
+The unknown factory follows the same shape, gated on the row's
+`OwningAssetID != ""` instead of adopt provenance.
+
+> The review fix-up below supersedes the two snippets above: the `AdoptEligible
+> bool` became an `AdoptProvenance` struct and the two hand-enumerated factories
+> were collapsed into one generic helper.
 
 ## Bump Actions column width
 
@@ -164,3 +169,32 @@ treetable.WithActions(treetable.Column{Title: "Actions", Width: 22}, s.treeActio
 // after — fits `[Open] [Overwrite] [Adopt]` (25 visible chars + 1 slack)
 treetable.WithActions(treetable.Column{Title: "Actions", Width: 26}, s.treeActionsFn()),
 ```
+
+## Review fix-up
+
+The 0044 review applied these cohesion/naming/test changes before merge:
+
+- **`AdoptEligible bool` → `AdoptProvenance struct{AssetID, SourceRel string}`**
+  on both `sync.FileChange` and `appapi.FileChange`, with an `Available()`
+  method. The drift row now carries the actual reverse-mapping keys (symmetric
+  with `OwningAssetID` on unknown rows) instead of a derived bool. The struct
+  name states the fact; the `appapi` doc is written in TUI-facing terms.
+- **`ManagedFileEntry.HasAdoptProvenance() bool`** is the single predicate for
+  `AssetID != "" && SourceRel != ""`, called by both `classifyDesired` (to seed
+  the drift row) and `classifyDriftAdopt` (to guard the reverse-write).
+- **`trileanToggleButtons[T comparable](...)`** — one generic helper holds the
+  "render the two non-selected options, bilean when ineligible" rule; the drift
+  and unknown factories delegate to it instead of hand-enumerating twin
+  `switch`es.
+- **`treeActionsFn`** reads both eligibility signals off the `FileChange` DTO
+  (`AdoptProvenance.Available()` for drift, `OwningAssetID != ""` for unknown).
+  The now-unread `unknownOwners` projection map was removed.
+- **Tests trimmed to the matrix walker + mnemonic sweep.** Removed the four
+  narrow `TreeActionsFn*KeepRenders*` per-state tests, `UnknownAdoptShownOnlyWhenOwnedByAsset`,
+  `ToggleUnknownSwapsState`, and `MnemonicUniquenessExhaustive` — each was a
+  subset of `TestPlanProjectRowButtonsMatchMatrix` / `TestPlanProjectMnemonicUniqueness`.
+  Dropped the dead `assertUniquePlanMnemonics` / `assertUniqueCaseInsensitiveMnemonics`
+  helpers (`Set.Add` already panics on any duplicate, so the walk is the guard).
+  Added `kindRegisterableDir` to the mnemonic sweep's `want` list so its row
+  predicate is load-bearing, and split `TestPlan_DriftAdoptEligibility_ZeroOnNonDriftKinds`
+  into four isolated `t.Run` subtests.

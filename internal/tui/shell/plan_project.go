@@ -131,13 +131,9 @@ type planProjectScreen struct {
 	// (appapi.UnknownDelete or appapi.UnknownAdopt). Same absence-as-
 	// default convention as driftResolutions, and the two distinct
 	// maps mirror the domain's two-enum decision space (see
-	// docs/architecture/12-glossary.md). UnknownAdopt is only
-	// offered when unknownOwners has a matching entry (ADR 0020).
+	// docs/architecture/12-glossary.md). UnknownAdopt is only offered
+	// when the row's FileChange.OwningAssetID is non-empty (ADR 0020).
 	unknownResolutions map[string]appapi.UnknownDecision
-	// unknownOwners is the path→OwningAssetID projection of the
-	// current preview; empty when the row is a fully-untracked file
-	// with no owning asset (Adopt is not offered for those).
-	unknownOwners map[string]string
 
 	tree           *treetable.Model
 	applyBtn       *mnemonic.Button
@@ -202,7 +198,6 @@ func newPlanProjectScreen(a planProjectActions, profileID, projectID string) *pl
 		projectID:          projectID,
 		driftResolutions:   map[string]appapi.DriftDecision{},
 		unknownResolutions: map[string]appapi.UnknownDecision{},
-		unknownOwners:      map[string]string{},
 		ignoredPaths:       map[string]bool{},
 		unignored:          map[string]bool{},
 		pinned:             map[string]bool{},
@@ -389,12 +384,6 @@ func (s *planProjectScreen) handleLoaded(m planProjectLoadedMsg) (Screen, tea.Cm
 	s.projectPath = m.proj.Path
 	s.preview = m.preview
 	s.registerableDirs = appapi.RegisterableDirs(m.preview.Changes)
-	s.unknownOwners = map[string]string{}
-	for _, ch := range m.preview.Changes {
-		if ch.Kind == appapi.ChangeUnknown && ch.OwningAssetID != "" {
-			s.unknownOwners[ch.Path] = ch.OwningAssetID
-		}
-	}
 	s.ignoredPaths = map[string]bool{}
 	s.persistedIgnored = append([]string(nil), m.preview.IgnoredPaths...)
 	slices.Sort(s.persistedIgnored)
@@ -618,9 +607,9 @@ func (s *planProjectScreen) treeActionsFn() treetable.ActionsFunc {
 		btns := []*mnemonic.Button{s.openFileBtn(d.path)}
 		switch d.change.Kind {
 		case appapi.ChangeDrift:
-			btns = append(btns, s.driftToggleButtons(d.path, d.change.AdoptEligible)...)
+			btns = append(btns, s.driftToggleButtons(d.path, d.change.AdoptProvenance.Available())...)
 		case appapi.ChangeUnknown:
-			btns = append(btns, s.unknownToggleButtons(d.path, s.unknownOwners[d.path] != "")...)
+			btns = append(btns, s.unknownToggleButtons(d.path, d.change.OwningAssetID != "")...)
 		}
 		return btns
 	}
@@ -655,20 +644,40 @@ func (s *planProjectScreen) openFileBtn(path string) *mnemonic.Button {
 // Adopt) so the mnemonics stay stable across states. See ADR 0015/0020
 // and the drift matrices in tasks/…/0044/description.md.
 func (s *planProjectScreen) driftToggleButtons(path string, adoptEligible bool) []*mnemonic.Button {
-	current := s.driftResolutions[path]
-	if !adoptEligible {
-		if current == appapi.DriftOverwrite {
-			return []*mnemonic.Button{s.driftBtnKeep(path)}
+	return trileanToggleButtons(
+		s.driftResolutions[path], appapi.DriftOverwrite, appapi.DriftAdopt,
+		func() *mnemonic.Button { return s.driftBtnKeep(path) },
+		func() *mnemonic.Button { return s.driftBtnOverwrite(path) },
+		func() *mnemonic.Button { return s.driftBtnAdopt(path) },
+		adoptEligible,
+	)
+}
+
+// trileanToggleButtons is the shared "render the two non-selected options"
+// rule behind both driftToggleButtons and unknownToggleButtons. It returns
+// the middle + adopt buttons when current is Keep, and Keep + the other one
+// otherwise, in severity-ascending order (Keep < mid < Adopt). When eligible
+// is false the row is bilean: only the single non-selected option between Keep
+// and mid is offered, and Adopt is never rendered. Keeping the table in one
+// place means a future decision change is edited once, not mirrored per kind.
+func trileanToggleButtons[T comparable](
+	current, mid, adopt T,
+	keepBtn, midBtn, adoptBtn func() *mnemonic.Button,
+	eligible bool,
+) []*mnemonic.Button {
+	if !eligible {
+		if current == mid {
+			return []*mnemonic.Button{keepBtn()}
 		}
-		return []*mnemonic.Button{s.driftBtnOverwrite(path)}
+		return []*mnemonic.Button{midBtn()}
 	}
 	switch current {
-	case appapi.DriftOverwrite:
-		return []*mnemonic.Button{s.driftBtnKeep(path), s.driftBtnAdopt(path)}
-	case appapi.DriftAdopt:
-		return []*mnemonic.Button{s.driftBtnKeep(path), s.driftBtnOverwrite(path)}
+	case mid:
+		return []*mnemonic.Button{keepBtn(), adoptBtn()}
+	case adopt:
+		return []*mnemonic.Button{keepBtn(), midBtn()}
 	}
-	return []*mnemonic.Button{s.driftBtnOverwrite(path), s.driftBtnAdopt(path)}
+	return []*mnemonic.Button{midBtn(), adoptBtn()}
 }
 
 func (s *planProjectScreen) driftBtnKeep(path string) *mnemonic.Button {
@@ -688,20 +697,13 @@ func (s *planProjectScreen) driftBtnAdopt(path string) *mnemonic.Button {
 // (`adoptEligible == false` — orphan) and trilean otherwise. Order is
 // severity-ascending (Keep < Delete < Adopt). See ADR 0020.
 func (s *planProjectScreen) unknownToggleButtons(path string, adoptEligible bool) []*mnemonic.Button {
-	current := s.unknownResolutions[path]
-	if !adoptEligible {
-		if current == appapi.UnknownDelete {
-			return []*mnemonic.Button{s.unknownBtnKeep(path)}
-		}
-		return []*mnemonic.Button{s.unknownBtnDelete(path)}
-	}
-	switch current {
-	case appapi.UnknownDelete:
-		return []*mnemonic.Button{s.unknownBtnKeep(path), s.unknownBtnAdopt(path)}
-	case appapi.UnknownAdopt:
-		return []*mnemonic.Button{s.unknownBtnKeep(path), s.unknownBtnDelete(path)}
-	}
-	return []*mnemonic.Button{s.unknownBtnDelete(path), s.unknownBtnAdopt(path)}
+	return trileanToggleButtons(
+		s.unknownResolutions[path], appapi.UnknownDelete, appapi.UnknownAdopt,
+		func() *mnemonic.Button { return s.unknownBtnKeep(path) },
+		func() *mnemonic.Button { return s.unknownBtnDelete(path) },
+		func() *mnemonic.Button { return s.unknownBtnAdopt(path) },
+		adoptEligible,
+	)
 }
 
 func (s *planProjectScreen) unknownBtnKeep(path string) *mnemonic.Button {

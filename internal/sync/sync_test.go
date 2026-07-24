@@ -1312,8 +1312,8 @@ func TestPlan_CorruptStateWhitespaceOnlyAssetID_ReturnsTypedError(t *testing.T) 
 }
 
 // TestPlan_DriftAdoptEligibility_TrueOnV3StateEntry pins the drift
-// row's AdoptEligible flag: a state entry with both AssetID and
-// SourceRel populated is v3 provenance, so Adopt is a legal choice.
+// row's AdoptProvenance: a state entry with both AssetID and SourceRel
+// populated is v3 provenance, so Available() reports Adopt is legal.
 func TestPlan_DriftAdoptEligibility_TrueOnV3StateEntry(t *testing.T) {
 	projectRoot := t.TempDir()
 	loaded, proj := setupProfileAndProject(t, projectRoot)
@@ -1332,8 +1332,11 @@ func TestPlan_DriftAdoptEligibility_TrueOnV3StateEntry(t *testing.T) {
 	if ch.Kind != ChangeDrift {
 		t.Fatalf("kind = %q, want drift", ch.Kind)
 	}
-	if !ch.AdoptEligible {
-		t.Errorf("AdoptEligible = false, want true for v3 state entry")
+	if !ch.AdoptProvenance.Available() {
+		t.Errorf("AdoptProvenance.Available() = false, want true for v3 state entry")
+	}
+	if ch.AdoptProvenance.AssetID != "base" || ch.AdoptProvenance.SourceRel != "AGENTS.md" {
+		t.Errorf("AdoptProvenance = %+v, want {base AGENTS.md}", ch.AdoptProvenance)
 	}
 }
 
@@ -1357,75 +1360,83 @@ func TestPlan_DriftAdoptEligibility_FalseOnV2LegacyEntry(t *testing.T) {
 	if ch.Kind != ChangeDrift {
 		t.Fatalf("kind = %q, want drift", ch.Kind)
 	}
-	if ch.AdoptEligible {
-		t.Errorf("AdoptEligible = true, want false for legacy v2 entry")
+	if ch.AdoptProvenance.Available() {
+		t.Errorf("AdoptProvenance.Available() = true, want false for legacy v2 entry")
 	}
 }
 
 // TestPlan_DriftAdoptEligibility_ZeroOnNonDriftKinds pins that
-// AdoptEligible is the drift-only flag: create / update / unknown /
-// delete rows all carry the zero value (false).
+// AdoptProvenance is drift-only: create / update / unknown / delete rows
+// all carry the zero value, so Available() is false. Each ChangeKind is
+// its own subtest with an isolated fixture so a single-branch failure
+// names itself instead of leaking into the others.
 func TestPlan_DriftAdoptEligibility_ZeroOnNonDriftKinds(t *testing.T) {
-	// First-apply fixture — every rendered file surfaces as
-	// ChangeCreate. AdoptEligible must stay false on those.
-	{
+	// assertZeroProvenance fails when a row carries any adopt provenance.
+	assertZeroProvenance := func(t *testing.T, ch FileChange, kind ChangeKind) {
+		t.Helper()
+		if ch.Kind != kind {
+			t.Fatalf("kind = %q, want %q", ch.Kind, kind)
+		}
+		if ch.AdoptProvenance != (AdoptProvenance{}) {
+			t.Errorf("%s AdoptProvenance = %+v, want zero", kind, ch.AdoptProvenance)
+		}
+	}
+
+	// nonDriftFixture builds a project that produces one ChangeUpdate
+	// (rendered body changed under the same baseline hash), one
+	// ChangeUnknown (stray file inside a managed surface), and one
+	// ChangeDelete (state-recorded file missing from desired), then
+	// returns the plan. Each subtest reads its own row off the same
+	// isolated fixture.
+	nonDriftFixture := func(t *testing.T) *Preview {
+		t.Helper()
+		projectRoot := t.TempDir()
+		loaded, proj := setupProfileAndProject(t, projectRoot)
+		// On-disk AGENTS.md matches the prior baseline hash, so the file
+		// is neither drift (hash matches baseline) nor create (file
+		// exists) — the classifier returns ChangeUpdate.
+		if err := os.WriteFile(filepath.Join(projectRoot, "AGENTS.md"), []byte("baseline"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Join(projectRoot, ".codex"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(projectRoot, ".codex", "stray.txt"), []byte("stray"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		writeStateEntries(t, projectRoot, map[string]ManagedFileEntry{
+			"AGENTS.md":      {Hash: hashOf("baseline"), AssetID: "base", SourceRel: "AGENTS.md"},
+			"gone-from-plan": {Hash: "stale", AssetID: "base", SourceRel: "gone"},
+		}, nil)
+		preview, err := Plan(loaded, proj)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return preview
+	}
+
+	t.Run("ChangeCreate", func(t *testing.T) {
 		projectRoot := t.TempDir()
 		loaded, proj := setupProfileAndProject(t, projectRoot)
 		preview, err := Plan(loaded, proj)
 		if err != nil {
 			t.Fatal(err)
 		}
-		ch := findChange(t, preview.Changes, "AGENTS.md")
-		if ch.Kind != ChangeCreate {
-			t.Fatalf("first-apply kind = %q, want create", ch.Kind)
-		}
-		if ch.AdoptEligible {
-			t.Errorf("ChangeCreate AdoptEligible = true, want false")
-		}
-	}
-	// Fixture that produces one ChangeUpdate (rendered body changed
-	// under the same baseline hash) plus a ChangeUnknown (stray file
-	// inside a managed surface) plus a ChangeDelete (state-recorded
-	// file missing from desired). All three carry AdoptEligible=false.
-	projectRoot := t.TempDir()
-	loaded, proj := setupProfileAndProject(t, projectRoot)
-	// On-disk AGENTS.md matches the prior baseline hash, so with a
-	// desired body of agentsDocBody ("wanted") the file is neither
-	// drift (hash matches baseline) nor create (file exists) — the
-	// classifier returns ChangeUpdate.
-	if err := os.WriteFile(filepath.Join(projectRoot, "AGENTS.md"), []byte("baseline"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Join(projectRoot, ".codex"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	// Stray file inside .codex surfaces as ChangeUnknown.
-	if err := os.WriteFile(filepath.Join(projectRoot, ".codex", "stray.txt"), []byte("stray"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	writeStateEntries(t, projectRoot, map[string]ManagedFileEntry{
-		"AGENTS.md":      {Hash: hashOf("baseline"), AssetID: "base", SourceRel: "AGENTS.md"},
-		"gone-from-plan": {Hash: "stale", AssetID: "base", SourceRel: "gone"},
-	}, nil)
+		assertZeroProvenance(t, findChange(t, preview.Changes, "AGENTS.md"), ChangeCreate)
+	})
 
-	preview, err := Plan(loaded, proj)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []struct {
-		path string
-		kind ChangeKind
-	}{
-		{"AGENTS.md", ChangeUpdate},
-		{".codex/stray.txt", ChangeUnknown},
-		{"gone-from-plan", ChangeDelete},
-	} {
-		ch := findChange(t, preview.Changes, want.path)
-		if ch.Kind != want.kind {
-			t.Errorf("%s kind = %q, want %q", want.path, ch.Kind, want.kind)
-		}
-		if ch.AdoptEligible {
-			t.Errorf("%s (%s) AdoptEligible = true, want false", want.path, want.kind)
-		}
-	}
+	t.Run("ChangeUpdate", func(t *testing.T) {
+		preview := nonDriftFixture(t)
+		assertZeroProvenance(t, findChange(t, preview.Changes, "AGENTS.md"), ChangeUpdate)
+	})
+
+	t.Run("ChangeUnknown", func(t *testing.T) {
+		preview := nonDriftFixture(t)
+		assertZeroProvenance(t, findChange(t, preview.Changes, ".codex/stray.txt"), ChangeUnknown)
+	})
+
+	t.Run("ChangeDelete", func(t *testing.T) {
+		preview := nonDriftFixture(t)
+		assertZeroProvenance(t, findChange(t, preview.Changes, "gone-from-plan"), ChangeDelete)
+	})
 }

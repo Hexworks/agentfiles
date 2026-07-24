@@ -69,12 +69,25 @@ type FileChange struct {
 	// rows: the TUI offers UnknownAdopt only when this is non-empty,
 	// matching sync's reverse-mapping table (ADR 0020).
 	OwningAssetID string
-	// AdoptEligible mirrors sync.FileChange.AdoptEligible: populated only
-	// for ChangeDrift rows, true iff the state entry carries v3
-	// provenance so Adopt is a legal choice. The Plan Project screen
-	// uses it to degrade a drift row's action buttons to bilean when
-	// Adopt is not available.
-	AdoptEligible bool
+	// AdoptProvenance carries the keys the Plan Project screen needs to
+	// decide a ChangeDrift row's action buttons. Available() is true when
+	// the row may offer the [Adopt] button; when false the screen renders a
+	// bilean toggle instead so the user cannot pick a doomed Adopt. Mirrors
+	// sync.FileChange.AdoptProvenance.
+	AdoptProvenance AdoptProvenance
+}
+
+// AdoptProvenance is the boundary mirror of sync.AdoptProvenance: the keys
+// that make Adopt a legal choice on a ChangeDrift row. A zero value means
+// Adopt is unavailable for the row.
+type AdoptProvenance struct {
+	AssetID   string
+	SourceRel string
+}
+
+// Available reports whether the drift row may offer the [Adopt] button.
+func (p AdoptProvenance) Available() bool {
+	return p.AssetID != "" && p.SourceRel != ""
 }
 
 // Preview is the boundary mirror of sync.Preview. It carries the change

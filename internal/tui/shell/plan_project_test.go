@@ -263,73 +263,6 @@ func TestPlanProjectScreen_ActionValueReflectsResolutionMap(t *testing.T) {
 	}
 }
 
-// TestPlanProjectScreen_TreeActionsFnDriftBileanKeepRendersOpenAndOverwrite
-// covers the legacy v2 drift row (AdoptEligible=false): a bilean toggle
-// that offers only [Overwrite] when Keep is selected.
-func TestPlanProjectScreen_TreeActionsFnDriftBileanKeepRendersOpenAndOverwrite(t *testing.T) {
-	f := newPlanActionsFake("Proj", nil)
-	s := newPlanProjectScreen(f, "alpha", "proj-1")
-	fn := s.treeActionsFn()
-	n := &treetable.Node{Data: planNode{kind: planNodeFile, path: "p", change: appapi.FileChange{Path: "p", Kind: appapi.ChangeDrift}}}
-	got := fn(n)
-	if len(got) != 2 {
-		t.Fatalf("got %d buttons, want 2", len(got))
-	}
-	assertBtn(t, got[0], "Open", 'o')
-	assertBtn(t, got[1], "Overwrite", 'w')
-}
-
-// TestPlanProjectScreen_TreeActionsFnDriftTrileanKeepRendersOpenOverwriteAdopt
-// covers the v3 drift row (AdoptEligible=true) at the default Keep
-// state: both non-selected options render as separate buttons.
-func TestPlanProjectScreen_TreeActionsFnDriftTrileanKeepRendersOpenOverwriteAdopt(t *testing.T) {
-	f := newPlanActionsFake("Proj", nil)
-	s := newPlanProjectScreen(f, "alpha", "proj-1")
-	fn := s.treeActionsFn()
-	n := &treetable.Node{Data: planNode{kind: planNodeFile, path: "p", change: appapi.FileChange{Path: "p", Kind: appapi.ChangeDrift, AdoptEligible: true}}}
-	got := fn(n)
-	if len(got) != 3 {
-		t.Fatalf("got %d buttons, want 3", len(got))
-	}
-	assertBtn(t, got[0], "Open", 'o')
-	assertBtn(t, got[1], "Overwrite", 'w')
-	assertBtn(t, got[2], "Adopt", 't')
-}
-
-// TestPlanProjectScreen_TreeActionsFnUnknownBileanKeepRendersOpenDelete
-// covers the orphan unknown row (no owning asset): only [Delete] beside
-// [Open].
-func TestPlanProjectScreen_TreeActionsFnUnknownBileanKeepRendersOpenDelete(t *testing.T) {
-	f := newPlanActionsFake("Proj", nil)
-	s := newPlanProjectScreen(f, "alpha", "proj-1")
-	fn := s.treeActionsFn()
-	n := &treetable.Node{Data: planNode{kind: planNodeFile, path: "p", change: appapi.FileChange{Path: "p", Kind: appapi.ChangeUnknown}}}
-	got := fn(n)
-	if len(got) != 2 {
-		t.Fatalf("got %d buttons, want 2", len(got))
-	}
-	assertBtn(t, got[0], "Open", 'o')
-	assertBtn(t, got[1], "Delete", 'd')
-}
-
-// TestPlanProjectScreen_TreeActionsFnUnknownTrileanKeepRendersOpenDeleteAdopt
-// covers the owned unknown row: both non-selected trilean options land
-// beside [Open]. Owner is seeded on the screen via unknownOwners.
-func TestPlanProjectScreen_TreeActionsFnUnknownTrileanKeepRendersOpenDeleteAdopt(t *testing.T) {
-	f := newPlanActionsFake("Proj", nil)
-	s := newPlanProjectScreen(f, "alpha", "proj-1")
-	s.unknownOwners["p"] = "foo"
-	fn := s.treeActionsFn()
-	n := &treetable.Node{Data: planNode{kind: planNodeFile, path: "p", change: appapi.FileChange{Path: "p", Kind: appapi.ChangeUnknown, OwningAssetID: "foo"}}}
-	got := fn(n)
-	if len(got) != 3 {
-		t.Fatalf("got %d buttons, want 3", len(got))
-	}
-	assertBtn(t, got[0], "Open", 'o')
-	assertBtn(t, got[1], "Delete", 'd')
-	assertBtn(t, got[2], "Adopt", 't')
-}
-
 func TestPlanProjectScreen_TreeActionsFnFileRowsAlwaysGetOpen(t *testing.T) {
 	f := newPlanActionsFake("Proj", nil)
 	s := newPlanProjectScreen(f, "alpha", "proj-1")
@@ -441,39 +374,6 @@ func TestPlanProjectScreen_AfterRegisterAssetCancelDoesNothing(t *testing.T) {
 	}
 }
 
-// TestPlanProjectScreen_UnknownAdoptShownOnlyWhenOwnedByAsset pins the
-// ADR 0020 gate on the unknown row: [Adopt] is offered only when the
-// change carries an OwningAssetID (unknown sits inside a known asset
-// projection dir). Superseded in coverage by
-// TestPlanProjectRowButtonsMatchMatrix, kept as a targeted smoke test
-// for the orphan / owned split.
-func TestPlanProjectScreen_UnknownAdoptShownOnlyWhenOwnedByAsset(t *testing.T) {
-	changes := []appapi.FileChange{
-		{Path: "owned.md", Kind: appapi.ChangeUnknown, OwningAssetID: "foo"},
-		{Path: "orphan.md", Kind: appapi.ChangeUnknown},
-	}
-	f := newPlanActionsFake("Proj", changes)
-	s := newPlanProjectScreen(f, "alpha", "proj-1")
-	planLoadInto(t, s, f)
-
-	fn := s.treeActionsFn()
-
-	ownedNode := &treetable.Node{Data: planNode{kind: planNodeFile, path: "owned.md", change: changes[0]}}
-	if got := fn(ownedNode); len(got) != 3 {
-		t.Fatalf("owned Keep-state buttons = %d, want 3 (Open+Delete+Adopt)", len(got))
-	} else {
-		assertBtn(t, got[1], "Delete", 'd')
-		assertBtn(t, got[2], "Adopt", 't')
-	}
-
-	orphanNode := &treetable.Node{Data: planNode{kind: planNodeFile, path: "orphan.md", change: changes[1]}}
-	if got := fn(orphanNode); len(got) != 2 {
-		t.Fatalf("orphan Keep-state buttons = %d, want 2 (Open+Delete)", len(got))
-	} else {
-		assertBtn(t, got[1], "Delete", 'd')
-	}
-}
-
 // TestPlanProjectScreen_ApplyEmitsAdoptResolutions pins that onApply
 // forwards DriftAdopt and UnknownAdopt selections to the SyncProject
 // action as-is, mirroring the existing Overwrite/Delete emission.
@@ -504,35 +404,6 @@ func TestPlanProjectScreen_ApplyEmitsAdoptResolutions(t *testing.T) {
 	}
 	if adopts != 1 {
 		t.Errorf("Unknown = %+v, want one adopt entry for u/unknown.md", in.Unknown)
-	}
-}
-
-// TestPlanProjectScreen_ToggleUnknownSwapsState pins the bilean orphan
-// row: pressing [Delete] sets UnknownDelete; pressing [Keep] clears the
-// map (absence == Keep).
-func TestPlanProjectScreen_ToggleUnknownSwapsState(t *testing.T) {
-	changes := []appapi.FileChange{{Path: "p", Kind: appapi.ChangeUnknown}}
-	f := newPlanActionsFake("Proj", changes)
-	s := newPlanProjectScreen(f, "alpha", "proj-1")
-	planLoadInto(t, s, f)
-
-	fn := s.treeActionsFn()
-	n := &treetable.Node{Data: planNode{kind: planNodeFile, path: "p", change: changes[0]}}
-
-	// Keep-state renders [Open, Delete]. Press [Delete] → UnknownDelete.
-	btns := fn(n)
-	assertBtn(t, btns[1], "Delete", 'd')
-	_ = btns[1].Trigger()
-	if s.unknownResolutions["p"] != appapi.UnknownDelete {
-		t.Fatalf("after Delete: state = %v, want UnknownDelete", s.unknownResolutions["p"])
-	}
-
-	// Delete-state renders [Open, Keep]. Press [Keep] → map absence.
-	btns = fn(n)
-	assertBtn(t, btns[1], "Keep", 'p')
-	_ = btns[1].Trigger()
-	if _, present := s.unknownResolutions["p"]; present {
-		t.Fatalf("after Keep: state still present (%v), want absent", s.unknownResolutions["p"])
 	}
 }
 
@@ -769,83 +640,6 @@ func TestPlanProjectScreen_OnApplyFailureEmitsNotificationOnly(t *testing.T) {
 	}
 }
 
-// TestPlanProjectScreen_MnemonicUniquenessExhaustive walks every cursor
-// row and every state-override combination and asserts every registered
-// button has a unique mnemonic rune. The candidate alphabet across all
-// states is {o, w, p, t, d, a, b, g}. An outer assertion verifies the
-// walk actually reached a drift/unknown row (otherwise the inner
-// uniqueness would be trivial — only [Apply] and [Back] registered).
-func TestPlanProjectScreen_MnemonicUniquenessExhaustive(t *testing.T) {
-	changes := []appapi.FileChange{
-		{Path: "a/add.md", Kind: appapi.ChangeCreate},
-		{Path: "b/upd.md", Kind: appapi.ChangeUpdate},
-		{Path: "c/del.md", Kind: appapi.ChangeDelete},
-		{Path: "d/drift.md", Kind: appapi.ChangeDrift, AdoptEligible: true},
-		{Path: "e/unknown.md", Kind: appapi.ChangeUnknown, OwningAssetID: "foo"},
-	}
-	type override struct {
-		drift   map[string]appapi.DriftDecision
-		unknown map[string]appapi.UnknownDecision
-	}
-	overrides := []override{
-		{},
-		{drift: map[string]appapi.DriftDecision{"d/drift.md": appapi.DriftOverwrite}},
-		{drift: map[string]appapi.DriftDecision{"d/drift.md": appapi.DriftAdopt}},
-		{unknown: map[string]appapi.UnknownDecision{"e/unknown.md": appapi.UnknownDelete}},
-		{unknown: map[string]appapi.UnknownDecision{"e/unknown.md": appapi.UnknownAdopt}},
-	}
-	sawToggleLabel := false
-	for oi, ov := range overrides {
-		f := newPlanActionsFake("Proj", changes)
-		s := newPlanProjectScreen(f, "alpha", "proj-1")
-		planLoadInto(t, s, f)
-		for k, v := range ov.drift {
-			s.driftResolutions[k] = v
-		}
-		for k, v := range ov.unknown {
-			s.unknownResolutions[k] = v
-		}
-		s.tree.SetRoot(buildPlanTree(s.projectName, s.preview.Changes, s.ignoredPaths, s.visiblePersistedIgnored()))
-		rowMax := len(changes) + 5
-		for row := 0; row < rowMax; row++ {
-			if row > 0 {
-				_, _ = s.tree.Update(tea.KeyPressMsg{Code: tea.KeyDown})
-			}
-			func() {
-				defer func() {
-					if r := recover(); r != nil {
-						t.Errorf("rebuildSet panic at override=%d row=%d: %v", oi, row, r)
-					}
-				}()
-				s.rebuildSet()
-			}()
-			assertUniquePlanMnemonics(t, s.set, oi, row)
-			for _, b := range s.set.Buttons() {
-				switch b.Label() {
-				case "Overwrite", "Keep", "Delete", "Adopt":
-					sawToggleLabel = true
-				}
-			}
-		}
-	}
-	if !sawToggleLabel {
-		t.Error("mnemonic walk never landed on a drift/unknown row — cursor stuck on header/non-toggle rows")
-	}
-}
-
-func assertUniquePlanMnemonics(t *testing.T, set *mnemonic.Set, override, row int) {
-	t.Helper()
-	seen := make(map[rune]string)
-	for _, b := range set.Buttons() {
-		r := b.Mnemonic()
-		if prev, dup := seen[r]; dup {
-			t.Errorf("duplicate mnemonic %q at override=%d row=%d: %q vs %q", r, override, row, prev, b.Label())
-			continue
-		}
-		seen[r] = b.Label()
-	}
-}
-
 func TestBuildPlanTree_InjectsPersistedIgnoredLeafAtSortedPosition(t *testing.T) {
 	changes := []appapi.FileChange{{Path: "a/file.md", Kind: appapi.ChangeCreate}}
 
@@ -1039,7 +833,7 @@ func TestPlanProjectScreen_MnemonicUniquenessOnPersistedIgnoredRow(t *testing.T)
 		{Path: "d/drift.md", Kind: appapi.ChangeDrift},
 		{Path: "e/unknown.md", Kind: appapi.ChangeUnknown},
 	}
-	for state, unignore := range []bool{false, true} {
+	for _, unignore := range []bool{false, true} {
 		f := newPlanActionsFake("Proj", changes)
 		f.preview.IgnoredPaths = []string{"zsub"}
 		s := newPlanProjectScreen(f, "alpha", "proj-1")
@@ -1055,8 +849,9 @@ func TestPlanProjectScreen_MnemonicUniquenessOnPersistedIgnoredRow(t *testing.T)
 			if row > 0 {
 				_, _ = s.tree.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 			}
+			// rebuildSet calls Set.Add, which panics on any case-insensitive
+			// duplicate mnemonic — the walk itself is the uniqueness guard.
 			s.rebuildSet()
-			assertUniquePlanMnemonics(t, s.set, state, row)
 			if n := s.tree.SelectedNode(); n != nil {
 				if d, ok := n.Data.(planNode); ok && d.persistedIgnored {
 					found = true
@@ -1081,7 +876,7 @@ func TestPlanProjectScreen_MnemonicUniquenessOnPinnedRowWhileHidden(t *testing.T
 		{Path: "d/drift.md", Kind: appapi.ChangeDrift},
 		{Path: "e/unknown.md", Kind: appapi.ChangeUnknown},
 	}
-	for state, reignore := range []bool{false, true} {
+	for _, reignore := range []bool{false, true} {
 		f := newPlanActionsFake("Proj", changes)
 		f.preview.IgnoredPaths = []string{"zsub"}
 		s := newPlanProjectScreen(f, "alpha", "proj-1")
@@ -1102,8 +897,9 @@ func TestPlanProjectScreen_MnemonicUniquenessOnPinnedRowWhileHidden(t *testing.T
 			if row > 0 {
 				_, _ = s.tree.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 			}
+			// rebuildSet calls Set.Add, which panics on any case-insensitive
+			// duplicate mnemonic — the walk itself is the uniqueness guard.
 			s.rebuildSet()
-			assertUniquePlanMnemonics(t, s.set, state, row)
 			if n := s.tree.SelectedNode(); n != nil {
 				if d, ok := n.Data.(planNode); ok && d.persistedIgnored {
 					found = true
@@ -1137,7 +933,7 @@ func TestPlanProjectRowButtonsMatchMatrix(t *testing.T) {
 		wantUnknownResolutions []appapi.UnknownDecision
 	}
 	cases := []matrixRow{
-		// Drift trilean (AdoptEligible == true) — description.md:53-59.
+		// Drift trilean (adoptEligible == true) — description.md:53-59.
 		{
 			name: "drift trilean Keep",
 			kind: appapi.ChangeDrift, adoptEligible: true, current: appapi.DriftKeep,
@@ -1156,7 +952,7 @@ func TestPlanProjectRowButtonsMatchMatrix(t *testing.T) {
 			wantLabels: []string{"Keep", "Overwrite"}, wantMnemonics: []rune{'p', 'w'},
 			wantDriftResolutions: []appapi.DriftDecision{appapi.DriftKeep, appapi.DriftOverwrite},
 		},
-		// Drift bilean (AdoptEligible == false) — description.md:61-66.
+		// Drift bilean (adoptEligible == false) — description.md:61-66.
 		{
 			name: "drift bilean Keep",
 			kind: appapi.ChangeDrift, adoptEligible: false, current: appapi.DriftKeep,
@@ -1212,14 +1008,15 @@ func TestPlanProjectRowButtonsMatchMatrix(t *testing.T) {
 			// Seed the current selection so the factory returns the
 			// non-selected options for that state.
 			if tc.kind == appapi.ChangeDrift {
-				ch.AdoptEligible = tc.adoptEligible
+				if tc.adoptEligible {
+					ch.AdoptProvenance = appapi.AdoptProvenance{AssetID: "base", SourceRel: path}
+				}
 				if tc.current != appapi.DriftKeep {
 					s.driftResolutions[path] = tc.current
 				}
 			} else {
 				if tc.adoptEligible {
 					ch.OwningAssetID = "foo"
-					s.unknownOwners[path] = "foo"
 				}
 				if tc.currentUnk != appapi.UnknownKeep {
 					s.unknownResolutions[path] = tc.currentUnk
@@ -1297,8 +1094,8 @@ func TestPlanProjectMnemonicUniqueness(t *testing.T) {
 		{Path: "add/f.md", Kind: appapi.ChangeCreate},
 		{Path: "upd/f.md", Kind: appapi.ChangeUpdate},
 		{Path: "del/f.md", Kind: appapi.ChangeDelete},
-		{Path: "drift-b/f.md", Kind: appapi.ChangeDrift, AdoptEligible: false},
-		{Path: "drift-t/f.md", Kind: appapi.ChangeDrift, AdoptEligible: true},
+		{Path: "drift-b/f.md", Kind: appapi.ChangeDrift},
+		{Path: "drift-t/f.md", Kind: appapi.ChangeDrift, AdoptProvenance: appapi.AdoptProvenance{AssetID: "base", SourceRel: "drift-t/f.md"}},
 		{Path: "owned/f.md", Kind: appapi.ChangeUnknown, OwningAssetID: "foo"},
 		{Path: "orphan/f.md", Kind: appapi.ChangeUnknown},
 		// A dir that becomes registerable (all-unknown subtree) so its
@@ -1353,7 +1150,7 @@ func TestPlanProjectMnemonicUniqueness(t *testing.T) {
 		case appapi.ChangeDelete:
 			return kindDelete, true
 		case appapi.ChangeDrift:
-			if d.change.AdoptEligible {
+			if d.change.AdoptProvenance.Available() {
 				return kindDriftTrilean, true
 			}
 			return kindDriftBilean, true
@@ -1366,7 +1163,7 @@ func TestPlanProjectMnemonicUniqueness(t *testing.T) {
 		return 0, false
 	}
 	saw := map[rowKind]bool{}
-	for oi, ov := range overrides {
+	for _, ov := range overrides {
 		f := newPlanActionsFake("Proj", changes)
 		f.preview.IgnoredPaths = []string{"persisted"}
 		s := newPlanProjectScreen(f, "alpha", "proj-1")
@@ -1389,8 +1186,9 @@ func TestPlanProjectMnemonicUniqueness(t *testing.T) {
 			if row > 0 {
 				_, _ = s.tree.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 			}
+			// rebuildSet calls Set.Add, which panics on any case-insensitive
+			// duplicate mnemonic — this walk asserts the panic never fires.
 			s.rebuildSet()
-			assertUniqueCaseInsensitiveMnemonics(t, s.set, oi, row)
 			if n := s.tree.SelectedNode(); n != nil {
 				if k, ok := kindOf(n); ok {
 					saw[k] = true
@@ -1402,29 +1200,12 @@ func TestPlanProjectMnemonicUniqueness(t *testing.T) {
 		kindCreate, kindUpdate, kindDelete,
 		kindDriftBilean, kindDriftTrilean,
 		kindUnknownOwned, kindUnknownOrphan,
-		kindPersistedIgnored,
+		kindPersistedIgnored, kindRegisterableDir,
 	}
 	for _, k := range want {
 		if !saw[k] {
 			t.Errorf("walk never visited row kind %d — cursor navigation regression", k)
 		}
-	}
-}
-
-func assertUniqueCaseInsensitiveMnemonics(t *testing.T, set *mnemonic.Set, override, row int) {
-	t.Helper()
-	seen := make(map[rune]string)
-	for _, b := range set.Buttons() {
-		r := b.Mnemonic()
-		low := r
-		if r >= 'A' && r <= 'Z' {
-			low = r + ('a' - 'A')
-		}
-		if prev, dup := seen[low]; dup {
-			t.Errorf("duplicate mnemonic %q at override=%d row=%d: %q vs %q", r, override, row, prev, b.Label())
-			continue
-		}
-		seen[low] = b.Label()
 	}
 }
 

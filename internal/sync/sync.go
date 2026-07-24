@@ -39,6 +39,16 @@ type ManagedFileEntry struct {
 	SourceRel string `json:"source_rel,omitempty"`
 }
 
+// HasAdoptProvenance reports whether the entry carries both reverse-mapping
+// keys (v3 provenance) that Adopt needs to write a local edit back into the
+// owning profile asset. Legacy v2 entries carry Hash only and return false.
+// It is the single source of truth for "is this entry adopt-ready", shared by
+// classifyDesired (to seed the drift row's provenance) and classifyDriftAdopt
+// (to guard the reverse-write). See ADR 0020.
+func (e ManagedFileEntry) HasAdoptProvenance() bool {
+	return e.AssetID != "" && e.SourceRel != ""
+}
+
 // UnmarshalJSON accepts either a JSON string (v2 legacy: `"deadbeef…"`
 // → {Hash: "deadbeef…"}) or the v3 object shape. Marshalling always
 // writes the v3 object. Adopt is disabled for v2 entries until a
@@ -216,14 +226,29 @@ type FileChange struct {
 	// the TUI may offer UnknownAdopt for the row and Apply resolves
 	// SourceRel from the reverse-mapping table (ADR 0020).
 	OwningAssetID string
-	// AdoptEligible is populated only for ChangeDrift rows. True iff the
-	// managed-state entry for the path carries non-empty AssetID and
-	// SourceRel (v3 provenance) so applyDrift can resolve the reverse
-	// write target. False for every other ChangeKind and for legacy v2
-	// state entries; the TUI degrades a drift row to bilean when this
-	// is false so users cannot pick a doomed DriftAdopt. See ADR 0020
-	// and the AdoptUnavailableError guard in applyDrift.
-	AdoptEligible bool
+	// AdoptProvenance carries the reverse-mapping keys for a ChangeDrift
+	// row: the AssetID and SourceRel applyDrift needs to write the local
+	// edit back into the owning profile asset. Populated only for
+	// ChangeDrift rows whose state entry is v3 (both keys present); zero
+	// for every other ChangeKind and for legacy v2 state entries.
+	// Available() reports whether Adopt is a legal choice; the TUI degrades
+	// a drift row to bilean when it is not, so users cannot pick a doomed
+	// DriftAdopt. See ADR 0020 and the AdoptUnavailableError guard in
+	// applyDrift.
+	AdoptProvenance AdoptProvenance
+}
+
+// AdoptProvenance holds the reverse-mapping keys that make DriftAdopt legal
+// for a drift row. A zero value (both keys empty) means Adopt is unavailable.
+type AdoptProvenance struct {
+	AssetID   string
+	SourceRel string
+}
+
+// Available reports whether both reverse-mapping keys are present, i.e. the
+// drift row may legally offer DriftAdopt.
+func (p AdoptProvenance) Available() bool {
+	return p.AssetID != "" && p.SourceRel != ""
 }
 
 // Preview is the bridge between render and apply.
@@ -346,12 +371,11 @@ func classifyDesired(file render.RenderedFile, desiredHash, projectPath string, 
 	}
 	entry := state.ManagedFiles[file.Path]
 	if entry.Hash != "" && entry.Hash != currentHash {
-		return FileChange{
-			Path:          file.Path,
-			Kind:          ChangeDrift,
-			Reason:        ReasonDriftDetected,
-			AdoptEligible: entry.AssetID != "" && entry.SourceRel != "",
-		}, false, nil
+		change := FileChange{Path: file.Path, Kind: ChangeDrift, Reason: ReasonDriftDetected}
+		if entry.HasAdoptProvenance() {
+			change.AdoptProvenance = AdoptProvenance{AssetID: entry.AssetID, SourceRel: entry.SourceRel}
+		}
+		return change, false, nil
 	}
 	return FileChange{Path: file.Path, Kind: ChangeUpdate, Reason: ReasonContentDiffers}, false, nil
 }
@@ -596,7 +620,7 @@ func (a *applyLoop) classifyDriftAdopt(change FileChange) {
 		return
 	}
 	prior := a.preview.ManagedState.ManagedFiles[change.Path]
-	if prior.AssetID == "" || prior.SourceRel == "" {
+	if !prior.HasAdoptProvenance() {
 		a.domainErrs = append(a.domainErrs, AdoptUnavailableError{
 			Path:   change.Path,
 			Reason: "legacy v2 state entry missing asset provenance",
