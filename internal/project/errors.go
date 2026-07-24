@@ -1,6 +1,10 @@
 package project
 
 import (
+	"fmt"
+	"strings"
+
+	"github.com/hexworks/agentfiles/internal/config"
 	"github.com/hexworks/agentfiles/internal/errs"
 )
 
@@ -36,3 +40,23 @@ func (NoEnabledAgentsError) Severity() errs.Severity {
 // ErrNoEnabledAgents is the canonical sentinel value of
 // NoEnabledAgentsError.
 var ErrNoEnabledAgents = NoEnabledAgentsError{}
+
+// UnknownEnabledAgentError reports a project manifest whose enabled_agents
+// slice names one or more agent ids not in the recognized set
+// (config.AllAgents). Every unknown id found is carried in Agents so the whole
+// batch is reported in one pass.
+type UnknownEnabledAgentError struct {
+	Agents []config.Agent
+}
+
+func (e UnknownEnabledAgentError) Error() string {
+	ids := make([]string, len(e.Agents))
+	for i, a := range e.Agents {
+		ids[i] = string(a)
+	}
+	return fmt.Sprintf("unknown enabled agent(s): %s", strings.Join(ids, ", "))
+}
+
+func (UnknownEnabledAgentError) Severity() errs.Severity {
+	return errs.SeverityError
+}

@@ -2,7 +2,9 @@ package asset
 
 import (
 	"fmt"
+	"strings"
 
+	"github.com/hexworks/agentfiles/internal/config"
 	"github.com/hexworks/agentfiles/internal/errs"
 )
 
@@ -87,6 +89,26 @@ func (e UnsupportedAssetTypeError) Error() string {
 }
 
 func (UnsupportedAssetTypeError) Severity() errs.Severity {
+	return errs.SeverityError
+}
+
+// UnknownCompatibleAgentError reports a manifest that names one or more agent
+// ids not in the recognized set (config.AllAgents) — via CompatibleAgents or a
+// projection's Agent. Every unknown id found is carried in Agents so the whole
+// batch is reported in one pass rather than one error per bad id.
+type UnknownCompatibleAgentError struct {
+	Agents []config.Agent
+}
+
+func (e UnknownCompatibleAgentError) Error() string {
+	ids := make([]string, len(e.Agents))
+	for i, a := range e.Agents {
+		ids[i] = string(a)
+	}
+	return fmt.Sprintf("unknown compatible agent(s): %s", strings.Join(ids, ", "))
+}
+
+func (UnknownCompatibleAgentError) Severity() errs.Severity {
 	return errs.SeverityError
 }
 

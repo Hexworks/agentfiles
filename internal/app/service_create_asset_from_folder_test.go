@@ -9,6 +9,7 @@ import (
 
 	"github.com/hexworks/agentfiles/internal/appapi"
 	"github.com/hexworks/agentfiles/internal/asset"
+	"github.com/hexworks/agentfiles/internal/config"
 	"github.com/hexworks/agentfiles/internal/surfaces"
 )
 
@@ -28,7 +29,7 @@ func seedFolderRegisterProject(t *testing.T, files map[string]string) (svc *Serv
 	if err := os.MkdirAll(repoPath, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if _, addErrs := svc.AddProject(profileID, "Repo", repoPath, []string{"codex"}, nil); len(addErrs) > 0 {
+	if _, addErrs := svc.AddProject(profileID, "Repo", repoPath, []config.Agent{config.AgentCodex}, nil); len(addErrs) > 0 {
 		t.Fatalf("add project: %v", addErrs)
 	}
 	projectID = "repo"

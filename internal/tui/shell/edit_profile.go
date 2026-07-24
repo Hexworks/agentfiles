@@ -12,6 +12,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/actions"
 	"github.com/hexworks/agentfiles/internal/appapi"
 	"github.com/hexworks/agentfiles/internal/asset"
+	"github.com/hexworks/agentfiles/internal/config"
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/project"
 	"github.com/hexworks/agentfiles/internal/tui/components/focus"
@@ -600,7 +601,7 @@ func (s *editProfileScreen) onEditProject() tea.Cmd {
 	s.openModal(modals.NewEditProject(modals.EditProjectInput{
 		Name:          p.Name,
 		Path:          p.Path,
-		EnabledAgents: append([]string(nil), p.EnabledAgents...),
+		EnabledAgents: config.AgentStrings(p.EnabledAgents),
 	}), modalKindEditProject)
 	return s.modal.Init()
 }
@@ -795,7 +796,7 @@ func (s *editProfileScreen) afterRegisterProject(msg modal.ResolvedMsg) tea.Cmd 
 		return nil
 	}
 	s.pendingRegisterProjectName = draft.Name
-	s.pendingRegisterProjectAgents = append([]string(nil), draft.EnabledAgents...)
+	s.pendingRegisterProjectAgents = config.AgentStrings(draft.EnabledAgents)
 	profileID := s.profileID
 	successText := fmt.Sprintf("Project %q registered", draft.Name)
 	return func() tea.Msg {
@@ -834,7 +835,7 @@ func (s *editProfileScreen) afterEditProject(msg modal.ResolvedMsg) tea.Cmd {
 				ProjectID:     target.ID,
 				Name:          in.Name,
 				Path:          in.Path,
-				EnabledAgents: in.EnabledAgents,
+				EnabledAgents: config.ToAgents(in.EnabledAgents),
 			})
 			return err
 		},

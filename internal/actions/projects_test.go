@@ -22,7 +22,7 @@ func TestActions_AddProject_UnpacksInputs(t *testing.T) {
 		ProfileRef:    "personal",
 		Name:          "Repo",
 		Path:          repo,
-		EnabledAgents: []string{"codex"},
+		EnabledAgents: []config.Agent{config.AgentCodex},
 	})
 	if err != nil {
 		t.Fatalf("AddProject: %v", err)
@@ -42,7 +42,7 @@ func TestActions_AddProject_CollapsesValidationErrors(t *testing.T) {
 		ProfileRef:    "personal",
 		Name:          "Repo",
 		Path:          filepath.Join(f.Root, "repo"),
-		EnabledAgents: []string{"codex"},
+		EnabledAgents: []config.Agent{config.AgentCodex},
 		AssetIDs:      []string{"ghost-asset"},
 	})
 	if err == nil {
@@ -64,7 +64,7 @@ func TestActions_LoadProject_ReturnsManifest(t *testing.T) {
 		ProfileRef:    "personal",
 		Name:          "Repo",
 		Path:          filepath.Join(f.Root, "repo"),
-		EnabledAgents: []string{"codex"},
+		EnabledAgents: []config.Agent{config.AgentCodex},
 	}); addErr != nil {
 		t.Fatalf("seed: %v", addErr)
 	}
@@ -97,7 +97,7 @@ func TestActions_UpdateProject_PersistsChanges(t *testing.T) {
 		ProfileRef:    "personal",
 		Name:          "Repo",
 		Path:          filepath.Join(f.Root, "repo"),
-		EnabledAgents: []string{"codex"},
+		EnabledAgents: []config.Agent{config.AgentCodex},
 	}); addErr != nil {
 		t.Fatalf("seed: %v", addErr)
 	}
@@ -111,7 +111,7 @@ func TestActions_UpdateProject_PersistsChanges(t *testing.T) {
 		ProjectID:     p.ID,
 		Name:          p.Name,
 		Path:          p.Path,
-		EnabledAgents: []string{"codex", "claude-code"},
+		EnabledAgents: []config.Agent{config.AgentCodex, config.AgentClaudeCode},
 	}); err != nil {
 		t.Fatalf("UpdateProject: %v", err)
 	}
@@ -128,7 +128,7 @@ func TestActions_DeleteProject_RemovesManifestOnly(t *testing.T) {
 		ProfileRef:    "personal",
 		Name:          "Repo",
 		Path:          filepath.Join(f.Root, "repo"),
-		EnabledAgents: []string{"codex"},
+		EnabledAgents: []config.Agent{config.AgentCodex},
 	}); addErr != nil {
 		t.Fatalf("seed: %v", addErr)
 	}
@@ -152,7 +152,7 @@ func TestActions_PlanProject_ReturnsPreview(t *testing.T) {
 		ProfileRef:    "personal",
 		Name:          "Repo",
 		Path:          filepath.Join(f.Root, "repo"),
-		EnabledAgents: []string{"codex"},
+		EnabledAgents: []config.Agent{config.AgentCodex},
 	}); addErr != nil {
 		t.Fatalf("seed: %v", addErr)
 	}
@@ -193,7 +193,7 @@ func TestActions_SyncProject_AppliesAndReturnsPreview(t *testing.T) {
 		ProfileRef:    "personal",
 		Name:          "Repo",
 		Path:          filepath.Join(f.Root, "repo"),
-		EnabledAgents: []string{"codex"},
+		EnabledAgents: []config.Agent{config.AgentCodex},
 	}); addErr != nil {
 		t.Fatalf("seed: %v", addErr)
 	}
@@ -216,7 +216,7 @@ func TestActions_SyncProject_PassesDriftAndUnknownResolutions(t *testing.T) {
 		ProfileRef:    "personal",
 		Name:          "Repo",
 		Path:          filepath.Join(f.Root, "repo"),
-		EnabledAgents: []string{"codex"},
+		EnabledAgents: []config.Agent{config.AgentCodex},
 	}); addErr != nil {
 		t.Fatalf("seed: %v", addErr)
 	}
@@ -251,7 +251,7 @@ func TestActions_SyncProject_PersistsIgnoredPaths(t *testing.T) {
 		ProfileRef:    "personal",
 		Name:          "Repo",
 		Path:          repo,
-		EnabledAgents: []string{"codex"},
+		EnabledAgents: []config.Agent{config.AgentCodex},
 	}); addErr != nil {
 		t.Fatalf("seed: %v", addErr)
 	}

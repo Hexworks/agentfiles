@@ -9,6 +9,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/actions"
 	"github.com/hexworks/agentfiles/internal/app"
 	"github.com/hexworks/agentfiles/internal/asset"
+	"github.com/hexworks/agentfiles/internal/config"
 )
 
 func TestActions_LoadAsset_ReturnsExisting(t *testing.T) {
@@ -115,7 +116,7 @@ func TestActions_SelectAsset_AddsToProject(t *testing.T) {
 		t.Fatalf("seed asset: %v", err)
 	}
 	if _, addErrs := f.Svc.AddProject("personal", "Repo", filepath.Join(f.Root, "repo"),
-		[]string{"codex"}, nil); len(addErrs) > 0 {
+		[]config.Agent{config.AgentCodex}, nil); len(addErrs) > 0 {
 		t.Fatalf("seed project: %v", addErrs)
 	}
 
@@ -142,7 +143,7 @@ func TestActions_SelectAsset_IdempotentOnDuplicate(t *testing.T) {
 		t.Fatalf("seed asset: %v", err)
 	}
 	if _, addErrs := f.Svc.AddProject("personal", "Repo", filepath.Join(f.Root, "repo"),
-		[]string{"codex"}, []string{"agents"}); len(addErrs) > 0 {
+		[]config.Agent{config.AgentCodex}, []string{"agents"}); len(addErrs) > 0 {
 		t.Fatalf("seed project: %v", addErrs)
 	}
 
@@ -161,7 +162,7 @@ func TestActions_SelectAsset_IdempotentOnDuplicate(t *testing.T) {
 func TestActions_SelectAsset_MissingAssetReturnsAssetNotFoundError(t *testing.T) {
 	f := newFixture(t, withProfile())
 	if _, addErrs := f.Svc.AddProject("personal", "Repo", filepath.Join(f.Root, "repo"),
-		[]string{"codex"}, nil); len(addErrs) > 0 {
+		[]config.Agent{config.AgentCodex}, nil); len(addErrs) > 0 {
 		t.Fatalf("seed project: %v", addErrs)
 	}
 
@@ -205,7 +206,7 @@ func TestActions_UnselectAsset_RemovesFromProject(t *testing.T) {
 		t.Fatalf("seed asset: %v", err)
 	}
 	if _, addErrs := f.Svc.AddProject("personal", "Repo", filepath.Join(f.Root, "repo"),
-		[]string{"codex"}, []string{"agents"}); len(addErrs) > 0 {
+		[]config.Agent{config.AgentCodex}, []string{"agents"}); len(addErrs) > 0 {
 		t.Fatalf("seed project: %v", addErrs)
 	}
 
@@ -229,7 +230,7 @@ func TestActions_UnselectAsset_IdempotentOnMissingSelection(t *testing.T) {
 		t.Fatalf("seed asset: %v", err)
 	}
 	if _, addErrs := f.Svc.AddProject("personal", "Repo", filepath.Join(f.Root, "repo"),
-		[]string{"codex"}, nil); len(addErrs) > 0 {
+		[]config.Agent{config.AgentCodex}, nil); len(addErrs) > 0 {
 		t.Fatalf("seed project: %v", addErrs)
 	}
 
@@ -243,7 +244,7 @@ func TestActions_UnselectAsset_IdempotentOnMissingSelection(t *testing.T) {
 func TestActions_UnselectAsset_MissingAssetReturnsAssetNotFoundError(t *testing.T) {
 	f := newFixture(t, withProfile())
 	if _, addErrs := f.Svc.AddProject("personal", "Repo", filepath.Join(f.Root, "repo"),
-		[]string{"codex"}, nil); len(addErrs) > 0 {
+		[]config.Agent{config.AgentCodex}, nil); len(addErrs) > 0 {
 		t.Fatalf("seed project: %v", addErrs)
 	}
 
@@ -267,7 +268,7 @@ func TestActions_DeleteAsset_RemovesAssetAndUnselectsFromProjects(t *testing.T) 
 		t.Fatalf("seed asset: %v", err)
 	}
 	if _, addErrs := f.Svc.AddProject("personal", "Repo", filepath.Join(f.Root, "repo"),
-		[]string{"codex"}, []string{"agents"}); len(addErrs) > 0 {
+		[]config.Agent{config.AgentCodex}, []string{"agents"}); len(addErrs) > 0 {
 		t.Fatalf("seed project: %v", addErrs)
 	}
 

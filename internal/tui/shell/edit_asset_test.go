@@ -12,6 +12,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/actions"
 	"github.com/hexworks/agentfiles/internal/app"
 	"github.com/hexworks/agentfiles/internal/asset"
+	"github.com/hexworks/agentfiles/internal/config"
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/projectstore"
 	"github.com/hexworks/agentfiles/internal/registry"
@@ -563,7 +564,7 @@ func TestEditAssetScreen_ComposeManifestReflectsForm(t *testing.T) {
 	if !slices.Equal(got.Tags, []string{"a", "b"}) {
 		t.Errorf("Tags = %v, want [a b]", got.Tags)
 	}
-	if !slices.Equal(got.CompatibleAgents, []string{"codex"}) {
+	if !slices.Equal(config.AgentStrings(got.CompatibleAgents), []string{"codex"}) {
 		t.Errorf("CompatibleAgents = %v, want [codex]", got.CompatibleAgents)
 	}
 	if got.ExclusiveGroup != "main" {

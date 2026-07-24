@@ -132,12 +132,12 @@ func resolveAssets(profile *profile.Profile, proj *project.Manifest) ([]*asset.A
 //
 // Everything else uses generic projections. Task 0011 tracks replacing
 // this switch with a per-(Type, Agent) strategy lookup.
-func addRenderedFilesFor(files map[string]RenderedFile, a *asset.Asset, enabledAgents []string) []errs.DomainError {
+func addRenderedFilesFor(files map[string]RenderedFile, a *asset.Asset, enabledAgents []config.Agent) []errs.DomainError {
 	switch a.Type {
 	case asset.TypeSkill:
 		return addSkillOutputs(files, a, enabledAgents)
 	case asset.TypeAgentsDoc:
-		if !slices.Contains(enabledAgents, "codex") {
+		if !slices.Contains(enabledAgents, config.AgentCodex) {
 			return nil
 		}
 		body, err := readAssetFile(a, config.AgentsDocStarterFileName, "read")
@@ -150,14 +150,14 @@ func addRenderedFilesFor(files map[string]RenderedFile, a *asset.Asset, enabledA
 	case asset.TypeSettings:
 		var domainErrs []errs.DomainError
 		for _, mapping := range []struct {
-			Agent  string
+			Agent  config.Agent
 			Source string
 			Target string
 		}{
-			{"claude-code", "claude-code.json", ".claude/settings.local.json"},
-			{"codex", "codex.toml", ".codex/config.toml"},
-			{"cursor", "cursor.json", ".cursor/config.json"},
-			{"opencode", "opencode.json", ".opencode/config.json"},
+			{config.AgentClaudeCode, "claude-code.json", ".claude/settings.local.json"},
+			{config.AgentCodex, "codex.toml", ".codex/config.toml"},
+			{config.AgentCursor, "cursor.json", ".cursor/config.json"},
+			{config.AgentOpenCode, "opencode.json", ".opencode/config.json"},
 		} {
 			if !slices.Contains(enabledAgents, mapping.Agent) || !asset.SupportsAgent(a, mapping.Agent) {
 				continue
@@ -213,7 +213,7 @@ func addRenderedFilesFor(files map[string]RenderedFile, a *asset.Asset, enabledA
 // expected directory or file structure. Per-agent container roots and
 // the Cursor flat-file layout come from internal/surfaces so the same
 // paths back both rendering and folder-registration eligibility.
-func addSkillOutputs(files map[string]RenderedFile, a *asset.Asset, enabledAgents []string) []errs.DomainError {
+func addSkillOutputs(files map[string]RenderedFile, a *asset.Asset, enabledAgents []config.Agent) []errs.DomainError {
 	body, err := readAssetFile(a, config.SkillStarterFileName, "read")
 	if err != nil {
 		return []errs.DomainError{err}
@@ -227,7 +227,7 @@ func addSkillOutputs(files map[string]RenderedFile, a *asset.Asset, enabledAgent
 		if !asset.SupportsAgent(a, agent) {
 			continue
 		}
-		if root, ok := surfaces.SkillRoot(agent); ok {
+		if root, ok := surfaces.SkillRoot(string(agent)); ok {
 			for _, rel := range relFiles {
 				data, readErr := readAssetFile(a, rel, "read")
 				if readErr != nil {
@@ -239,7 +239,7 @@ func addSkillOutputs(files map[string]RenderedFile, a *asset.Asset, enabledAgent
 			}
 			continue
 		}
-		if agent == "cursor" {
+		if agent == config.AgentCursor {
 			target := filepath.ToSlash(filepath.Join(surfaces.CursorCommandsRoot(), a.ID+".md"))
 			files[target] = RenderedFile{Path: target, Body: body, Mode: 0o644, AssetID: a.ID, SourceRel: config.SkillStarterFileName}
 		}

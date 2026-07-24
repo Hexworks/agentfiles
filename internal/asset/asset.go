@@ -60,9 +60,9 @@ func AllTypes() []Type {
 // It is mainly used by the generic asset types whose behavior is not hard-coded
 // like skill/agents_doc/settings.
 type Projection struct {
-	Agent  string `json:"agent"`
-	Source string `json:"source"`
-	Target string `json:"target"`
+	Agent  config.Agent `json:"agent"`
+	Source string       `json:"source"`
+	Target string       `json:"target"`
 }
 
 // Manifest is the declarative description of one reusable asset.
@@ -86,10 +86,11 @@ type Manifest struct {
 	// narrow the asset picker to security-related rules.
 	Tags []string `json:"tags,omitempty"`
 	// CompatibleAgents restricts which enabled agents the asset will render
-	// for. Empty means "every enabled agent" (see SupportsAgent). Names must
-	// match values in project.Manifest.EnabledAgents (codex, claude-code,
-	// cursor, opencode). See task 0009 for typed-value follow-up.
-	CompatibleAgents []string `json:"compatible_agents,omitempty"`
+	// for. Empty means "every enabled agent" (see SupportsAgent). Each value
+	// must be a recognized config.Agent (codex, claude-code, cursor,
+	// opencode); Manifest.Validate rejects unknown ids at load time so a typo
+	// surfaces as an error instead of silently rendering nothing.
+	CompatibleAgents []config.Agent `json:"compatible_agents,omitempty"`
 	// ExclusiveGroup marks the asset as a member of a mutually-exclusive set:
 	// at most one selected asset per group may render for a given project.
 	//
@@ -133,7 +134,33 @@ func (m Manifest) Validate() errs.DomainError {
 	default:
 		return UnsupportedAssetTypeError{Type: m.Type}
 	}
+	if unknown := unknownAgents(m); len(unknown) > 0 {
+		return UnknownCompatibleAgentError{Agents: unknown}
+	}
 	return nil
+}
+
+// unknownAgents collects every unrecognized agent id referenced by the
+// manifest — both CompatibleAgents and per-projection agents — preserving
+// order and deduplicating so a single UnknownCompatibleAgentError can report
+// all of them at once.
+func unknownAgents(m Manifest) []config.Agent {
+	var unknown []config.Agent
+	seen := map[config.Agent]bool{}
+	collect := func(a config.Agent) {
+		if config.IsKnownAgent(a) || seen[a] {
+			return
+		}
+		seen[a] = true
+		unknown = append(unknown, a)
+	}
+	for _, a := range m.CompatibleAgents {
+		collect(a)
+	}
+	for _, p := range m.Projections {
+		collect(p.Agent)
+	}
+	return unknown
 }
 
 // Load reads and validates one asset directory.
@@ -302,7 +329,7 @@ func SortByName(list []*Asset) {
 
 // SupportsAgent implements the "empty compatible_agents means all agents"
 // convention used across rendering.
-func SupportsAgent(a *Asset, agent string) bool {
+func SupportsAgent(a *Asset, agent config.Agent) bool {
 	if len(a.CompatibleAgents) == 0 {
 		return true
 	}

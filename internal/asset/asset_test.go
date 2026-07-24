@@ -4,7 +4,11 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
+
+	"github.com/hexworks/agentfiles/internal/config"
+	"github.com/hexworks/agentfiles/internal/errs"
 )
 
 func TestValidate_RejectsMissingIDOrName(t *testing.T) {
@@ -41,6 +45,66 @@ func TestValidate_AcceptsKnownTypes(t *testing.T) {
 		if err := m.Validate(); err != nil {
 			t.Fatalf("type %q rejected unexpectedly: %v", typ, err)
 		}
+	}
+}
+
+func TestLoad_RejectsUnknownCompatibleAgent(t *testing.T) {
+	dir := t.TempDir()
+	body := `{"id":"x","name":"X","type":"skill","compatible_agents":["codex","bogus","nope"]}`
+	if err := os.WriteFile(filepath.Join(dir, "asset.json"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(dir)
+
+	var typed UnknownCompatibleAgentError
+	if !errors.As(err, &typed) {
+		t.Fatalf("expected UnknownCompatibleAgentError, got %T: %v", err, err)
+	}
+	if !slices.Equal(typed.Agents, []config.Agent{"bogus", "nope"}) {
+		t.Fatalf("expected [bogus nope], got %v", typed.Agents)
+	}
+	if slices.Contains(typed.Agents, config.AgentCodex) {
+		t.Fatalf("known agent codex should not be reported, got %v", typed.Agents)
+	}
+	if err.Severity() != errs.SeverityError {
+		t.Fatalf("expected SeverityError, got %v", err.Severity())
+	}
+}
+
+func TestLoad_AcceptsKnownAgents(t *testing.T) {
+	dir := t.TempDir()
+	body := `{"id":"x","name":"X","type":"skill","compatible_agents":["codex","claude-code","cursor","opencode"]}`
+	if err := os.WriteFile(filepath.Join(dir, "asset.json"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !slices.Equal(loaded.CompatibleAgents, config.AllAgents()) {
+		t.Fatalf("CompatibleAgents = %v, want %v", loaded.CompatibleAgents, config.AllAgents())
+	}
+}
+
+func TestValidate_RejectsUnknownProjectionAgent(t *testing.T) {
+	m := Manifest{
+		ID:   "x",
+		Name: "X",
+		Type: TypeRule,
+		Projections: []Projection{
+			{Agent: config.AgentCodex, Source: "a", Target: ".codex/a"},
+			{Agent: "ghost", Source: "b", Target: ".codex/b"},
+		},
+	}
+
+	var typed UnknownCompatibleAgentError
+	if !errors.As(m.Validate(), &typed) {
+		t.Fatalf("expected UnknownCompatibleAgentError, got %v", m.Validate())
+	}
+	if !slices.Equal(typed.Agents, []config.Agent{"ghost"}) {
+		t.Fatalf("expected [ghost], got %v", typed.Agents)
 	}
 }
 

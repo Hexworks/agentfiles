@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
 
+	"github.com/hexworks/agentfiles/internal/config"
 	"github.com/hexworks/agentfiles/internal/project"
 )
 
@@ -42,7 +43,7 @@ func TestRegisterProject_PumpResolvesAsValidManifest(t *testing.T) {
 	}
 	// MultiSelect.Blur canonicalises the slice to match the option order
 	// declared in config.AllAgents.
-	if !reflect.DeepEqual(got.EnabledAgents, []string{AgentCodex, AgentClaudeCode}) {
+	if !reflect.DeepEqual(config.AgentStrings(got.EnabledAgents), []string{AgentCodex, AgentClaudeCode}) {
 		t.Errorf("EnabledAgents = %v", got.EnabledAgents)
 	}
 	if got.ID != "demo" {

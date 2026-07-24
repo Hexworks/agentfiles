@@ -16,7 +16,7 @@ func newManifest(id, name, path string) *project.Manifest {
 		ID:            id,
 		Name:          name,
 		Path:          path,
-		EnabledAgents: []string{"codex"},
+		EnabledAgents: []config.Agent{config.AgentCodex},
 		CreatedAt:     time.Now().UTC(),
 	}
 }

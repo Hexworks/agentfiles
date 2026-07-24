@@ -13,6 +13,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/actions"
 	"github.com/hexworks/agentfiles/internal/appapi"
 	"github.com/hexworks/agentfiles/internal/asset"
+	"github.com/hexworks/agentfiles/internal/config"
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/tui/components/focus"
 	"github.com/hexworks/agentfiles/internal/tui/components/help"
@@ -481,7 +482,7 @@ func (s *editAssetScreen) hydrateForm(a *asset.Asset) {
 		typeText:         string(a.Type),
 		descriptionText:  a.Description,
 		tagsCSV:          modals.JoinTags(a.Tags),
-		compatibleAgents: append([]string(nil), a.CompatibleAgents...),
+		compatibleAgents: config.AgentStrings(a.CompatibleAgents),
 		exclusiveGroup:   a.ExclusiveGroup,
 	}
 	// huh fields snapshot the bound pointer's value into their internal
@@ -507,7 +508,7 @@ func (s *editAssetScreen) composeManifest() asset.Manifest {
 		Type:             s.asset.Type,
 		Description:      s.form.descriptionText,
 		Tags:             modals.ParseTags(s.form.tagsCSV),
-		CompatibleAgents: append([]string(nil), s.form.compatibleAgents...),
+		CompatibleAgents: config.ToAgents(s.form.compatibleAgents),
 		ExclusiveGroup:   s.form.exclusiveGroup,
 		Projections:      append([]asset.Projection(nil), s.asset.Projections...),
 	}

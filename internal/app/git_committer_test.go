@@ -11,6 +11,7 @@ import (
 
 	"github.com/hexworks/agentfiles/internal/appapi"
 	"github.com/hexworks/agentfiles/internal/asset"
+	"github.com/hexworks/agentfiles/internal/config"
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/git"
 	"github.com/hexworks/agentfiles/internal/projectstore"
@@ -188,7 +189,7 @@ func TestApply_CommitsSyncedFilesAndStateJSON(t *testing.T) {
 		t.Fatalf("init asset: %v", err)
 	}
 	repoPath := filepath.Join(root, "repo")
-	if _, addErrs := svc.AddProject("personal", "Repo", repoPath, []string{"codex"}, []string{"agents"}); len(addErrs) > 0 {
+	if _, addErrs := svc.AddProject("personal", "Repo", repoPath, []config.Agent{config.AgentCodex}, []string{"agents"}); len(addErrs) > 0 {
 		t.Fatalf("add project: %v", addErrs)
 	}
 
@@ -232,7 +233,7 @@ func TestApply_DisabledSkipsCommit(t *testing.T) {
 		t.Fatalf("init asset: %v", err)
 	}
 	if _, addErrs := svc.AddProject("personal", "Repo", filepath.Join(root, "repo"),
-		[]string{"codex"}, []string{"agents"}); len(addErrs) > 0 {
+		[]config.Agent{config.AgentCodex}, []string{"agents"}); len(addErrs) > 0 {
 		t.Fatalf("add project: %v", addErrs)
 	}
 
@@ -474,7 +475,7 @@ func TestApply_RealGitRecordsProjectCommit(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("init asset: %v", err)
 	}
-	if _, addErrs := svc.AddProject("personal", "Repo", targetRepo, []string{"codex"}, []string{"agents"}); len(addErrs) > 0 {
+	if _, addErrs := svc.AddProject("personal", "Repo", targetRepo, []config.Agent{config.AgentCodex}, []string{"agents"}); len(addErrs) > 0 {
 		t.Fatalf("add project: %v", addErrs)
 	}
 
@@ -528,7 +529,7 @@ func TestApply_RealGitProfileNestedInsideOuterRepo(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("init asset: %v", err)
 	}
-	if _, addErrs := svc.AddProject("personal", "Nested", target, []string{"codex"}, []string{"agents"}); len(addErrs) > 0 {
+	if _, addErrs := svc.AddProject("personal", "Nested", target, []config.Agent{config.AgentCodex}, []string{"agents"}); len(addErrs) > 0 {
 		t.Fatalf("add project: %v", addErrs)
 	}
 
@@ -574,7 +575,7 @@ func seedAdoptProject(t *testing.T, s settings.Settings, fc *fakeCommitter) (svc
 		t.Fatalf("init asset: %v", err)
 	}
 	repoPath = filepath.Join(root, "repo")
-	if _, addErrs := svc.AddProject("personal", "Repo", repoPath, []string{"claude-code"}, []string{"foo"}); len(addErrs) > 0 {
+	if _, addErrs := svc.AddProject("personal", "Repo", repoPath, []config.Agent{config.AgentClaudeCode}, []string{"foo"}); len(addErrs) > 0 {
 		t.Fatalf("add project: %v", addErrs)
 	}
 	if _, applyErr := svc.Apply("personal", "repo", appapi.Resolutions{}); applyErr != nil {
@@ -846,7 +847,7 @@ func TestService_Apply_Adopt_RealGitRecordsProfileCommit(t *testing.T) {
 	initRealRepo(t, profileRoot)
 	runShellGit(t, profileRoot, "add", "-A")
 	runShellGit(t, profileRoot, "commit", "-q", "-m", "seed profile")
-	if _, addErrs := svc.AddProject("personal", "Target", targetRepo, []string{"claude-code"}, []string{"foo"}); len(addErrs) > 0 {
+	if _, addErrs := svc.AddProject("personal", "Target", targetRepo, []config.Agent{config.AgentClaudeCode}, []string{"foo"}); len(addErrs) > 0 {
 		t.Fatalf("add project: %v", addErrs)
 	}
 	if _, applyErr := svc.Apply("personal", "target", appapi.Resolutions{}); applyErr != nil {

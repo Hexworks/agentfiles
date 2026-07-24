@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/hexworks/agentfiles/internal/config"
 )
 
 func TestValidate_MissingFields(t *testing.T) {
@@ -28,11 +30,29 @@ func TestValidate_Ok(t *testing.T) {
 		ID:            "id",
 		Name:          "n",
 		Path:          "/p",
-		EnabledAgents: []string{"codex"},
+		EnabledAgents: []config.Agent{config.AgentCodex},
 		CreatedAt:     time.Now().UTC(),
 	}
 	if err := m.Validate(); err != nil {
 		t.Fatalf("expected nil, got %v", err)
+	}
+}
+
+func TestProjectValidate_RejectsUnknownEnabledAgent(t *testing.T) {
+	m := &Manifest{
+		ID:            "id",
+		Name:          "n",
+		Path:          "/p",
+		EnabledAgents: []config.Agent{config.AgentCodex, "bogus"},
+		CreatedAt:     time.Now().UTC(),
+	}
+
+	var typed UnknownEnabledAgentError
+	if !errors.As(m.Validate(), &typed) {
+		t.Fatalf("expected UnknownEnabledAgentError, got %v", m.Validate())
+	}
+	if len(typed.Agents) != 1 || typed.Agents[0] != "bogus" {
+		t.Fatalf("expected only [bogus] reported, got %v", typed.Agents)
 	}
 }
 
@@ -42,7 +62,7 @@ func TestNormalize_MakesPathAbsoluteAndSortsSlices(t *testing.T) {
 		ID:               "id",
 		Name:             "n",
 		Path:             rel,
-		EnabledAgents:    []string{"codex", "claude"},
+		EnabledAgents:    []config.Agent{config.AgentCodex, config.AgentClaudeCode},
 		SelectedAssetIDs: []string{"b", "a"},
 	}
 	if err := m.Normalize(); err != nil {
@@ -51,7 +71,7 @@ func TestNormalize_MakesPathAbsoluteAndSortsSlices(t *testing.T) {
 	if !filepath.IsAbs(m.Path) {
 		t.Fatalf("expected absolute path, got %q", m.Path)
 	}
-	if m.EnabledAgents[0] != "claude" || m.SelectedAssetIDs[0] != "a" {
+	if m.EnabledAgents[0] != config.AgentClaudeCode || m.SelectedAssetIDs[0] != "a" {
 		t.Fatalf("expected sorted slices, got %+v", m)
 	}
 }

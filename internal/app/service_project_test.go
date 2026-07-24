@@ -4,6 +4,8 @@ import (
 	"errors"
 	"path/filepath"
 	"testing"
+
+	"github.com/hexworks/agentfiles/internal/config"
 )
 
 func TestLoadProject_ReturnsManifest(t *testing.T) {
@@ -13,7 +15,7 @@ func TestLoadProject_ReturnsManifest(t *testing.T) {
 		t.Fatalf("create profile: %v", err)
 	}
 	if _, addErrs := svc.AddProject("personal", "Repo", filepath.Join(root, "repo"),
-		[]string{"codex"}, nil); len(addErrs) > 0 {
+		[]config.Agent{config.AgentCodex}, nil); len(addErrs) > 0 {
 		t.Fatalf("add: %v", addErrs)
 	}
 
@@ -51,7 +53,7 @@ func TestUpdateProject_PersistsChanges(t *testing.T) {
 		t.Fatalf("create profile: %v", err)
 	}
 	if _, addErrs := svc.AddProject("personal", "Repo", filepath.Join(root, "repo"),
-		[]string{"codex"}, nil); len(addErrs) > 0 {
+		[]config.Agent{config.AgentCodex}, nil); len(addErrs) > 0 {
 		t.Fatalf("add: %v", addErrs)
 	}
 	p, err := svc.LoadProject("personal", "repo")
@@ -59,7 +61,7 @@ func TestUpdateProject_PersistsChanges(t *testing.T) {
 		t.Fatalf("load: %v", err)
 	}
 
-	if err := svc.UpdateProject("personal", p.ID, p.Name, p.Path, []string{"codex", "claude-code"}); err != nil {
+	if err := svc.UpdateProject("personal", p.ID, p.Name, p.Path, []config.Agent{config.AgentCodex, config.AgentClaudeCode}); err != nil {
 		t.Fatalf("update: %v", err)
 	}
 
@@ -79,7 +81,7 @@ func TestDeleteProject_RemovesFromProjectStore(t *testing.T) {
 		t.Fatalf("create profile: %v", err)
 	}
 	if _, addErrs := svc.AddProject("personal", "Repo", filepath.Join(root, "repo"),
-		[]string{"codex"}, nil); len(addErrs) > 0 {
+		[]config.Agent{config.AgentCodex}, nil); len(addErrs) > 0 {
 		t.Fatalf("add: %v", addErrs)
 	}
 

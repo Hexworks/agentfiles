@@ -104,7 +104,7 @@ func manifest(id, name, path string) *project.Manifest {
 		ID:            id,
 		Name:          name,
 		Path:          path,
-		EnabledAgents: []string{"codex"},
+		EnabledAgents: []config.Agent{config.AgentCodex},
 	}
 }
 

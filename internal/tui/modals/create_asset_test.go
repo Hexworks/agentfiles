@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/hexworks/agentfiles/internal/asset"
+	"github.com/hexworks/agentfiles/internal/config"
 )
 
 func TestCreateAsset_PrefillSeedsState(t *testing.T) {
@@ -13,7 +14,7 @@ func TestCreateAsset_PrefillSeedsState(t *testing.T) {
 		Type:             asset.TypeAgentsDoc,
 		Description:      "desc",
 		Tags:             []string{"a", "b"},
-		CompatibleAgents: []string{AgentCodex},
+		CompatibleAgents: []config.Agent{config.AgentCodex},
 		ExclusiveGroup:   "g",
 	}, asset.AllTypes())
 
@@ -31,7 +32,7 @@ func TestCreateAsset_PumpResolvesAsManifestWithoutID(t *testing.T) {
 		Type:             asset.TypeAgentsDoc,
 		Description:      "test asset",
 		Tags:             []string{"git", "build", "ci"},
-		CompatibleAgents: []string{AgentClaudeCode, AgentCodex},
+		CompatibleAgents: []config.Agent{config.AgentClaudeCode, config.AgentCodex},
 		ExclusiveGroup:   "agents_doc",
 	}, asset.AllTypes())
 	submitForm(t, form)
@@ -50,7 +51,7 @@ func TestCreateAsset_PumpResolvesAsManifestWithoutID(t *testing.T) {
 		Type:             asset.TypeAgentsDoc,
 		Description:      "test asset",
 		Tags:             []string{"git", "build", "ci"},
-		CompatibleAgents: []string{AgentCodex, AgentClaudeCode},
+		CompatibleAgents: []config.Agent{config.AgentCodex, config.AgentClaudeCode},
 		ExclusiveGroup:   "agents_doc",
 	}
 	if !reflect.DeepEqual(got, want) {

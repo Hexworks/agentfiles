@@ -48,7 +48,7 @@ func setupProfileAndProject(t *testing.T, projectRoot string) (*profile.Profile,
 		ID:               "app",
 		Name:             "app",
 		Path:             projectRoot,
-		EnabledAgents:    []string{"codex"},
+		EnabledAgents:    []config.Agent{config.AgentCodex},
 		SelectedAssetIDs: []string{"base"},
 	}
 }
@@ -889,7 +889,7 @@ func setupProfileAndProjectWithSkill(t *testing.T, projectRoot string) (*profile
 		ID:               "app",
 		Name:             "app",
 		Path:             projectRoot,
-		EnabledAgents:    []string{"claude-code"},
+		EnabledAgents:    []config.Agent{config.AgentClaudeCode},
 		SelectedAssetIDs: []string{"foo"},
 	}
 }
