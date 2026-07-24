@@ -290,6 +290,94 @@ func TestFolderRegisterableTypes_AreConventionTypesOnly(t *testing.T) {
 	}
 }
 
+func TestInit_SkillStarter_InterpolatesNameAndDescription(t *testing.T) {
+	root := t.TempDir()
+	dir, err := Init(root, Manifest{ID: "rev", Name: "Rev", Type: TypeSkill, Description: "desc"})
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	got, readErr := os.ReadFile(filepath.Join(dir, "SKILL.md"))
+	if readErr != nil {
+		t.Fatalf("read SKILL.md: %v", readErr)
+	}
+	want := "---\nname: Rev\ndescription: desc\n---\n\nDescribe the skill here.\n"
+	if string(got) != want {
+		t.Fatalf("SKILL.md = %q, want %q", string(got), want)
+	}
+}
+
+func TestInit_AgentsDocStarter(t *testing.T) {
+	root := t.TempDir()
+	dir, err := Init(root, Manifest{ID: "doc", Name: "My Doc", Type: TypeAgentsDoc})
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	got, readErr := os.ReadFile(filepath.Join(dir, "AGENTS.md"))
+	if readErr != nil {
+		t.Fatalf("read AGENTS.md: %v", readErr)
+	}
+	if want := "# My Doc\n"; string(got) != want {
+		t.Fatalf("AGENTS.md = %q, want %q", string(got), want)
+	}
+}
+
+func TestInit_SettingsStarter_IsStatic(t *testing.T) {
+	root := t.TempDir()
+	dir, err := Init(root, Manifest{ID: "cfg", Name: "Cfg", Type: TypeSettings})
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	got, readErr := os.ReadFile(filepath.Join(dir, "codex.toml"))
+	if readErr != nil {
+		t.Fatalf("read codex.toml: %v", readErr)
+	}
+	if want := "# codex settings\n"; string(got) != want {
+		t.Fatalf("codex.toml = %q, want %q", string(got), want)
+	}
+}
+
+func TestInit_GenericTypes_WriteNoStarterFile(t *testing.T) {
+	for _, typ := range []Type{TypeMCP, TypeRule, TypeHook} {
+		root := t.TempDir()
+		dir, err := Init(root, Manifest{ID: "g", Name: "G", Type: typ})
+		if err != nil {
+			t.Fatalf("Init %q: %v", typ, err)
+		}
+		entries, readErr := os.ReadDir(dir)
+		if readErr != nil {
+			t.Fatalf("read dir for %q: %v", typ, readErr)
+		}
+		if len(entries) != 1 || entries[0].Name() != "asset.json" {
+			var names []string
+			for _, e := range entries {
+				names = append(names, e.Name())
+			}
+			t.Fatalf("type %q dir = %v, want only [asset.json]", typ, names)
+		}
+	}
+}
+
+func TestRequiredContentFile_DerivesFromStrategy(t *testing.T) {
+	cases := []struct {
+		typ  Type
+		file string
+		ok   bool
+	}{
+		{TypeSkill, "SKILL.md", true},
+		{TypeAgentsDoc, "AGENTS.md", true},
+		{TypeSettings, "codex.toml", true},
+		{TypeMCP, "", false},
+		{TypeRule, "", false},
+		{TypeHook, "", false},
+	}
+	for _, c := range cases {
+		file, ok := RequiredContentFile(c.typ)
+		if file != c.file || ok != c.ok {
+			t.Fatalf("RequiredContentFile(%q) = (%q, %v), want (%q, %v)", c.typ, file, ok, c.file, c.ok)
+		}
+	}
+}
+
 func writeSource(t *testing.T, root, rel, body string) {
 	t.Helper()
 	full := filepath.Join(root, rel)

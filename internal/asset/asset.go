@@ -215,40 +215,33 @@ func scaffold(root string, manifest Manifest, seed func(dir string) errs.DomainE
 }
 
 // writeStarter seeds the per-type starter content for a freshly scaffolded
-// asset. Per-type starter content is currently inline; task 0010 tracks
-// extracting this into a strategy + template package. TypeMCP, TypeRule, and
-// TypeHook intentionally produce no starter file — their content is
-// user-authored. Manifest.Validate rejects unknown types, so no default
-// branch is needed.
+// asset by looking up the type's entry in the starters table (see starter.go),
+// rendering its embedded template, and writing the result. TypeMCP, TypeRule,
+// and TypeHook have no entry and produce no starter file — their content is
+// user-authored. Manifest.Validate rejects unknown types, so no default branch
+// is needed.
 func writeStarter(dir string, manifest Manifest) errs.DomainError {
-	switch manifest.Type {
-	case TypeSkill:
-		body := []byte("---\nname: " + manifest.Name + "\ndescription: " + manifest.Description + "\n---\n\nDescribe the skill here.\n")
-		return utils.WriteFile(filepath.Join(dir, config.SkillStarterFileName), body, 0o644)
-	case TypeAgentsDoc:
-		return utils.WriteFile(filepath.Join(dir, config.AgentsDocStarterFileName), []byte("# "+manifest.Name+"\n"), 0o644)
-	case TypeSettings:
-		return utils.WriteFile(filepath.Join(dir, config.SettingsStarterFileName), []byte("# codex settings\n"), 0o644)
+	s, ok := starters[manifest.Type]
+	if !ok {
+		return nil
 	}
-	return nil
+	body, err := renderStarter(s, manifest)
+	if err != nil {
+		return err
+	}
+	return utils.WriteFile(filepath.Join(dir, s.filename), body, 0o644)
 }
 
 // RequiredContentFile returns the source file a folder must contain to be
 // registerable as the given type, and whether the type has such a
-// requirement. The convention-based types (skill, agents_doc, settings) map
-// to their starter filename; the generic types (mcp, rule, hook) have none
-// because they render via explicit projections the folder flow does not
+// requirement. It derives from the same starters table as writeStarter, so the
+// convention-based types (skill, agents_doc, settings) map to exactly the
+// filename their starter writes; the generic types (mcp, rule, hook) have no
+// entry — they render via explicit projections the folder flow does not
 // collect.
 func RequiredContentFile(t Type) (string, bool) {
-	switch t {
-	case TypeSkill:
-		return config.SkillStarterFileName, true
-	case TypeAgentsDoc:
-		return config.AgentsDocStarterFileName, true
-	case TypeSettings:
-		return config.SettingsStarterFileName, true
-	}
-	return "", false
+	s, ok := starters[t]
+	return s.filename, ok
 }
 
 // FolderRegisterableTypes returns the asset types whose content can come

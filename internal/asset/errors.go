@@ -108,6 +108,27 @@ func (UnknownCompatibleAgentError) Severity() errs.Severity {
 	return errs.SeverityError
 }
 
+// StarterRenderError reports a failure while executing a type's embedded
+// starter template during Init. Templates are static and embedded, so this is
+// rare (e.g. a template referencing a field the Manifest lacks); the offending
+// Type is preserved for the message.
+type StarterRenderError struct {
+	Type Type
+	Err  error
+}
+
+func (e StarterRenderError) Error() string {
+	return fmt.Sprintf("render %s starter template: %s", e.Type, e.Err.Error())
+}
+
+func (StarterRenderError) Severity() errs.Severity {
+	return errs.SeverityError
+}
+
+func (e StarterRenderError) Unwrap() error {
+	return e.Err
+}
+
 // AssetWalkError reports a failure encountered while walking an asset
 // directory in RelativeFiles. RelPath is asset-relative so absolute
 // paths inside the user's profile root never reach the user.
