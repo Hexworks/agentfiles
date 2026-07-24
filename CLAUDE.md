@@ -67,12 +67,21 @@ failure. Background: ADR 0007, `docs/guidelines/errors.md`.
 
 ## Guidelines referenced from docs/
 
-- `docs/guidelines/go_guidelines.md` — keep packages cohesive, explicit structs over `map[string]any`, actionable errors, I/O at edges (render computes, sync writes).
+- `docs/guidelines/go.md` — keep packages cohesive, explicit structs over `map[string]any`, actionable errors, I/O at edges (render computes, sync writes).
 - `docs/guidelines/errors.md` — typed-error structs per package + `errors.Join` accumulation in loops; the TUI introspects with `errors.As` and renders with severity/icon/color.
-- `docs/guidelines/domain_model_guidelines.md` — registry/profile/asset/project/render/sync must remain separable; stable ids; model compatibility/exclusivity in manifests not ad-hoc checks.
-- `docs/guidelines/sync_and_safety_guidelines.md` — the source of the invariants above.
-- `docs/guidelines/asset_authoring_guidelines.md` — `asset.json` must have id/name/type; generic types use explicit `projections` whose targets stay inside managed surfaces.
-- `docs/guidelines/documentation_guidelines.md` — arc42 for architecture views, ADRs for durable decisions, glossary for terms; document current reality, not planned state.
+- `docs/guidelines/domain_model.md` — registry/profile/asset/project/render/sync must remain separable; stable ids; model compatibility/exclusivity in manifests not ad-hoc checks.
+- `docs/guidelines/sync_and_safety.md` — the source of the invariants above.
+- `docs/guidelines/asset_authoring.md` — `asset.json` must have id/name/type; generic types use explicit `projections` whose targets stay inside managed surfaces.
+- `docs/guidelines/documentation.md` — arc42 for architecture views, ADRs for durable decisions, glossary for terms; document current reality, not planned state.
+- `docs/guidelines/clean_architecture.md` — dependencies point inward; keep the domain free of I/O; cross boundaries through interfaces.
+- `docs/guidelines/clean_code.md` — code a future maintainer can understand, change, and verify without reconstructing the whole system.
+- `docs/guidelines/solid.md` — SOLID as pragmatic design checks for understandable, changeable, testable code.
+- `docs/guidelines/testing.md` — small, direct tests that describe the domain rule; failures should be easy to understand.
+- `docs/guidelines/git.md` — one long-lived `main`; scope each commit so its purpose is easy to review.
+- `docs/guidelines/security.md` — protect the user's repositories, profile content, local configuration, and credentials.
+- `docs/guidelines/charm.md` — conventions for the Charmbracelet stack (bubbletea/lipgloss/huh) used by the TUI.
+- `docs/guidelines/tui.md` — TUI structure and interaction conventions; keep business logic out of the view layer.
+- `docs/guidelines/external_tools.md` — safely handing control to external binaries via `os/exec` (e.g. the `git` wrapper).
 
 Full arc42 set in `docs/architecture/`, ADRs in `docs/adr/`, canonical vocabulary in `docs/glossary.md`.
 
