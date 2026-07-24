@@ -1,7 +1,7 @@
 ---
 id: 0009
 type: task
-status: pending
+status: in-progress
 topics: go, asset
 ---
 
@@ -19,3 +19,18 @@ constant set) that mirrors the recognized agents list (`codex`,
 values at load time with a typed error.
 
 Originally tracked as a `// FIX:` marker in `asset.go`.
+
+## Clarification
+
+### Question
+
+How wide should the typed-agent change go — narrow (add `config.Agent`
+alongside the existing untyped consts; only `asset.CompatibleAgents` typed) or
+broad (retype the agent identifier everywhere: config consts, `EnabledAgents`,
+`Projection.Agent`, render, project, actions, TUI)?
+
+### Answer
+
+Broad — retype everything. One canonical `config.Agent` type across the
+domain; huh form-state fields stay `[]string` and convert at the modal
+boundary.
