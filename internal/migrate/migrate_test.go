@@ -6,9 +6,11 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/hexworks/agentfiles/internal/agent"
 	"github.com/hexworks/agentfiles/internal/config"
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/project"
@@ -104,7 +106,54 @@ func manifest(id, name, path string) *project.Manifest {
 		ID:            id,
 		Name:          name,
 		Path:          path,
-		EnabledAgents: []config.Agent{config.AgentCodex},
+		EnabledAgents: []agent.Agent{agent.Codex},
+	}
+}
+
+// seedV1ProfileRawProject seeds a v1 profile whose project manifest is written
+// as a raw JSON byte string (not marshalled from a typed struct), so the test
+// exercises unmarshalling on-disk enabled_agents bytes through the migration —
+// ground truth for "the typed agent field round-trips, no migration needed".
+func (h *harness) seedV1ProfileRawProject(t *testing.T, id, name, rel, projectID, rawJSON string) {
+	t.Helper()
+	projectsDir := filepath.Join(h.home, rel, v1ProjectsDirName)
+	if err := os.MkdirAll(projectsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectsDir, projectID+".json"), []byte(rawJSON), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	reg := v1Registry{
+		Version:  1,
+		Profiles: []v1ProfileRef{{ID: id, Name: name, Path: filepath.Join(h.home, rel)}},
+	}
+	body, _ := json.MarshalIndent(reg, "", "  ")
+	if err := os.WriteFile(h.v1Registry, body, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRun_MigratesRawV1EnabledAgentsJSON(t *testing.T) {
+	h := newHarness(t)
+	repoPath := filepath.ToSlash(filepath.Join(h.home, "repo-a"))
+	raw := `{"id":"repo-a","name":"Repo A","path":"` + repoPath +
+		`","enabled_agents":["codex"],"selected_asset_ids":[],"created_at":"2024-01-01T00:00:00Z"}`
+	h.seedV1ProfileRawProject(t, "prof-a", "Personal", "profiles/personal", "repo-a", raw)
+
+	if err := Run(h.profileStore, h.projectStore, h.log); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	state, err := h.projectStore.Load(map[string]struct{}{"prof-a": {}})
+	if err != nil {
+		t.Fatalf("load v2 projects: %v", err)
+	}
+	projs := state.Projects["prof-a"]
+	if len(projs) != 1 {
+		t.Fatalf("expected 1 migrated project, got %+v", state)
+	}
+	if !slices.Equal(projs[0].EnabledAgents, []agent.Agent{agent.Codex}) {
+		t.Fatalf("EnabledAgents = %v, want [codex] preserved through raw v1 JSON migration", projs[0].EnabledAgents)
 	}
 }
 

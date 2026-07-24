@@ -1,13 +1,18 @@
 # 0009 changes
 
 Replaced the stringly-typed agent identifier with a single domain type
-`config.Agent` and pushed it through the whole model: `asset`, `project`,
+`agent.Agent` and pushed it through the whole model: `asset`, `project`,
 `render`, `app`, `actions`, and the TUI. Unknown agent ids are now rejected at
 manifest **load** time with a typed error instead of silently rendering as "no
 compatible agents".
 
-`config` gains `type Agent string`, retyped constants, `AllAgents() []Agent`,
-`IsKnownAgent`, and the nil-safe `ToAgents`/`AgentStrings` bridges. `asset.Manifest.CompatibleAgents`,
+> The identifier initially landed in `internal/config`; the task-0009 review
+> extracted it into its own leaf package `internal/agent`. See
+> **Review follow-up** below for that and the other applied review fixes.
+
+A leaf package `internal/agent` holds `type Agent string`, the four constants,
+`All() []Agent`, map-backed `IsKnown`, the order-preserving dedup collector
+`Unknown`, and the nil-safe `FromStrings`/`Strings` bridges. `asset.Manifest.CompatibleAgents`,
 `asset.Projection.Agent`, and `project.Manifest.EnabledAgents` are now typed;
 their `Validate()` methods collect every unknown id in one pass and return a
 single typed `DomainError` (`asset.UnknownCompatibleAgentError`,
@@ -57,7 +62,49 @@ migration, no `state.json` change.
   round-trip / nil-safety / `IsKnownAgent`.
 - Gate: `make fmt && make lint && make build && make test` all green (782 pass).
 
-## Typed agent constant + bridges (`internal/config/agents.go`)
+## Review follow-up (task 0009 review-apply)
+
+The review selected the following fixes, applied on top of the implementation
+above:
+
+- **Extracted the agent value object into its own leaf package `internal/agent`**
+  (was `internal/config`). `config` returns to holding only filename/default
+  constants; every consumer imports `internal/agent`. Constants are the
+  idiomatic `agent.Codex` / `agent.ClaudeCode` / `agent.Cursor` / `agent.OpenCode`
+  (no `Agent` stutter); the bridges are `agent.FromStrings` / `agent.Strings`.
+- **`agent.Unknown([]Agent) []Agent`** now owns the order-preserving,
+  deduplicating "collect unknown agents" rule. `asset` feeds it its two
+  concatenated sources (`CompatibleAgents` + projection agents); `project` feeds
+  it `EnabledAgents`. Removes the duplicated `seen`-map loop from both packages.
+- **`IsKnown` is backed by a package-level `map[Agent]struct{}`** built once, so
+  validating an N-agent manifest no longer allocates N throwaway `All()` slices.
+  `All()` still returns a fresh defensive copy for external iteration.
+- **Both `Error()` methods reuse `agent.Strings`** instead of a hand-rolled
+  `[]Agent → comma-joined` loop.
+- **Per-agent settings conventions moved into `agent.Descriptors()`** — the
+  inline `{agent, source, target}` table in `render` is gone; render iterates the
+  descriptor table the `agent` package owns. (Skill container roots stay in
+  `internal/surfaces`; consolidating them is deferred to task 0011.)
+- **Both project modals now convert `[]string`↔`[]agent.Agent` in-modal.**
+  `EditProjectInput.EnabledAgents` is typed `[]agent.Agent` (converted at the huh
+  boundary like the Register modal); the shell no longer converts. Dropped the
+  redundant defensive copy in `Service.UpdateProject`, and bound `a.String()`
+  once in `AgentOptions`.
+- **New tests:** repeated-unknown-id dedup and cross-source (`CompatibleAgents` +
+  projection) merge-once for asset load; direct `SupportsAgent` empty-means-all
+  and membership cases; `agent.Unknown` dedup/order/nil; migrate happy-path
+  seeded from a **raw v1 `enabled_agents` JSON** string asserting the typed slice
+  survives migration.
+- **Glossary:** added a dedicated **Agent** entry (closed, load-validated id set)
+  and cross-linked the existing `Enabled Agent` / `Compatible Agents` entries to
+  it — superseding the original "no glossary term" decision.
+
+## Typed agent constant + bridges (as first implemented in `internal/config/agents.go`)
+
+_The review later moved this into `internal/agent` and renamed the symbols
+(`agent.Codex`, `agent.All`, `agent.IsKnown`, `agent.FromStrings`,
+`agent.Strings`) — see **Review follow-up** above._
+
 
 ```go
 // before

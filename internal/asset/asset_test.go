@@ -7,7 +7,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/hexworks/agentfiles/internal/config"
+	"github.com/hexworks/agentfiles/internal/agent"
 	"github.com/hexworks/agentfiles/internal/errs"
 )
 
@@ -61,10 +61,10 @@ func TestLoad_RejectsUnknownCompatibleAgent(t *testing.T) {
 	if !errors.As(err, &typed) {
 		t.Fatalf("expected UnknownCompatibleAgentError, got %T: %v", err, err)
 	}
-	if !slices.Equal(typed.Agents, []config.Agent{"bogus", "nope"}) {
+	if !slices.Equal(typed.Agents, []agent.Agent{"bogus", "nope"}) {
 		t.Fatalf("expected [bogus nope], got %v", typed.Agents)
 	}
-	if slices.Contains(typed.Agents, config.AgentCodex) {
+	if slices.Contains(typed.Agents, agent.Codex) {
 		t.Fatalf("known agent codex should not be reported, got %v", typed.Agents)
 	}
 	if err.Severity() != errs.SeverityError {
@@ -83,8 +83,8 @@ func TestLoad_AcceptsKnownAgents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if !slices.Equal(loaded.CompatibleAgents, config.AllAgents()) {
-		t.Fatalf("CompatibleAgents = %v, want %v", loaded.CompatibleAgents, config.AllAgents())
+	if !slices.Equal(loaded.CompatibleAgents, agent.All()) {
+		t.Fatalf("CompatibleAgents = %v, want %v", loaded.CompatibleAgents, agent.All())
 	}
 }
 
@@ -94,7 +94,7 @@ func TestValidate_RejectsUnknownProjectionAgent(t *testing.T) {
 		Name: "X",
 		Type: TypeRule,
 		Projections: []Projection{
-			{Agent: config.AgentCodex, Source: "a", Target: ".codex/a"},
+			{Agent: agent.Codex, Source: "a", Target: ".codex/a"},
 			{Agent: "ghost", Source: "b", Target: ".codex/b"},
 		},
 	}
@@ -103,8 +103,68 @@ func TestValidate_RejectsUnknownProjectionAgent(t *testing.T) {
 	if !errors.As(m.Validate(), &typed) {
 		t.Fatalf("expected UnknownCompatibleAgentError, got %v", m.Validate())
 	}
-	if !slices.Equal(typed.Agents, []config.Agent{"ghost"}) {
+	if !slices.Equal(typed.Agents, []agent.Agent{"ghost"}) {
 		t.Fatalf("expected [ghost], got %v", typed.Agents)
+	}
+}
+
+func TestLoad_DedupsRepeatedUnknownCompatibleAgent(t *testing.T) {
+	dir := t.TempDir()
+	body := `{"id":"x","name":"X","type":"skill","compatible_agents":["bogus","bogus","nope"]}`
+	if err := os.WriteFile(filepath.Join(dir, "asset.json"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(dir)
+
+	var typed UnknownCompatibleAgentError
+	if !errors.As(err, &typed) {
+		t.Fatalf("expected UnknownCompatibleAgentError, got %T: %v", err, err)
+	}
+	if !slices.Equal(typed.Agents, []agent.Agent{"bogus", "nope"}) {
+		t.Fatalf("expected deduped [bogus nope], got %v", typed.Agents)
+	}
+}
+
+func TestValidate_MergesUnknownAcrossCompatibleAndProjectionOnce(t *testing.T) {
+	// The same unknown id appears in both CompatibleAgents and a projection; the
+	// two sources share one dedup pass so it must be reported exactly once.
+	m := Manifest{
+		ID:               "x",
+		Name:             "X",
+		Type:             TypeRule,
+		CompatibleAgents: []agent.Agent{"ghost"},
+		Projections: []Projection{
+			{Agent: agent.Codex, Source: "a", Target: ".codex/a"},
+			{Agent: "ghost", Source: "b", Target: ".codex/b"},
+		},
+	}
+
+	var typed UnknownCompatibleAgentError
+	if !errors.As(m.Validate(), &typed) {
+		t.Fatalf("expected UnknownCompatibleAgentError, got %v", m.Validate())
+	}
+	if !slices.Equal(typed.Agents, []agent.Agent{"ghost"}) {
+		t.Fatalf("expected [ghost] reported once across both sources, got %v", typed.Agents)
+	}
+}
+
+func TestSupportsAgent_EmptyMeansAll(t *testing.T) {
+	a := &Asset{Manifest: Manifest{CompatibleAgents: nil}}
+	for _, ag := range agent.All() {
+		if !SupportsAgent(a, ag) {
+			t.Fatalf("empty CompatibleAgents should support %q", ag)
+		}
+	}
+}
+
+func TestSupportsAgent_NonEmptyChecksMembership(t *testing.T) {
+	a := &Asset{Manifest: Manifest{CompatibleAgents: []agent.Agent{agent.Codex, agent.Cursor}}}
+	if !SupportsAgent(a, agent.Codex) {
+		t.Fatalf("expected %q supported", agent.Codex)
+	}
+	if SupportsAgent(a, agent.ClaudeCode) {
+		t.Fatalf("expected %q unsupported", agent.ClaudeCode)
 	}
 }
 

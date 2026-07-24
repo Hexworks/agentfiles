@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/hexworks/agentfiles/internal/agent"
 	"github.com/hexworks/agentfiles/internal/appapi"
 	"github.com/hexworks/agentfiles/internal/asset"
-	"github.com/hexworks/agentfiles/internal/config"
 	llmsync "github.com/hexworks/agentfiles/internal/sync"
 )
 
@@ -36,7 +36,7 @@ func seedDiffProject(t *testing.T) (svc *Service, profileID, projectID, repoPath
 	if err := os.MkdirAll(repoPath, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if _, addErrs := svc.AddProject(profileID, "Repo", repoPath, []config.Agent{config.AgentClaudeCode}, nil); len(addErrs) > 0 {
+	if _, addErrs := svc.AddProject(profileID, "Repo", repoPath, []agent.Agent{agent.ClaudeCode}, nil); len(addErrs) > 0 {
 		t.Fatalf("add project: %v", addErrs)
 	}
 	projectID = "repo"

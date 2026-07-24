@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/hexworks/agentfiles/internal/agent"
 	"github.com/hexworks/agentfiles/internal/asset"
 	"github.com/hexworks/agentfiles/internal/config"
 	"github.com/hexworks/agentfiles/internal/errs"
@@ -132,12 +133,12 @@ func resolveAssets(profile *profile.Profile, proj *project.Manifest) ([]*asset.A
 //
 // Everything else uses generic projections. Task 0011 tracks replacing
 // this switch with a per-(Type, Agent) strategy lookup.
-func addRenderedFilesFor(files map[string]RenderedFile, a *asset.Asset, enabledAgents []config.Agent) []errs.DomainError {
+func addRenderedFilesFor(files map[string]RenderedFile, a *asset.Asset, enabledAgents []agent.Agent) []errs.DomainError {
 	switch a.Type {
 	case asset.TypeSkill:
 		return addSkillOutputs(files, a, enabledAgents)
 	case asset.TypeAgentsDoc:
-		if !slices.Contains(enabledAgents, config.AgentCodex) {
+		if !slices.Contains(enabledAgents, agent.Codex) {
 			return nil
 		}
 		body, err := readAssetFile(a, config.AgentsDocStarterFileName, "read")
@@ -149,29 +150,23 @@ func addRenderedFilesFor(files map[string]RenderedFile, a *asset.Asset, enabledA
 		return nil
 	case asset.TypeSettings:
 		var domainErrs []errs.DomainError
-		for _, mapping := range []struct {
-			Agent  config.Agent
-			Source string
-			Target string
-		}{
-			{config.AgentClaudeCode, "claude-code.json", ".claude/settings.local.json"},
-			{config.AgentCodex, "codex.toml", ".codex/config.toml"},
-			{config.AgentCursor, "cursor.json", ".cursor/config.json"},
-			{config.AgentOpenCode, "opencode.json", ".opencode/config.json"},
-		} {
-			if !slices.Contains(enabledAgents, mapping.Agent) || !asset.SupportsAgent(a, mapping.Agent) {
+		// Per-agent settings source/target conventions are owned by the agent
+		// package (agent.Descriptors) so the recognized set and its render
+		// conventions live in one place.
+		for _, d := range agent.Descriptors() {
+			if !slices.Contains(enabledAgents, d.Agent) || !asset.SupportsAgent(a, d.Agent) {
 				continue
 			}
-			path := filepath.Join(a.Dir, mapping.Source)
+			path := filepath.Join(a.Dir, d.SettingsSource)
 			if !utils.Exists(path) {
 				continue
 			}
-			body, err := readAssetFile(a, mapping.Source, "read")
+			body, err := readAssetFile(a, d.SettingsSource, "read")
 			if err != nil {
 				domainErrs = append(domainErrs, err)
 				continue
 			}
-			files[mapping.Target] = RenderedFile{Path: mapping.Target, Body: body, Mode: 0o644, AssetID: a.ID, SourceRel: mapping.Source}
+			files[d.SettingsTarget] = RenderedFile{Path: d.SettingsTarget, Body: body, Mode: 0o644, AssetID: a.ID, SourceRel: d.SettingsSource}
 		}
 		return domainErrs
 	default:
@@ -213,7 +208,7 @@ func addRenderedFilesFor(files map[string]RenderedFile, a *asset.Asset, enabledA
 // expected directory or file structure. Per-agent container roots and
 // the Cursor flat-file layout come from internal/surfaces so the same
 // paths back both rendering and folder-registration eligibility.
-func addSkillOutputs(files map[string]RenderedFile, a *asset.Asset, enabledAgents []config.Agent) []errs.DomainError {
+func addSkillOutputs(files map[string]RenderedFile, a *asset.Asset, enabledAgents []agent.Agent) []errs.DomainError {
 	body, err := readAssetFile(a, config.SkillStarterFileName, "read")
 	if err != nil {
 		return []errs.DomainError{err}
@@ -223,11 +218,11 @@ func addSkillOutputs(files map[string]RenderedFile, a *asset.Asset, enabledAgent
 		return []errs.DomainError{listErr}
 	}
 	var domainErrs []errs.DomainError
-	for _, agent := range enabledAgents {
-		if !asset.SupportsAgent(a, agent) {
+	for _, ag := range enabledAgents {
+		if !asset.SupportsAgent(a, ag) {
 			continue
 		}
-		if root, ok := surfaces.SkillRoot(string(agent)); ok {
+		if root, ok := surfaces.SkillRoot(ag.String()); ok {
 			for _, rel := range relFiles {
 				data, readErr := readAssetFile(a, rel, "read")
 				if readErr != nil {
@@ -239,7 +234,7 @@ func addSkillOutputs(files map[string]RenderedFile, a *asset.Asset, enabledAgent
 			}
 			continue
 		}
-		if agent == config.AgentCursor {
+		if ag == agent.Cursor {
 			target := filepath.ToSlash(filepath.Join(surfaces.CursorCommandsRoot(), a.ID+".md"))
 			files[target] = RenderedFile{Path: target, Body: body, Mode: 0o644, AssetID: a.ID, SourceRel: config.SkillStarterFileName}
 		}

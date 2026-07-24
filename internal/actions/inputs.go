@@ -1,9 +1,9 @@
 package actions
 
 import (
+	"github.com/hexworks/agentfiles/internal/agent"
 	"github.com/hexworks/agentfiles/internal/appapi"
 	"github.com/hexworks/agentfiles/internal/asset"
-	"github.com/hexworks/agentfiles/internal/config"
 )
 
 type CreateProfileInput struct {
@@ -36,7 +36,7 @@ type AddProjectInput struct {
 	ProfileRef    string
 	Name          string
 	Path          string
-	EnabledAgents []config.Agent
+	EnabledAgents []agent.Agent
 	AssetIDs      []string
 }
 
@@ -54,7 +54,7 @@ type UpdateProjectInput struct {
 	ProjectID     string
 	Name          string
 	Path          string
-	EnabledAgents []config.Agent
+	EnabledAgents []agent.Agent
 }
 
 type DeleteProjectInput struct {

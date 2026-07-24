@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/hexworks/agentfiles/internal/agent"
 	"github.com/hexworks/agentfiles/internal/asset"
-	"github.com/hexworks/agentfiles/internal/config"
 )
 
 func TestAddProject_AccumulatesUnknownAssets(t *testing.T) {
@@ -17,7 +17,7 @@ func TestAddProject_AccumulatesUnknownAssets(t *testing.T) {
 	}
 
 	_, addErrs := svc.AddProject("personal", "Repo", filepath.Join(root, "repo"),
-		[]config.Agent{config.AgentCodex}, []string{"missing-a", "missing-b"})
+		[]agent.Agent{agent.Codex}, []string{"missing-a", "missing-b"})
 
 	if len(addErrs) == 0 {
 		t.Fatal("expected error")
@@ -70,7 +70,7 @@ func TestAddProject_RejectsMixedKnownAndUnknownAssets(t *testing.T) {
 	}
 
 	_, addErrs := svc.AddProject("personal", "Repo", filepath.Join(root, "repo"),
-		[]config.Agent{config.AgentCodex}, []string{"valid", "missing"})
+		[]agent.Agent{agent.Codex}, []string{"valid", "missing"})
 
 	if len(addErrs) == 0 {
 		t.Fatal("expected rejection")

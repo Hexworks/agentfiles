@@ -4,8 +4,8 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/hexworks/agentfiles/internal/agent"
 	"github.com/hexworks/agentfiles/internal/asset"
-	"github.com/hexworks/agentfiles/internal/config"
 )
 
 func TestCreateAsset_PrefillSeedsState(t *testing.T) {
@@ -14,7 +14,7 @@ func TestCreateAsset_PrefillSeedsState(t *testing.T) {
 		Type:             asset.TypeAgentsDoc,
 		Description:      "desc",
 		Tags:             []string{"a", "b"},
-		CompatibleAgents: []config.Agent{config.AgentCodex},
+		CompatibleAgents: []agent.Agent{agent.Codex},
 		ExclusiveGroup:   "g",
 	}, asset.AllTypes())
 
@@ -32,7 +32,7 @@ func TestCreateAsset_PumpResolvesAsManifestWithoutID(t *testing.T) {
 		Type:             asset.TypeAgentsDoc,
 		Description:      "test asset",
 		Tags:             []string{"git", "build", "ci"},
-		CompatibleAgents: []config.Agent{config.AgentClaudeCode, config.AgentCodex},
+		CompatibleAgents: []agent.Agent{agent.ClaudeCode, agent.Codex},
 		ExclusiveGroup:   "agents_doc",
 	}, asset.AllTypes())
 	submitForm(t, form)
@@ -44,14 +44,14 @@ func TestCreateAsset_PumpResolvesAsManifestWithoutID(t *testing.T) {
 		t.Fatalf("Value type = %T, want asset.Manifest", msg.Value)
 	}
 	// MultiSelect.Blur canonicalises the slice to match the option order
-	// declared in config.AllAgents, so claude-code/codex come back as
+	// declared in agent.All, so claude-code/codex come back as
 	// codex/claude-code.
 	want := asset.Manifest{
 		Name:             "Hello World",
 		Type:             asset.TypeAgentsDoc,
 		Description:      "test asset",
 		Tags:             []string{"git", "build", "ci"},
-		CompatibleAgents: []config.Agent{config.AgentCodex, config.AgentClaudeCode},
+		CompatibleAgents: []agent.Agent{agent.Codex, agent.ClaudeCode},
 		ExclusiveGroup:   "agents_doc",
 	}
 	if !reflect.DeepEqual(got, want) {

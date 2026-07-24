@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/hexworks/agentfiles/internal/config"
+	"github.com/hexworks/agentfiles/internal/agent"
 )
 
 func TestProjectPathCannotBeSharedAcrossProfiles(t *testing.T) {
@@ -20,11 +20,11 @@ func TestProjectPathCannotBeSharedAcrossProfiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	projectPath := filepath.Join(root, "repo")
-	if _, addErrs := svc.AddProject("first", "Repo", projectPath, []config.Agent{config.AgentCodex}, nil); len(addErrs) > 0 {
+	if _, addErrs := svc.AddProject("first", "Repo", projectPath, []agent.Agent{agent.Codex}, nil); len(addErrs) > 0 {
 		t.Fatalf("first add: %v", addErrs)
 	}
 
-	_, addErrs := svc.AddProject("second", "Repo2", projectPath, []config.Agent{config.AgentCodex}, nil)
+	_, addErrs := svc.AddProject("second", "Repo2", projectPath, []agent.Agent{agent.Codex}, nil)
 
 	if len(addErrs) == 0 {
 		t.Fatal("expected ownership conflict")
@@ -45,11 +45,11 @@ func TestProjectPathCannotBeSharedWithinSameProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 	projectPath := filepath.Join(root, "repo")
-	if _, addErrs := svc.AddProject("personal", "First", projectPath, []config.Agent{config.AgentCodex}, nil); len(addErrs) > 0 {
+	if _, addErrs := svc.AddProject("personal", "First", projectPath, []agent.Agent{agent.Codex}, nil); len(addErrs) > 0 {
 		t.Fatalf("first add: %v", addErrs)
 	}
 
-	_, addErrs := svc.AddProject("personal", "Second", projectPath, []config.Agent{config.AgentCodex}, nil)
+	_, addErrs := svc.AddProject("personal", "Second", projectPath, []agent.Agent{agent.Codex}, nil)
 
 	if len(addErrs) == 0 {
 		t.Fatal("expected ownership conflict")
@@ -80,11 +80,11 @@ func TestPathOwnershipIsEnforcedInsideStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	projectPath := filepath.Join(root, "repo")
-	if _, addErrs := svc.AddProject("first", "Owner1", projectPath, []config.Agent{config.AgentCodex}, nil); len(addErrs) > 0 {
+	if _, addErrs := svc.AddProject("first", "Owner1", projectPath, []agent.Agent{agent.Codex}, nil); len(addErrs) > 0 {
 		t.Fatalf("seed first: %v", addErrs)
 	}
 
-	_, addErrs := svc.AddProject("second", "Owner2", projectPath, []config.Agent{config.AgentCodex}, nil)
+	_, addErrs := svc.AddProject("second", "Owner2", projectPath, []agent.Agent{agent.Codex}, nil)
 	if len(addErrs) == 0 {
 		t.Fatal("expected store-level rejection")
 	}

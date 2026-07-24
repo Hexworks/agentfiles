@@ -3,13 +3,15 @@ package modals
 import (
 	"reflect"
 	"testing"
+
+	"github.com/hexworks/agentfiles/internal/agent"
 )
 
 func TestEditProject_PrefillSeedsState(t *testing.T) {
 	_, state, _ := buildEditProject(EditProjectInput{
 		Name:          "Demo",
 		Path:          "/repos/demo",
-		EnabledAgents: []string{AgentClaudeCode, AgentCodex},
+		EnabledAgents: []agent.Agent{agent.ClaudeCode, agent.Codex},
 	})
 
 	if state.Name != "Demo" || state.Path != "/repos/demo" ||
@@ -19,7 +21,7 @@ func TestEditProject_PrefillSeedsState(t *testing.T) {
 }
 
 func TestEditProject_PrefillCopiesEnabledAgentsSlice(t *testing.T) {
-	original := []string{AgentClaudeCode}
+	original := []agent.Agent{agent.ClaudeCode}
 	_, state, _ := buildEditProject(EditProjectInput{
 		Name:          "Demo",
 		Path:          "/repos/demo",
@@ -27,7 +29,7 @@ func TestEditProject_PrefillCopiesEnabledAgentsSlice(t *testing.T) {
 	})
 
 	state.EnabledAgents[0] = AgentCodex
-	if original[0] != AgentClaudeCode {
+	if original[0] != agent.ClaudeCode {
 		t.Errorf("mutating state.EnabledAgents leaked into the caller's slice")
 	}
 }
@@ -36,7 +38,7 @@ func TestEditProject_PumpResolvesAsEditProjectInput(t *testing.T) {
 	form, _, extract := buildEditProject(EditProjectInput{
 		Name:          "Demo",
 		Path:          "/repos/demo",
-		EnabledAgents: []string{AgentClaudeCode, AgentCodex},
+		EnabledAgents: []agent.Agent{agent.ClaudeCode, agent.Codex},
 	})
 	submitForm(t, form)
 
@@ -47,11 +49,11 @@ func TestEditProject_PumpResolvesAsEditProjectInput(t *testing.T) {
 		t.Fatalf("Value type = %T, want EditProjectInput", msg.Value)
 	}
 	// MultiSelect.Blur canonicalises the slice to match the option order
-	// declared in config.AllAgents.
+	// declared in agent.All.
 	want := EditProjectInput{
 		Name:          "Demo",
 		Path:          "/repos/demo",
-		EnabledAgents: []string{AgentCodex, AgentClaudeCode},
+		EnabledAgents: []agent.Agent{agent.Codex, agent.ClaudeCode},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("Value = %#v\nwant   %#v", got, want)
@@ -76,7 +78,7 @@ func TestEditProject_CancelResolvesEmpty(t *testing.T) {
 	form, _, extract := buildEditProject(EditProjectInput{
 		Name:          "Demo",
 		Path:          "/repos/demo",
-		EnabledAgents: []string{AgentClaudeCode},
+		EnabledAgents: []agent.Agent{agent.ClaudeCode},
 	})
 	abortForm(form)
 
@@ -88,7 +90,7 @@ func TestEditProject_CancelResolvesEmpty(t *testing.T) {
 }
 
 func TestNewEditProject_UsesStableID(t *testing.T) {
-	m := NewEditProject(EditProjectInput{Name: "n", Path: "/p", EnabledAgents: []string{AgentCodex}})
+	m := NewEditProject(EditProjectInput{Name: "n", Path: "/p", EnabledAgents: []agent.Agent{agent.Codex}})
 	if got := m.ID(); got != "edit-project" {
 		t.Errorf("ID = %q, want %q", got, "edit-project")
 	}

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hexworks/agentfiles/internal/agent"
 	"github.com/hexworks/agentfiles/internal/config"
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/project"
@@ -16,7 +17,7 @@ func newManifest(id, name, path string) *project.Manifest {
 		ID:            id,
 		Name:          name,
 		Path:          path,
-		EnabledAgents: []config.Agent{config.AgentCodex},
+		EnabledAgents: []agent.Agent{agent.Codex},
 		CreatedAt:     time.Now().UTC(),
 	}
 }

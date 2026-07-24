@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hexworks/agentfiles/internal/agent"
 	"github.com/hexworks/agentfiles/internal/config"
 	"github.com/hexworks/agentfiles/internal/profile"
 	"github.com/hexworks/agentfiles/internal/project"
@@ -48,7 +49,7 @@ func setupProfileAndProject(t *testing.T, projectRoot string) (*profile.Profile,
 		ID:               "app",
 		Name:             "app",
 		Path:             projectRoot,
-		EnabledAgents:    []config.Agent{config.AgentCodex},
+		EnabledAgents:    []agent.Agent{agent.Codex},
 		SelectedAssetIDs: []string{"base"},
 	}
 }
@@ -889,7 +890,7 @@ func setupProfileAndProjectWithSkill(t *testing.T, projectRoot string) (*profile
 		ID:               "app",
 		Name:             "app",
 		Path:             projectRoot,
-		EnabledAgents:    []config.Agent{config.AgentClaudeCode},
+		EnabledAgents:    []agent.Agent{agent.ClaudeCode},
 		SelectedAssetIDs: []string{"foo"},
 	}
 }

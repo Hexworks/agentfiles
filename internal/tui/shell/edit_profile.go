@@ -10,9 +10,9 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/hexworks/agentfiles/internal/actions"
+	"github.com/hexworks/agentfiles/internal/agent"
 	"github.com/hexworks/agentfiles/internal/appapi"
 	"github.com/hexworks/agentfiles/internal/asset"
-	"github.com/hexworks/agentfiles/internal/config"
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/project"
 	"github.com/hexworks/agentfiles/internal/tui/components/focus"
@@ -601,7 +601,7 @@ func (s *editProfileScreen) onEditProject() tea.Cmd {
 	s.openModal(modals.NewEditProject(modals.EditProjectInput{
 		Name:          p.Name,
 		Path:          p.Path,
-		EnabledAgents: config.AgentStrings(p.EnabledAgents),
+		EnabledAgents: p.EnabledAgents,
 	}), modalKindEditProject)
 	return s.modal.Init()
 }
@@ -796,7 +796,7 @@ func (s *editProfileScreen) afterRegisterProject(msg modal.ResolvedMsg) tea.Cmd 
 		return nil
 	}
 	s.pendingRegisterProjectName = draft.Name
-	s.pendingRegisterProjectAgents = config.AgentStrings(draft.EnabledAgents)
+	s.pendingRegisterProjectAgents = agent.Strings(draft.EnabledAgents)
 	profileID := s.profileID
 	successText := fmt.Sprintf("Project %q registered", draft.Name)
 	return func() tea.Msg {
@@ -835,7 +835,7 @@ func (s *editProfileScreen) afterEditProject(msg modal.ResolvedMsg) tea.Cmd {
 				ProjectID:     target.ID,
 				Name:          in.Name,
 				Path:          in.Path,
-				EnabledAgents: config.ToAgents(in.EnabledAgents),
+				EnabledAgents: in.EnabledAgents,
 			})
 			return err
 		},

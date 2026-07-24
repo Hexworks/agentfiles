@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/hexworks/agentfiles/internal/agent"
 	"github.com/hexworks/agentfiles/internal/asset"
-	"github.com/hexworks/agentfiles/internal/config"
 	"github.com/hexworks/agentfiles/internal/errs"
 )
 
@@ -173,7 +173,7 @@ func TestDeleteAsset_UnselectsAssetFromProjects(t *testing.T) {
 		t.Fatalf("init asset: %v", err)
 	}
 	if _, addErrs := svc.AddProject("personal", "Repo", filepath.Join(root, "repo"),
-		[]config.Agent{config.AgentCodex}, []string{"agents"}); len(addErrs) > 0 {
+		[]agent.Agent{agent.Codex}, []string{"agents"}); len(addErrs) > 0 {
 		t.Fatalf("add project: %v", addErrs)
 	}
 
@@ -203,7 +203,7 @@ func TestDeleteAsset_UnselectsAcrossMultipleProjects(t *testing.T) {
 	}
 	for _, name := range []string{"Alpha", "Beta", "Gamma"} {
 		if _, addErrs := svc.AddProject("personal", name, filepath.Join(root, name),
-			[]config.Agent{config.AgentCodex}, []string{"agents"}); len(addErrs) > 0 {
+			[]agent.Agent{agent.Codex}, []string{"agents"}); len(addErrs) > 0 {
 			t.Fatalf("add project %s: %v", name, addErrs)
 		}
 	}
@@ -348,7 +348,7 @@ func seedServiceWithProjectAndAsset(t *testing.T, assetID string) (svc *Service,
 		t.Fatalf("init asset: %v", err)
 	}
 	if _, addErrs := svc.AddProject(profileID, "Repo", filepath.Join(root, "repo"),
-		[]config.Agent{config.AgentCodex}, nil); len(addErrs) > 0 {
+		[]agent.Agent{agent.Codex}, nil); len(addErrs) > 0 {
 		t.Fatalf("add project: %v", addErrs)
 	}
 	projectID = "repo"
@@ -371,7 +371,7 @@ func TestDeleteAsset_PartialFailureLeavesRecoverableState(t *testing.T) {
 		t.Fatalf("init asset: %v", err)
 	}
 	if _, addErrs := svc.AddProject("personal", "Repo", filepath.Join(root, "repo"),
-		[]config.Agent{config.AgentCodex}, []string{"agents"}); len(addErrs) > 0 {
+		[]agent.Agent{agent.Codex}, []string{"agents"}); len(addErrs) > 0 {
 		t.Fatalf("add project: %v", addErrs)
 	}
 

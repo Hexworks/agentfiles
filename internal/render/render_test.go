@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hexworks/agentfiles/internal/agent"
 	"github.com/hexworks/agentfiles/internal/asset"
 	"github.com/hexworks/agentfiles/internal/config"
 	"github.com/hexworks/agentfiles/internal/profile"
@@ -46,7 +47,7 @@ func TestBuildSkillAndAgentsDoc(t *testing.T) {
 		ID:               "app",
 		Name:             "app",
 		Path:             "/tmp/app",
-		EnabledAgents:    []config.Agent{config.AgentCodex, config.AgentCursor},
+		EnabledAgents:    []agent.Agent{agent.Codex, agent.Cursor},
 		SelectedAssetIDs: []string{"review", "base"},
 		CreatedAt:        time.Now(),
 	})
@@ -108,7 +109,7 @@ func TestBuild_PopulatesSourceRelForGenericProjection(t *testing.T) {
 
 	plan, buildErrs := Build(loaded, &project.Manifest{
 		ID: "app", Name: "app", Path: "/tmp/app",
-		EnabledAgents:    []config.Agent{config.AgentCodex},
+		EnabledAgents:    []agent.Agent{agent.Codex},
 		SelectedAssetIDs: []string{"guard"},
 	})
 	if len(buildErrs) > 0 {
@@ -155,7 +156,7 @@ func TestBuild_PopulatesSourceRelForDirProjection(t *testing.T) {
 
 	plan, buildErrs := Build(loaded, &project.Manifest{
 		ID: "app", Name: "app", Path: "/tmp/app",
-		EnabledAgents:    []config.Agent{config.AgentCodex},
+		EnabledAgents:    []agent.Agent{agent.Codex},
 		SelectedAssetIDs: []string{"chain"},
 	})
 	if len(buildErrs) > 0 {
@@ -190,7 +191,7 @@ func TestBuild_AccumulatesMissingAssets(t *testing.T) {
 		ID:               "app",
 		Name:             "app",
 		Path:             "/tmp/app",
-		EnabledAgents:    []config.Agent{config.AgentCodex},
+		EnabledAgents:    []agent.Agent{agent.Codex},
 		SelectedAssetIDs: []string{"missing-1", "missing-2"},
 		CreatedAt:        time.Now(),
 	})
@@ -265,7 +266,7 @@ func TestBuild_AccumulatesExclusiveGroupConflicts(t *testing.T) {
 		ID:               "app",
 		Name:             "app",
 		Path:             "/tmp/app",
-		EnabledAgents:    []config.Agent{config.AgentCodex},
+		EnabledAgents:    []agent.Agent{agent.Codex},
 		SelectedAssetIDs: []string{"primary-a", "primary-b"},
 		CreatedAt:        time.Now(),
 	})
@@ -310,7 +311,7 @@ func TestBuild_WrapsPerAssetFailureWithAssetSourceMissing(t *testing.T) {
 		ID:               "app",
 		Name:             "app",
 		Path:             "/tmp/app",
-		EnabledAgents:    []config.Agent{config.AgentCodex},
+		EnabledAgents:    []agent.Agent{agent.Codex},
 		SelectedAssetIDs: []string{"review"},
 		CreatedAt:        time.Now(),
 	})
@@ -356,7 +357,7 @@ func TestBuild_TargetOutsideSurfacesIsTyped(t *testing.T) {
 		ID:               "app",
 		Name:             "app",
 		Path:             "/tmp/app",
-		EnabledAgents:    []config.Agent{config.AgentCodex},
+		EnabledAgents:    []agent.Agent{agent.Codex},
 		SelectedAssetIDs: []string{"leak"},
 		CreatedAt:        time.Now(),
 	})

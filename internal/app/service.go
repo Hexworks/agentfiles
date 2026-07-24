@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hexworks/agentfiles/internal/agent"
 	"github.com/hexworks/agentfiles/internal/appapi"
 	"github.com/hexworks/agentfiles/internal/asset"
 	"github.com/hexworks/agentfiles/internal/config"
@@ -161,7 +162,7 @@ func (s *Service) LoadProfile(ref string) (*appapi.LoadedProfile, errs.DomainErr
 //
 // A project manifest does not store rendered files. It stores only the project
 // path plus the asset/agent selection used later by render + sync.
-func (s *Service) AddProject(profileRef, name, path string, agents []config.Agent, assetIDs []string) (*project.Manifest, []errs.DomainError) {
+func (s *Service) AddProject(profileRef, name, path string, agents []agent.Agent, assetIDs []string) (*project.Manifest, []errs.DomainError) {
 	loaded, loadErr := s.LoadProfile(profileRef)
 	if loadErr != nil {
 		return nil, []errs.DomainError{loadErr}
@@ -1033,14 +1034,17 @@ func (s *Service) LoadProject(profileRef, projectID string) (*project.Manifest, 
 // on-disk manifest first and only overwriting the editable fields — the
 // merge contract lives here so the TUI never holds a live aggregate
 // pointer it has half-mutated.
-func (s *Service) UpdateProject(profileRef, projectID, name, path string, enabledAgents []config.Agent) errs.DomainError {
+func (s *Service) UpdateProject(profileRef, projectID, name, path string, enabledAgents []agent.Agent) errs.DomainError {
 	loaded, p, err := s.resolveProject(profileRef, projectID)
 	if err != nil {
 		return err
 	}
 	p.Name = name
 	p.Path = path
-	p.EnabledAgents = append([]config.Agent(nil), enabledAgents...)
+	// enabledAgents already arrives as a fresh slice from the TUI boundary
+	// (agent.FromStrings copies), so no defensive re-copy is needed here —
+	// symmetric with AddProject, which relies on project.NewDraft to copy.
+	p.EnabledAgents = enabledAgents
 	return s.translateStoreError(s.Projects.Update(loaded.Profile.Manifest.ID, p), loaded)
 }
 

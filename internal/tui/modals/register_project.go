@@ -3,7 +3,7 @@ package modals
 import (
 	"charm.land/huh/v2"
 
-	"github.com/hexworks/agentfiles/internal/config"
+	"github.com/hexworks/agentfiles/internal/agent"
 	"github.com/hexworks/agentfiles/internal/project"
 	"github.com/hexworks/agentfiles/internal/tui/components/modal"
 	"github.com/hexworks/agentfiles/internal/tui/styles"
@@ -53,7 +53,7 @@ func buildRegisterProject(initial RegisterProjectInput) builtRegisterProjectForm
 		Form:  form,
 		State: state,
 		Extract: func(*huh.Form) any {
-			return project.NewDraft(state.Name, state.Path, config.ToAgents(state.EnabledAgents))
+			return project.NewDraft(state.Name, state.Path, agent.FromStrings(state.EnabledAgents))
 		},
 		Fields: fields,
 	}

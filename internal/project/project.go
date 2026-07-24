@@ -8,6 +8,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/hexworks/agentfiles/internal/agent"
 	"github.com/hexworks/agentfiles/internal/config"
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/utils"
@@ -18,12 +19,12 @@ import (
 // NOTE: that we don't have a separate Project type as there is no separation between
 // persisted and runtime state (everything is persisted).
 type Manifest struct {
-	ID               string         `json:"id"`
-	Name             string         `json:"name"`
-	Path             string         `json:"path"`
-	EnabledAgents    []config.Agent `json:"enabled_agents"`
-	SelectedAssetIDs []string       `json:"selected_asset_ids"`
-	CreatedAt        time.Time      `json:"created_at"`
+	ID               string        `json:"id"`
+	Name             string        `json:"name"`
+	Path             string        `json:"path"`
+	EnabledAgents    []agent.Agent `json:"enabled_agents"`
+	SelectedAssetIDs []string      `json:"selected_asset_ids"`
+	CreatedAt        time.Time     `json:"created_at"`
 }
 
 // NewDraft builds a syntactically valid project manifest from form-style
@@ -32,12 +33,12 @@ type Manifest struct {
 // UTC time so the returned value passes Manifest.Validate(). EnabledAgents is
 // copied defensively so later mutations on the input slice do not bleed into
 // the manifest.
-func NewDraft(name, path string, agents []config.Agent) *Manifest {
+func NewDraft(name, path string, agents []agent.Agent) *Manifest {
 	return &Manifest{
 		ID:            utils.Slug(name, config.DefaultProjectSlug),
 		Name:          name,
 		Path:          path,
-		EnabledAgents: append([]config.Agent(nil), agents...),
+		EnabledAgents: append([]agent.Agent(nil), agents...),
 		CreatedAt:     time.Now().UTC(),
 	}
 }
@@ -62,26 +63,12 @@ func (m *Manifest) Validate() errs.DomainError {
 	if len(m.EnabledAgents) == 0 {
 		return ErrNoEnabledAgents
 	}
-	if unknown := unknownEnabledAgents(m); len(unknown) > 0 {
+	// agent.Unknown owns the order-preserving dedup rule shared with asset
+	// validation; project has a single source (EnabledAgents) to feed it.
+	if unknown := agent.Unknown(m.EnabledAgents); len(unknown) > 0 {
 		return UnknownEnabledAgentError{Agents: unknown}
 	}
 	return nil
-}
-
-// unknownEnabledAgents collects every unrecognized agent id in EnabledAgents,
-// preserving order and deduplicating, so a single UnknownEnabledAgentError can
-// report the whole batch.
-func unknownEnabledAgents(m *Manifest) []config.Agent {
-	var unknown []config.Agent
-	seen := map[config.Agent]bool{}
-	for _, a := range m.EnabledAgents {
-		if config.IsKnownAgent(a) || seen[a] {
-			continue
-		}
-		seen[a] = true
-		unknown = append(unknown, a)
-	}
-	return unknown
 }
 
 // Normalize transforms all paths to absolute and fixes ordering so

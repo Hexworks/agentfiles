@@ -3,8 +3,8 @@ package modals
 import (
 	"charm.land/huh/v2"
 
+	"github.com/hexworks/agentfiles/internal/agent"
 	"github.com/hexworks/agentfiles/internal/asset"
-	"github.com/hexworks/agentfiles/internal/config"
 	"github.com/hexworks/agentfiles/internal/tui/components/modal"
 	"github.com/hexworks/agentfiles/internal/tui/styles"
 )
@@ -50,7 +50,7 @@ func buildCreateAsset(initial asset.Manifest, types []asset.Type) (*huh.Form, *c
 		Type:             initial.Type,
 		Description:      initial.Description,
 		Tags:             JoinTags(initial.Tags),
-		CompatibleAgents: config.AgentStrings(initial.CompatibleAgents),
+		CompatibleAgents: agent.Strings(initial.CompatibleAgents),
 		ExclusiveGroup:   initial.ExclusiveGroup,
 	}
 	form := huh.NewForm(
@@ -76,7 +76,7 @@ func assetManifestFromState(state *createAssetState) asset.Manifest {
 		Type:             state.Type,
 		Description:      state.Description,
 		Tags:             ParseTags(state.Tags),
-		CompatibleAgents: config.ToAgents(state.CompatibleAgents),
+		CompatibleAgents: agent.FromStrings(state.CompatibleAgents),
 		ExclusiveGroup:   state.ExclusiveGroup,
 	}
 }

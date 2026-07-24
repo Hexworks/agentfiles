@@ -132,15 +132,28 @@ Available using exactly this rule. `Compatible Agents` filters and
 `Exclusive Group` conflicts are *not* applied here — they are reported at
 plan time so the selection screen never silently hides a chosen asset.
 
+## Agent
+
+The typed identifier (`agent.Agent`, a named string) for an AI assistant the
+renderer targets. The recognized set is closed — `codex`, `claude-code`,
+`cursor`, `opencode` — and owned by `internal/agent` (`agent.All`,
+`agent.IsKnown`). It is validated at manifest **load** time: an unrecognized id
+in an [Enabled Agent](#enabled-agent) list or in [Compatible Agents](#compatible-agents)
+is rejected with a typed error rather than silently rendering nothing. On-disk
+JSON is unchanged — the named string marshals as its underlying value, so no
+migration was needed.
+
 ## Enabled Agent
 
-An LLM tool that the project should render for. Current names are `codex`,
-`claude-code`, `cursor`, and `opencode`.
+An [Agent](#agent) that the project should render for. The recognized names are
+`codex`, `claude-code`, `cursor`, and `opencode`; an unknown id is rejected when
+the project manifest is validated.
 
 ## Compatible Agents
 
 An optional asset manifest field that limits which enabled agents can use that
-asset.
+asset. Each value must be a recognized [Agent](#agent); an unknown id is
+rejected when the asset manifest loads.
 
 ## Projection
 

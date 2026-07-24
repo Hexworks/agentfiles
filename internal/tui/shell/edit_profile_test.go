@@ -11,6 +11,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/hexworks/agentfiles/internal/actions"
+	"github.com/hexworks/agentfiles/internal/agent"
 	"github.com/hexworks/agentfiles/internal/app"
 	"github.com/hexworks/agentfiles/internal/appapi"
 	"github.com/hexworks/agentfiles/internal/asset"
@@ -78,7 +79,7 @@ func (f *editProfileFixture) seedProject(t *testing.T, name, path string) *proje
 	if err := os.MkdirAll(path, 0o755); err != nil {
 		t.Fatalf("seed project dir: %v", err)
 	}
-	manifest, errs := f.Service.AddProject(f.Profile.ID, name, path, []config.Agent{"codex"}, nil)
+	manifest, errs := f.Service.AddProject(f.Profile.ID, name, path, []agent.Agent{"codex"}, nil)
 	if len(errs) > 0 {
 		t.Fatalf("seed project %q: %v", name, errs)
 	}
@@ -362,7 +363,7 @@ func TestEditProfileScreen_ProjectsEKeyOpensEditProjectModal(t *testing.T) {
 	f := newEditProfileFixture(t)
 	s := newEditProfileScreen(f.Actions, f.Profile.ID)
 	withProfile(s, fakeLoadedProfile(t, "/tmp/x", nil,
-		[]*project.Manifest{{ID: "proj-1", Name: "Proj", Path: "/tmp/proj", EnabledAgents: []config.Agent{"codex"}}},
+		[]*project.Manifest{{ID: "proj-1", Name: "Proj", Path: "/tmp/proj", EnabledAgents: []agent.Agent{"codex"}}},
 	))
 	_ = s.handler.FocusIndex(1)
 	s.rebuildSet()
@@ -381,7 +382,7 @@ func TestEditProfileScreen_ProjectsAKeyPushesSelectProjectAssetsScreen(t *testin
 	f := newEditProfileFixture(t)
 	s := newEditProfileScreen(f.Actions, f.Profile.ID)
 	withProfile(s, fakeLoadedProfile(t, "/tmp/x", nil,
-		[]*project.Manifest{{ID: "proj-1", Name: "Proj", Path: "/tmp/proj", EnabledAgents: []config.Agent{"codex"}}},
+		[]*project.Manifest{{ID: "proj-1", Name: "Proj", Path: "/tmp/proj", EnabledAgents: []agent.Agent{"codex"}}},
 	))
 	_ = s.handler.FocusIndex(1)
 	s.rebuildSet()
@@ -405,7 +406,7 @@ func TestEditProfileScreen_ProjectsPKeyPushesPlanProjectScreen(t *testing.T) {
 	f := newEditProfileFixture(t)
 	s := newEditProfileScreen(f.Actions, f.Profile.ID)
 	withProfile(s, fakeLoadedProfile(t, "/tmp/x", nil,
-		[]*project.Manifest{{ID: "proj-1", Name: "Proj", Path: "/tmp/proj", EnabledAgents: []config.Agent{"codex"}}},
+		[]*project.Manifest{{ID: "proj-1", Name: "Proj", Path: "/tmp/proj", EnabledAgents: []agent.Agent{"codex"}}},
 	))
 	_ = s.handler.FocusIndex(1)
 	s.rebuildSet()
@@ -429,7 +430,7 @@ func TestEditProfileScreen_ProjectsDKeyOpensDeleteProjectConfirm(t *testing.T) {
 	f := newEditProfileFixture(t)
 	s := newEditProfileScreen(f.Actions, f.Profile.ID)
 	withProfile(s, fakeLoadedProfile(t, "/tmp/x", nil,
-		[]*project.Manifest{{ID: "proj-1", Name: "Proj", Path: "/tmp/proj", EnabledAgents: []config.Agent{"codex"}}},
+		[]*project.Manifest{{ID: "proj-1", Name: "Proj", Path: "/tmp/proj", EnabledAgents: []agent.Agent{"codex"}}},
 	))
 	_ = s.handler.FocusIndex(1)
 	s.rebuildSet()
@@ -623,7 +624,7 @@ func TestEditProfileScreen_RegisterProjectFailureRetryPreservesInputs(t *testing
 	if err := os.MkdirAll(firstPath, 0o755); err != nil {
 		t.Fatalf("mkdir first: %v", err)
 	}
-	if _, addErrs := f.Service.AddProject(f.Profile.ID, "First", firstPath, []config.Agent{"codex"}, nil); len(addErrs) > 0 {
+	if _, addErrs := f.Service.AddProject(f.Profile.ID, "First", firstPath, []agent.Agent{"codex"}, nil); len(addErrs) > 0 {
 		t.Fatalf("seed AddProject: %v", addErrs)
 	}
 
@@ -631,7 +632,7 @@ func TestEditProfileScreen_RegisterProjectFailureRetryPreservesInputs(t *testing
 	// EnabledAgents and returns a cmd whose failure branch fires because
 	// firstPath is now owned.
 	s.modalKind = modalKindRegisterProject
-	draftManifest := project.NewDraft("Retry", firstPath, []config.Agent{"codex"})
+	draftManifest := project.NewDraft("Retry", firstPath, []agent.Agent{"codex"})
 	_, cmd := s.Update(modal.ResolvedMsg{
 		ID:        "register-project",
 		Confirmed: true,
@@ -691,7 +692,7 @@ func TestEditProfileScreen_StatusKeysProjectsFocusedNonEmpty(t *testing.T) {
 	f := newEditProfileFixture(t)
 	s := newEditProfileScreen(f.Actions, f.Profile.ID)
 	withProfile(s, fakeLoadedProfile(t, "/tmp/x", nil,
-		[]*project.Manifest{{ID: "proj-1", Name: "Proj", Path: "/tmp/proj", EnabledAgents: []config.Agent{"codex"}}},
+		[]*project.Manifest{{ID: "proj-1", Name: "Proj", Path: "/tmp/proj", EnabledAgents: []agent.Agent{"codex"}}},
 	))
 	_ = s.handler.FocusIndex(1)
 
@@ -711,7 +712,7 @@ func TestEditProfileScreen_StatusKeysExcludeScreenLevel(t *testing.T) {
 	s := newEditProfileScreen(f.Actions, f.Profile.ID)
 	withProfile(s, fakeLoadedProfile(t, "/tmp/x",
 		[]*asset.Asset{{Manifest: asset.Manifest{ID: "skill-1", Name: "Skill", Type: asset.TypeSkill}}},
-		[]*project.Manifest{{ID: "proj-1", Name: "Proj", Path: "/tmp/proj", EnabledAgents: []config.Agent{"codex"}}},
+		[]*project.Manifest{{ID: "proj-1", Name: "Proj", Path: "/tmp/proj", EnabledAgents: []agent.Agent{"codex"}}},
 	))
 
 	for _, focusIdx := range []int{0, 1} {
@@ -779,7 +780,7 @@ func TestEditProfileScreen_BodyDoesNotFillViewport(t *testing.T) {
 
 	populated := tall(80,
 		[]*asset.Asset{{Manifest: asset.Manifest{ID: "skill-1", Name: "Skill", Type: asset.TypeSkill}}},
-		[]*project.Manifest{{ID: "proj-1", Name: "Proj", Path: "/tmp/proj", EnabledAgents: []config.Agent{"codex"}}},
+		[]*project.Manifest{{ID: "proj-1", Name: "Proj", Path: "/tmp/proj", EnabledAgents: []agent.Agent{"codex"}}},
 	)
 	if populated < emptyTall {
 		t.Errorf("Populated body shorter than empty: populated=%d empty=%d", populated, emptyTall)
@@ -811,9 +812,9 @@ func TestEditProfileScreen_BodyRecoversFromPreLoadRender(t *testing.T) {
 		{Manifest: asset.Manifest{ID: "a3", Name: "Charlie", Type: asset.TypeSkill}},
 	}
 	projects := []*project.Manifest{
-		{ID: "p1", Name: "One", Path: "/tmp/p1", EnabledAgents: []config.Agent{"codex"}},
-		{ID: "p2", Name: "Two", Path: "/tmp/p2", EnabledAgents: []config.Agent{"codex"}},
-		{ID: "p3", Name: "Three", Path: "/tmp/p3", EnabledAgents: []config.Agent{"codex"}},
+		{ID: "p1", Name: "One", Path: "/tmp/p1", EnabledAgents: []agent.Agent{"codex"}},
+		{ID: "p2", Name: "Two", Path: "/tmp/p2", EnabledAgents: []agent.Agent{"codex"}},
+		{ID: "p3", Name: "Three", Path: "/tmp/p3", EnabledAgents: []agent.Agent{"codex"}},
 	}
 	withProfile(s, fakeLoadedProfile(t, "/tmp/x", assets, projects))
 	body := s.Body(160)
@@ -929,7 +930,7 @@ func TestEditProfileScreen_EditProjectModalPreservesNonEditableFields(t *testing
 	in := modals.EditProjectInput{
 		Name:          "Renamed",
 		Path:          projectPath,
-		EnabledAgents: []string{"codex"},
+		EnabledAgents: []agent.Agent{agent.Codex},
 	}
 	_, cmd := s.Update(modal.ResolvedMsg{ID: "edit-project", Confirmed: true, Value: in})
 

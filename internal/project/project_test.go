@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hexworks/agentfiles/internal/config"
+	"github.com/hexworks/agentfiles/internal/agent"
 )
 
 func TestValidate_MissingFields(t *testing.T) {
@@ -30,7 +30,7 @@ func TestValidate_Ok(t *testing.T) {
 		ID:            "id",
 		Name:          "n",
 		Path:          "/p",
-		EnabledAgents: []config.Agent{config.AgentCodex},
+		EnabledAgents: []agent.Agent{agent.Codex},
 		CreatedAt:     time.Now().UTC(),
 	}
 	if err := m.Validate(); err != nil {
@@ -43,7 +43,7 @@ func TestProjectValidate_RejectsUnknownEnabledAgent(t *testing.T) {
 		ID:            "id",
 		Name:          "n",
 		Path:          "/p",
-		EnabledAgents: []config.Agent{config.AgentCodex, "bogus"},
+		EnabledAgents: []agent.Agent{agent.Codex, "bogus"},
 		CreatedAt:     time.Now().UTC(),
 	}
 
@@ -62,7 +62,7 @@ func TestNormalize_MakesPathAbsoluteAndSortsSlices(t *testing.T) {
 		ID:               "id",
 		Name:             "n",
 		Path:             rel,
-		EnabledAgents:    []config.Agent{config.AgentCodex, config.AgentClaudeCode},
+		EnabledAgents:    []agent.Agent{agent.Codex, agent.ClaudeCode},
 		SelectedAssetIDs: []string{"b", "a"},
 	}
 	if err := m.Normalize(); err != nil {
@@ -71,7 +71,7 @@ func TestNormalize_MakesPathAbsoluteAndSortsSlices(t *testing.T) {
 	if !filepath.IsAbs(m.Path) {
 		t.Fatalf("expected absolute path, got %q", m.Path)
 	}
-	if m.EnabledAgents[0] != config.AgentClaudeCode || m.SelectedAssetIDs[0] != "a" {
+	if m.EnabledAgents[0] != agent.ClaudeCode || m.SelectedAssetIDs[0] != "a" {
 		t.Fatalf("expected sorted slices, got %+v", m)
 	}
 }
