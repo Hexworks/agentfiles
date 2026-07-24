@@ -1,7 +1,7 @@
 ---
 id: 0009
 type: task
-status: Pending
+status: pending
 topics: go, asset
 ---
 
