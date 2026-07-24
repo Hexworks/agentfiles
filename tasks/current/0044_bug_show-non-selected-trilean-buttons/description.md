@@ -1,7 +1,7 @@
 ---
 id: 0044
 type: bug
-status: pending
+status: in-review
 topics: tui, sync_and_safety, charm
 depends_on: 0035
 ---

@@ -250,7 +250,7 @@ func (s *planProjectScreen) buildTree() {
 			},
 			treetable.ValueColumn{Title: "Resolution", Width: 14, Value: s.actionValue},
 		),
-		treetable.WithActions(treetable.Column{Title: "Actions", Width: 22}, s.treeActionsFn()),
+		treetable.WithActions(treetable.Column{Title: "Actions", Width: 26}, s.treeActionsFn()),
 		treetable.WithHeight(treetableHeight),
 		treetable.WithStyles(focusAwareTreetableStyles()),
 		treetable.WithTitle("Changes"),
@@ -618,9 +618,9 @@ func (s *planProjectScreen) treeActionsFn() treetable.ActionsFunc {
 		btns := []*mnemonic.Button{s.openFileBtn(d.path)}
 		switch d.change.Kind {
 		case appapi.ChangeDrift:
-			btns = append(btns, s.driftToggleBtn(d.path))
+			btns = append(btns, s.driftToggleButtons(d.path, d.change.AdoptEligible)...)
 		case appapi.ChangeUnknown:
-			btns = append(btns, s.unknownToggleBtn(d.path))
+			btns = append(btns, s.unknownToggleButtons(d.path, s.unknownOwners[d.path] != "")...)
 		}
 		return btns
 	}
@@ -648,35 +648,72 @@ func (s *planProjectScreen) openFileBtn(path string) *mnemonic.Button {
 	return mnemonic.New("Open", 'o', func() tea.Cmd { return s.onOpen(path) })
 }
 
-// driftToggleBtn cycles Keep → Overwrite → Adopt → Keep. Button label
-// shows the *next* state (ADR 0015/0020). Mnemonics stay unique
-// alongside the always-present [Open]/'o' and screen-level buttons.
-func (s *planProjectScreen) driftToggleBtn(path string) *mnemonic.Button {
-	switch s.driftResolutions[path] {
-	case appapi.DriftOverwrite:
-		return mnemonic.New("Adopt", 't', func() tea.Cmd { return s.toggleDrift(path, appapi.DriftAdopt) })
-	case appapi.DriftAdopt:
-		return mnemonic.New("Keep", 'p', func() tea.Cmd { return s.toggleDrift(path, appapi.DriftKeep) })
+// driftToggleButtons returns the row's non-selected drift options as
+// direct-set buttons (no cycling). The set is bilean when the state
+// entry lacks v3 provenance (`adoptEligible == false` — legacy v2) and
+// trilean otherwise. Order is severity-ascending (Keep < Overwrite <
+// Adopt) so the mnemonics stay stable across states. See ADR 0015/0020
+// and the drift matrices in tasks/…/0044/description.md.
+func (s *planProjectScreen) driftToggleButtons(path string, adoptEligible bool) []*mnemonic.Button {
+	current := s.driftResolutions[path]
+	if !adoptEligible {
+		if current == appapi.DriftOverwrite {
+			return []*mnemonic.Button{s.driftBtnKeep(path)}
+		}
+		return []*mnemonic.Button{s.driftBtnOverwrite(path)}
 	}
+	switch current {
+	case appapi.DriftOverwrite:
+		return []*mnemonic.Button{s.driftBtnKeep(path), s.driftBtnAdopt(path)}
+	case appapi.DriftAdopt:
+		return []*mnemonic.Button{s.driftBtnKeep(path), s.driftBtnOverwrite(path)}
+	}
+	return []*mnemonic.Button{s.driftBtnOverwrite(path), s.driftBtnAdopt(path)}
+}
+
+func (s *planProjectScreen) driftBtnKeep(path string) *mnemonic.Button {
+	return mnemonic.New("Keep", 'p', func() tea.Cmd { return s.toggleDrift(path, appapi.DriftKeep) })
+}
+
+func (s *planProjectScreen) driftBtnOverwrite(path string) *mnemonic.Button {
 	return mnemonic.New("Overwrite", 'w', func() tea.Cmd { return s.toggleDrift(path, appapi.DriftOverwrite) })
 }
 
-// unknownToggleBtn cycles Keep → Delete → Adopt → Keep when the row
-// carries an OwningAssetID (populated at Plan time for unknowns nested
-// inside a known asset projection dir). Otherwise stays a 2-way toggle
-// Keep ↔ Delete. See ADR 0020.
-func (s *planProjectScreen) unknownToggleBtn(path string) *mnemonic.Button {
-	adoptEligible := s.unknownOwners[path] != ""
-	switch s.unknownResolutions[path] {
-	case appapi.UnknownDelete:
-		if adoptEligible {
-			return mnemonic.New("Adopt", 't', func() tea.Cmd { return s.toggleUnknown(path, appapi.UnknownAdopt) })
+func (s *planProjectScreen) driftBtnAdopt(path string) *mnemonic.Button {
+	return mnemonic.New("Adopt", 't', func() tea.Cmd { return s.toggleDrift(path, appapi.DriftAdopt) })
+}
+
+// unknownToggleButtons returns the row's non-selected unknown options
+// as direct-set buttons. Bilean when the row has no owning asset
+// (`adoptEligible == false` — orphan) and trilean otherwise. Order is
+// severity-ascending (Keep < Delete < Adopt). See ADR 0020.
+func (s *planProjectScreen) unknownToggleButtons(path string, adoptEligible bool) []*mnemonic.Button {
+	current := s.unknownResolutions[path]
+	if !adoptEligible {
+		if current == appapi.UnknownDelete {
+			return []*mnemonic.Button{s.unknownBtnKeep(path)}
 		}
-		return mnemonic.New("Keep", 'p', func() tea.Cmd { return s.toggleUnknown(path, appapi.UnknownKeep) })
-	case appapi.UnknownAdopt:
-		return mnemonic.New("Keep", 'p', func() tea.Cmd { return s.toggleUnknown(path, appapi.UnknownKeep) })
+		return []*mnemonic.Button{s.unknownBtnDelete(path)}
 	}
+	switch current {
+	case appapi.UnknownDelete:
+		return []*mnemonic.Button{s.unknownBtnKeep(path), s.unknownBtnAdopt(path)}
+	case appapi.UnknownAdopt:
+		return []*mnemonic.Button{s.unknownBtnKeep(path), s.unknownBtnDelete(path)}
+	}
+	return []*mnemonic.Button{s.unknownBtnDelete(path), s.unknownBtnAdopt(path)}
+}
+
+func (s *planProjectScreen) unknownBtnKeep(path string) *mnemonic.Button {
+	return mnemonic.New("Keep", 'p', func() tea.Cmd { return s.toggleUnknown(path, appapi.UnknownKeep) })
+}
+
+func (s *planProjectScreen) unknownBtnDelete(path string) *mnemonic.Button {
 	return mnemonic.New("Delete", 'd', func() tea.Cmd { return s.toggleUnknown(path, appapi.UnknownDelete) })
+}
+
+func (s *planProjectScreen) unknownBtnAdopt(path string) *mnemonic.Button {
+	return mnemonic.New("Adopt", 't', func() tea.Cmd { return s.toggleUnknown(path, appapi.UnknownAdopt) })
 }
 
 // onOpen suspends the program in the system editor pointed at the

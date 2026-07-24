@@ -292,6 +292,7 @@ func previewFromSync(p *llmsync.Preview) *appapi.Preview {
 			Path:          ch.Path,
 			Kind:          appapi.ChangeKind(ch.Kind),
 			OwningAssetID: ch.OwningAssetID,
+			AdoptEligible: ch.AdoptEligible,
 		}
 	}
 	var ignored []string

@@ -1310,3 +1310,122 @@ func TestPlan_CorruptStateWhitespaceOnlyAssetID_ReturnsTypedError(t *testing.T) 
 		t.Fatalf("expected StateCorruptError, got %T: %v", err, err)
 	}
 }
+
+// TestPlan_DriftAdoptEligibility_TrueOnV3StateEntry pins the drift
+// row's AdoptEligible flag: a state entry with both AssetID and
+// SourceRel populated is v3 provenance, so Adopt is a legal choice.
+func TestPlan_DriftAdoptEligibility_TrueOnV3StateEntry(t *testing.T) {
+	projectRoot := t.TempDir()
+	loaded, proj := setupProfileAndProject(t, projectRoot)
+	if err := os.WriteFile(filepath.Join(projectRoot, "AGENTS.md"), []byte("drifted"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeStateEntries(t, projectRoot, map[string]ManagedFileEntry{
+		"AGENTS.md": {Hash: "previous", AssetID: "base", SourceRel: "AGENTS.md"},
+	}, nil)
+
+	preview, err := Plan(loaded, proj)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch := findChange(t, preview.Changes, "AGENTS.md")
+	if ch.Kind != ChangeDrift {
+		t.Fatalf("kind = %q, want drift", ch.Kind)
+	}
+	if !ch.AdoptEligible {
+		t.Errorf("AdoptEligible = false, want true for v3 state entry")
+	}
+}
+
+// TestPlan_DriftAdoptEligibility_FalseOnV2LegacyEntry pins the legacy
+// v2 path: entries loaded via UnmarshalJSON's bare-hash branch carry
+// empty AssetID/SourceRel, so Adopt is not available and the TUI must
+// render the drift row as bilean.
+func TestPlan_DriftAdoptEligibility_FalseOnV2LegacyEntry(t *testing.T) {
+	projectRoot := t.TempDir()
+	loaded, proj := setupProfileAndProject(t, projectRoot)
+	if err := os.WriteFile(filepath.Join(projectRoot, "AGENTS.md"), []byte("drifted"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeStateV2Legacy(t, projectRoot, map[string]string{"AGENTS.md": "previous"}, nil)
+
+	preview, err := Plan(loaded, proj)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch := findChange(t, preview.Changes, "AGENTS.md")
+	if ch.Kind != ChangeDrift {
+		t.Fatalf("kind = %q, want drift", ch.Kind)
+	}
+	if ch.AdoptEligible {
+		t.Errorf("AdoptEligible = true, want false for legacy v2 entry")
+	}
+}
+
+// TestPlan_DriftAdoptEligibility_ZeroOnNonDriftKinds pins that
+// AdoptEligible is the drift-only flag: create / update / unknown /
+// delete rows all carry the zero value (false).
+func TestPlan_DriftAdoptEligibility_ZeroOnNonDriftKinds(t *testing.T) {
+	// First-apply fixture — every rendered file surfaces as
+	// ChangeCreate. AdoptEligible must stay false on those.
+	{
+		projectRoot := t.TempDir()
+		loaded, proj := setupProfileAndProject(t, projectRoot)
+		preview, err := Plan(loaded, proj)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ch := findChange(t, preview.Changes, "AGENTS.md")
+		if ch.Kind != ChangeCreate {
+			t.Fatalf("first-apply kind = %q, want create", ch.Kind)
+		}
+		if ch.AdoptEligible {
+			t.Errorf("ChangeCreate AdoptEligible = true, want false")
+		}
+	}
+	// Fixture that produces one ChangeUpdate (rendered body changed
+	// under the same baseline hash) plus a ChangeUnknown (stray file
+	// inside a managed surface) plus a ChangeDelete (state-recorded
+	// file missing from desired). All three carry AdoptEligible=false.
+	projectRoot := t.TempDir()
+	loaded, proj := setupProfileAndProject(t, projectRoot)
+	// On-disk AGENTS.md matches the prior baseline hash, so with a
+	// desired body of agentsDocBody ("wanted") the file is neither
+	// drift (hash matches baseline) nor create (file exists) — the
+	// classifier returns ChangeUpdate.
+	if err := os.WriteFile(filepath.Join(projectRoot, "AGENTS.md"), []byte("baseline"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(projectRoot, ".codex"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Stray file inside .codex surfaces as ChangeUnknown.
+	if err := os.WriteFile(filepath.Join(projectRoot, ".codex", "stray.txt"), []byte("stray"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeStateEntries(t, projectRoot, map[string]ManagedFileEntry{
+		"AGENTS.md":      {Hash: hashOf("baseline"), AssetID: "base", SourceRel: "AGENTS.md"},
+		"gone-from-plan": {Hash: "stale", AssetID: "base", SourceRel: "gone"},
+	}, nil)
+
+	preview, err := Plan(loaded, proj)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []struct {
+		path string
+		kind ChangeKind
+	}{
+		{"AGENTS.md", ChangeUpdate},
+		{".codex/stray.txt", ChangeUnknown},
+		{"gone-from-plan", ChangeDelete},
+	} {
+		ch := findChange(t, preview.Changes, want.path)
+		if ch.Kind != want.kind {
+			t.Errorf("%s kind = %q, want %q", want.path, ch.Kind, want.kind)
+		}
+		if ch.AdoptEligible {
+			t.Errorf("%s (%s) AdoptEligible = true, want false", want.path, want.kind)
+		}
+	}
+}

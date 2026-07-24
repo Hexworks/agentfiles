@@ -216,6 +216,14 @@ type FileChange struct {
 	// the TUI may offer UnknownAdopt for the row and Apply resolves
 	// SourceRel from the reverse-mapping table (ADR 0020).
 	OwningAssetID string
+	// AdoptEligible is populated only for ChangeDrift rows. True iff the
+	// managed-state entry for the path carries non-empty AssetID and
+	// SourceRel (v3 provenance) so applyDrift can resolve the reverse
+	// write target. False for every other ChangeKind and for legacy v2
+	// state entries; the TUI degrades a drift row to bilean when this
+	// is false so users cannot pick a doomed DriftAdopt. See ADR 0020
+	// and the AdoptUnavailableError guard in applyDrift.
+	AdoptEligible bool
 }
 
 // Preview is the bridge between render and apply.
@@ -336,9 +344,14 @@ func classifyDesired(file render.RenderedFile, desiredHash, projectPath string, 
 	if currentHash == desiredHash {
 		return FileChange{}, true, nil
 	}
-	baseline := state.ManagedFiles[file.Path].Hash
-	if baseline != "" && baseline != currentHash {
-		return FileChange{Path: file.Path, Kind: ChangeDrift, Reason: ReasonDriftDetected}, false, nil
+	entry := state.ManagedFiles[file.Path]
+	if entry.Hash != "" && entry.Hash != currentHash {
+		return FileChange{
+			Path:          file.Path,
+			Kind:          ChangeDrift,
+			Reason:        ReasonDriftDetected,
+			AdoptEligible: entry.AssetID != "" && entry.SourceRel != "",
+		}, false, nil
 	}
 	return FileChange{Path: file.Path, Kind: ChangeUpdate, Reason: ReasonContentDiffers}, false, nil
 }
