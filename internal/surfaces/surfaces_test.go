@@ -12,6 +12,8 @@ func TestIsAllowed(t *testing.T) {
 	}{
 		{"AGENTS.md", true},
 		{"AGENTS.mdfoo", false},
+		{"CLAUDE.md", true},
+		{"CLAUDE.mdfoo", false},
 		{".claude", true},
 		{".claude/settings.local.json", true},
 		{".claude/skills/x/SKILL.md", true},
@@ -41,6 +43,20 @@ func TestIsAllowed(t *testing.T) {
 		if got := IsAllowed(c.target); got != c.want {
 			t.Errorf("IsAllowed(%q) = %v, want %v", c.target, got, c.want)
 		}
+	}
+}
+
+// TestSurfaces_AllowsClaudeMd pins that widening the managed-surface
+// fence to CLAUDE.md (so the claude-code agents_doc target can be
+// projected and synced) took effect. The render→sync integration side of
+// this criterion is covered by TestPlan_ClaudeMd_SurfacesNotFenced in the
+// sync package.
+func TestSurfaces_AllowsClaudeMd(t *testing.T) {
+	if !IsAllowed("CLAUDE.md") {
+		t.Fatal("IsAllowed(\"CLAUDE.md\") = false, want true after fence widening")
+	}
+	if !slices.Contains(Roots(), "CLAUDE.md") {
+		t.Fatal("Roots() missing CLAUDE.md")
 	}
 }
 

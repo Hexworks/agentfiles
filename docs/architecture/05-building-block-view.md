@@ -104,10 +104,11 @@ so `app.FolderNotRegisterableError` can carry a typed reason
 `ReasonAbsentFromPlan`) that the TUI renders as a targeted message.
 
 The per-agent `SkillRoot(agent)` accessor and `CursorCommandsRoot()` also
-live here so `render.addSkillOutputs` reads its container roots from the
-same source `app.RegisterableDirs` uses — no caller duplicates the list.
-Co-locating both fences in one package keeps every safety rule next to the
-data it fences.
+live here so the render skill strategies read their container roots from
+the same source `app.RegisterableDirs` uses — no caller duplicates the
+list. The list now also includes `CLAUDE.md` (alongside `AGENTS.md`) so
+the claude-code `agents_doc` target can be projected and synced. Co-locating
+both fences in one package keeps every safety rule next to the data it fences.
 
 ### `registry`
 
@@ -179,11 +180,35 @@ agent-specific output paths. Returns structured data and typed errors only;
 loop failures (missing assets, exclusive-group conflicts, per-asset render
 failures) are accumulated and returned as `[]errs.DomainError` so the TUI
 can list every issue in one preview. Each `RenderedFile` carries `Path`,
-`Body`, `Mode`, `AssetID`, and `SourceRel` (the asset-relative path of
-the source file). `SourceRel` is the provenance key the sync engine
-persists in state.json so `DriftAdopt` / `UnknownAdopt` can write the
-local body back into `<profile>/assets/<type>/<asset_id>/<source_rel>`
-(ADR 0020).
+`Body`, `Mode`, `AssetID`, `SourceRel` (the asset-relative path of the
+source file), and the `Agent` / `Type` provenance that names the strategy
+which produced it.
+
+Dispatch is a **global strategy table** keyed by the typed
+`(agent.Agent, asset.Type)` pair — a map lookup, never a type switch
+(ADR 0021). Each strategy owns **both** directions: `Render` (forward) and
+`Reverse` (repo path → asset source, for Adopt), so the two cannot drift.
+A selected pair with no registered strategy accumulates an
+`UnsupportedRenderingError` naming the agent and type. `ProjectPlan.ReverseLookup`
+is the single reverse entry point sync calls; a lossy strategy (the cursor
+flat-file skill) reports `ok=false`, so cursor commands stay non-adoptable.
+`SourceRel` remains the provenance key the sync engine persists in
+state.json so `DriftAdopt` / `UnknownAdopt` can write the local body back
+into `<profile>/assets/<type>/<asset_id>/<source_rel>` (ADR 0020).
+
+```mermaid
+flowchart TD
+    Build["render.Build"] --> Loop["per (asset × enabled agent)"]
+    Loop --> Table{"strategy table<br/>(agent.Agent, asset.Type)"}
+    Table -->|hit| Render["strategy.Render → []RenderedFile"]
+    Table -->|miss| Unsup["UnsupportedRenderingError (accumulated)"]
+    Render --> Plan["ProjectPlan{Files}"]
+    Plan --> RL["ProjectPlan.ReverseLookup"]
+    RL --> Rev["strategy.Reverse → (sourceRel, ok)"]
+    syncPkg["sync (Plan / Apply)"] -->|repo path| RL
+    syncPkg --> Writer["sync.Apply — the sole writer of repo files"]
+    Plan -. read-only .-> syncPkg
+```
 
 ### `sync`
 
@@ -199,8 +224,11 @@ treated as a clean slate — every desired file is `ChangeCreate`, no
 user picked `DriftAdopt` or `UnknownAdopt`, sync classifies the row
 and hands back the `{path, asset_id, source_rel}` triple the app
 service needs to write the profile side (`sync` itself stays
-repo-only). State entries are the value type `ManagedFileEntry{Hash,
-AssetID, SourceRel}` (schema v3, bumped from v2's bare-hash map);
+repo-only). The repo→asset reverse mapping is no longer re-derived in
+sync; both call sites delegate to `render.ProjectPlan.ReverseLookup`,
+so forward render and reverse Adopt share one owner (ADR 0021).
+State entries are the value type `ManagedFileEntry{Hash, AssetID,
+SourceRel}` (schema v3, bumped from v2's bare-hash map);
 `render.RenderedFile.SourceRel` supplies the provenance keys.
 Backwards-compatible loader keeps legacy v2 entries readable with
 Adopt disabled until the next re-apply. See ADR 0020.

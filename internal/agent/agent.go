@@ -104,8 +104,9 @@ func Strings(as []Agent) []string {
 // internal/render: the settings source filename authored in the profile and the
 // well-known settings target path written into the repo. Centralising the table
 // here keeps the recognized set and its render conventions in one owner. Skill
-// container roots stay in internal/surfaces (the path registry); consolidating
-// the remaining per-agent render conventions is deferred to task 0011.
+// container roots stay in internal/surfaces (the path registry); the render
+// strategy table (ADR 0021) reads this descriptor to build each agent's
+// settings strategy.
 type Descriptor struct {
 	Agent          Agent
 	SettingsSource string

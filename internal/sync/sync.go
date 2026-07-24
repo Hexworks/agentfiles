@@ -6,7 +6,6 @@ package sync
 import (
 	"encoding/json"
 	"os"
-	pathpkg "path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -308,7 +307,6 @@ func Plan(p *profile.Profile, proj *project.Manifest) (*Preview, errs.DomainErro
 		}
 		changes = append(changes, change)
 	}
-	assetDirs := assetProjectionDirs(rendered.Files)
 	if state != nil {
 		deletes, unknowns, detectErrs := detectDeletesAndUnknowns(proj.Path, desired, state)
 		if len(detectErrs) > 0 {
@@ -318,7 +316,11 @@ func Plan(p *profile.Profile, proj *project.Manifest) (*Preview, errs.DomainErro
 			changes = append(changes, FileChange{Path: pth, Kind: ChangeDelete, Reason: ReasonStateRecordedDelete})
 		}
 		for _, pth := range unknowns {
-			assetID, _, _ := owningAssetSourceRelFor(pth, assetDirs)
+			// ReverseLookup delegates the repo→asset mapping to the render
+			// strategy that produced the owning directory; sync no longer
+			// re-derives it (task 0011). Only the owning asset id matters
+			// here — the source-rel is resolved again at Apply time.
+			assetID, _, _ := rendered.ReverseLookup(pth)
 			changes = append(changes, FileChange{
 				Path:          pth,
 				Kind:          ChangeUnknown,
@@ -516,7 +518,7 @@ type applyLoop struct {
 	unknownByPath  map[string]UnknownDecision
 	bodiesByPath   map[string]render.RenderedFile
 	recordedHashes map[string]ManagedFileEntry
-	assetDirs      map[string]assetDirEntry
+	plan           *render.ProjectPlan
 	mutated        []string
 	adoptRequests  []AdoptRequest
 	domainErrs     []errs.DomainError
@@ -544,7 +546,7 @@ func newApplyLoop(preview *Preview, drift map[string]DriftDecision, unknown map[
 		unknownByPath:  unknown,
 		bodiesByPath:   bodies,
 		recordedHashes: recorded,
-		assetDirs:      assetProjectionDirs(preview.Files),
+		plan:           &render.ProjectPlan{Files: preview.Files},
 	}
 }
 
@@ -679,7 +681,7 @@ func (a *applyLoop) classifyUnknownAdopt(change FileChange) {
 		})
 		return
 	}
-	assetID, sourceRel, ok := owningAssetSourceRelFor(change.Path, a.assetDirs)
+	assetID, sourceRel, ok := a.plan.ReverseLookup(change.Path)
 	if !ok || assetID == "" || sourceRel == "" {
 		a.domainErrs = append(a.domainErrs, AdoptUnavailableError{
 			Path:   change.Path,
@@ -976,145 +978,6 @@ func isUnderIgnored(rel string, ignored []string) bool {
 		}
 	}
 	return false
-}
-
-// assetDirEntry records one directory in the rendered layout together
-// with the asset that owns it and the projection-source root that maps
-// the rendered dir back to <asset.Dir>/<projectionSource>.
-type assetDirEntry struct {
-	AssetID          string
-	ProjectionSource string
-	ProjectionTarget string
-}
-
-// assetProjectionDirs walks the rendered plan and returns a map keyed
-// by the rendered directory each rendered file sits in, valued by the
-// owning asset id + the asset-relative source root that produced the
-// dir. Directories hosting rendered files from more than one asset are
-// dropped as ambiguous (no owner, so Adopt is not offered).
-//
-// The source root is derived from the pair (RenderedFile.Path,
-// RenderedFile.SourceRel): stripping the common suffix gives the
-// mapping "rendered dir → asset-relative source dir". Unknown files
-// inside the same rendered dir map back to the same source dir with
-// their tail preserved.
-func assetProjectionDirs(files []render.RenderedFile) map[string]assetDirEntry {
-	type tally struct {
-		AssetID      string
-		SourceRoot   string
-		TargetRoot   string
-		Ambiguous    bool
-		AssetIDCount int
-	}
-	tallies := map[string]*tally{}
-	for _, f := range files {
-		if f.AssetID == "" || f.SourceRel == "" {
-			continue
-		}
-		targetDir := pathpkg.Dir(f.Path)
-		sourceDir := pathpkg.Dir(filepath.ToSlash(f.SourceRel))
-		// Walk up until the target dir's tail no longer matches the
-		// source dir's tail; the shared root remainder is the
-		// projection root the render pipeline used.
-		targetRoot, sourceRoot := stripCommonSuffix(targetDir, sourceDir)
-		key := targetDir
-		existing, ok := tallies[key]
-		if !ok {
-			tallies[key] = &tally{
-				AssetID:    f.AssetID,
-				SourceRoot: sourceRoot,
-				TargetRoot: targetRoot,
-			}
-			continue
-		}
-		if existing.AssetID != f.AssetID || existing.SourceRoot != sourceRoot {
-			existing.Ambiguous = true
-		}
-	}
-	out := make(map[string]assetDirEntry, len(tallies))
-	for k, t := range tallies {
-		if t.Ambiguous {
-			continue
-		}
-		out[k] = assetDirEntry{
-			AssetID:          t.AssetID,
-			ProjectionSource: t.SourceRoot,
-			ProjectionTarget: t.TargetRoot,
-		}
-	}
-	return out
-}
-
-// stripCommonSuffix walks target and source backwards while segments
-// match and returns the two root prefixes that remain. Both inputs
-// are forward-slash paths. Empty strings map to ".".
-func stripCommonSuffix(target, source string) (string, string) {
-	tParts := splitSlash(target)
-	sParts := splitSlash(source)
-	i := len(tParts)
-	j := len(sParts)
-	for i > 0 && j > 0 && tParts[i-1] == sParts[j-1] {
-		i--
-		j--
-	}
-	return joinSlash(tParts[:i]), joinSlash(sParts[:j])
-}
-
-func splitSlash(p string) []string {
-	if p == "" || p == "." {
-		return nil
-	}
-	return strings.Split(p, "/")
-}
-
-func joinSlash(parts []string) string {
-	if len(parts) == 0 {
-		return "."
-	}
-	return strings.Join(parts, "/")
-}
-
-// owningAssetSourceRelFor returns the AssetID + projection-relative
-// source path for the rendered directory that hosts unknownPath.
-// Walks parent dirs so an unknown at .claude/skills/foo/example-3.md
-// finds the entry at .claude/skills/foo. Returns ("", "", false) when
-// no owner exists. Plan discards the source-rel return; Apply keeps
-// both — one walk covers both callers.
-func owningAssetSourceRelFor(unknownPath string, assetDirs map[string]assetDirEntry) (assetID, sourceRel string, ok bool) {
-	dir := pathpkg.Dir(unknownPath)
-	for dir != "." && dir != "/" {
-		if entry, hit := assetDirs[dir]; hit {
-			// Tail is the path relative to the projection target root.
-			var tail string
-			if entry.ProjectionTarget == "." || entry.ProjectionTarget == "" {
-				tail = unknownPath
-			} else if unknownPath == entry.ProjectionTarget {
-				tail = ""
-			} else if strings.HasPrefix(unknownPath, entry.ProjectionTarget+"/") {
-				tail = unknownPath[len(entry.ProjectionTarget)+1:]
-			} else {
-				return "", "", false
-			}
-			var srcRel string
-			if entry.ProjectionSource == "." || entry.ProjectionSource == "" {
-				srcRel = tail
-			} else if tail == "" {
-				srcRel = entry.ProjectionSource
-			} else {
-				srcRel = entry.ProjectionSource + "/" + tail
-			}
-			return entry.AssetID, srcRel, true
-		}
-		if surfaces.IsAssetContainerRoot(dir) {
-			return "", "", false
-		}
-		next := pathpkg.Dir(dir)
-		if next == dir {
-			return "", "", false
-		}
-		dir = next
-	}
-	return "", "", false
 }
 
 // unknownAdoptMode returns the on-disk mode of the repo-relative file

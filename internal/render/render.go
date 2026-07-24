@@ -14,11 +14,9 @@ import (
 
 	"github.com/hexworks/agentfiles/internal/agent"
 	"github.com/hexworks/agentfiles/internal/asset"
-	"github.com/hexworks/agentfiles/internal/config"
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/profile"
 	"github.com/hexworks/agentfiles/internal/project"
-	"github.com/hexworks/agentfiles/internal/surfaces"
 	"github.com/hexworks/agentfiles/internal/utils"
 )
 
@@ -37,12 +35,22 @@ type RenderedFile struct {
 	// <asset.Dir>/<SourceRel> replaces the source content the render
 	// pipeline read. See ADR 0020.
 	SourceRel string
+	// Agent and Type record which (agent, asset-type) strategy produced
+	// this file. ReverseLookup reads them to pick the strategy that owns
+	// the reverse mapping for Adopt; a later preview can also group files
+	// by agent off Agent.
+	Agent agent.Agent
+	Type  asset.Type
 }
 
 // ProjectPlan is the desired state of one project before sync compares it with
 // the repo on disk.
 type ProjectPlan struct {
 	Files []RenderedFile
+	// revIndex memoizes the reverse-lookup index built from Files on the
+	// first ReverseLookup call. Populated lazily; the plan is read-only
+	// and used single-threaded by sync, so no locking is needed.
+	revIndex *reverseIndex
 }
 
 // Build resolves a project's selected assets into the concrete files that
@@ -88,8 +96,8 @@ func Build(p *profile.Profile, proj *project.Manifest) (*ProjectPlan, []errs.Dom
 	}
 
 	renderedFileMap := map[string]RenderedFile{}
-	for _, asset := range selectedAssets {
-		assetErrs := addRenderedFilesFor(renderedFileMap, asset, proj.EnabledAgents)
+	for _, selectedAsset := range selectedAssets {
+		assetErrs := addRenderedFilesFor(renderedFileMap, selectedAsset, proj.EnabledAgents)
 		domainErrors = append(domainErrors, assetErrs...)
 	}
 
@@ -125,118 +133,28 @@ func resolveAssets(profile *profile.Profile, proj *project.Manifest) ([]*asset.A
 	return selected, domainErrs
 }
 
-// addRenderedFilesFor handles the type-specific render rules. The three built-in
-// special cases are:
-//   - skill: different output shape per agent
-//   - agents_doc: maps to AGENTS.md for Codex
-//   - settings: uses well-known config file names per agent
-//
-// Everything else uses generic projections. Task 0011 tracks replacing
-// this switch with a per-(Type, Agent) strategy lookup.
+// addRenderedFilesFor dispatches an asset to the per-(agent, type) render
+// strategies. For every enabled agent the asset supports it looks up the
+// strategy keyed by (agent, asset.Type) — a map lookup, never a switch —
+// and merges the files that strategy renders into files. An enabled agent
+// with no strategy for the asset's type accumulates an
+// UnsupportedRenderingError rather than short-circuiting, so a project can
+// still report every other problem in one pass.
 func addRenderedFilesFor(files map[string]RenderedFile, a *asset.Asset, enabledAgents []agent.Agent) []errs.DomainError {
-	switch a.Type {
-	case asset.TypeSkill:
-		return addSkillOutputs(files, a, enabledAgents)
-	case asset.TypeAgentsDoc:
-		if !slices.Contains(enabledAgents, agent.Codex) {
-			return nil
-		}
-		body, err := readAssetFile(a, config.AgentsDocStarterFileName, "read")
-		if err != nil {
-			return []errs.DomainError{err}
-		}
-		target := config.AgentsDocStarterFileName
-		files[target] = RenderedFile{Path: target, Body: body, Mode: 0o644, AssetID: a.ID, SourceRel: config.AgentsDocStarterFileName}
-		return nil
-	case asset.TypeSettings:
-		var domainErrs []errs.DomainError
-		// Per-agent settings source/target conventions are owned by the agent
-		// package (agent.Descriptors) so the recognized set and its render
-		// conventions live in one place.
-		for _, d := range agent.Descriptors() {
-			if !slices.Contains(enabledAgents, d.Agent) || !asset.SupportsAgent(a, d.Agent) {
-				continue
-			}
-			path := filepath.Join(a.Dir, d.SettingsSource)
-			if !utils.Exists(path) {
-				continue
-			}
-			body, err := readAssetFile(a, d.SettingsSource, "read")
-			if err != nil {
-				domainErrs = append(domainErrs, err)
-				continue
-			}
-			files[d.SettingsTarget] = RenderedFile{Path: d.SettingsTarget, Body: body, Mode: 0o644, AssetID: a.ID, SourceRel: d.SettingsSource}
-		}
-		return domainErrs
-	default:
-		var domainErrs []errs.DomainError
-		for _, projection := range a.Projections {
-			if !slices.Contains(enabledAgents, projection.Agent) {
-				continue
-			}
-			if !asset.SupportsAgent(a, projection.Agent) {
-				continue
-			}
-			if !surfaces.IsAllowed(projection.Target) {
-				domainErrs = append(domainErrs, TargetOutsideSurfacesError{AssetID: a.ID, Target: projection.Target})
-				continue
-			}
-			source := filepath.Join(a.Dir, projection.Source)
-			info, err := os.Stat(source)
-			if err != nil {
-				domainErrs = append(domainErrs, classifyFileError(a.ID, projection.Source, "stat", err))
-				continue
-			}
-			if info.IsDir() {
-				walkErrs := walkProjection(files, a, projection.Source, projection.Target)
-				domainErrs = append(domainErrs, walkErrs...)
-				continue
-			}
-			body, readErr := readAssetFile(a, projection.Source, "read")
-			if readErr != nil {
-				domainErrs = append(domainErrs, readErr)
-				continue
-			}
-			files[projection.Target] = RenderedFile{Path: projection.Target, Body: body, Mode: 0o644, AssetID: a.ID, SourceRel: filepath.ToSlash(projection.Source)}
-		}
-		return domainErrs
-	}
-}
-
-// addSkillOutputs expands a single skill asset into each enabled agent's
-// expected directory or file structure. Per-agent container roots and
-// the Cursor flat-file layout come from internal/surfaces so the same
-// paths back both rendering and folder-registration eligibility.
-func addSkillOutputs(files map[string]RenderedFile, a *asset.Asset, enabledAgents []agent.Agent) []errs.DomainError {
-	body, err := readAssetFile(a, config.SkillStarterFileName, "read")
-	if err != nil {
-		return []errs.DomainError{err}
-	}
-	relFiles, listErr := asset.RelativeFiles(a.Dir)
-	if listErr != nil {
-		return []errs.DomainError{listErr}
-	}
 	var domainErrs []errs.DomainError
 	for _, ag := range enabledAgents {
 		if !asset.SupportsAgent(a, ag) {
 			continue
 		}
-		if root, ok := surfaces.SkillRoot(ag.String()); ok {
-			for _, rel := range relFiles {
-				data, readErr := readAssetFile(a, rel, "read")
-				if readErr != nil {
-					domainErrs = append(domainErrs, readErr)
-					continue
-				}
-				target := filepath.ToSlash(filepath.Join(root, a.ID, rel))
-				files[target] = RenderedFile{Path: target, Body: data, Mode: 0o644, AssetID: a.ID, SourceRel: filepath.ToSlash(rel)}
-			}
+		strat, ok := strategyFor(ag, a.Type)
+		if !ok {
+			domainErrs = append(domainErrs, UnsupportedRenderingError{Agent: ag, Type: a.Type})
 			continue
 		}
-		if ag == agent.Cursor {
-			target := filepath.ToSlash(filepath.Join(surfaces.CursorCommandsRoot(), a.ID+".md"))
-			files[target] = RenderedFile{Path: target, Body: body, Mode: 0o644, AssetID: a.ID, SourceRel: config.SkillStarterFileName}
+		rendered, renderErrs := strat.Render(a, ag)
+		domainErrs = append(domainErrs, renderErrs...)
+		for _, file := range rendered {
+			files[file.Path] = file
 		}
 	}
 	return domainErrs
@@ -262,16 +180,19 @@ func classifyFileError(assetID, rel, op string, err error) errs.DomainError {
 	return AssetReadError{AssetID: assetID, RelPath: rel, Op: op, Err: err}
 }
 
-// walkProjection projects every file under a directory source into the
-// target tree, preserving relative layout.
-func walkProjection(
-	files map[string]RenderedFile,
-	asset *asset.Asset,
+// walkProjectionFiles projects every file under a directory source into
+// the target tree, preserving relative layout, and returns them as
+// RenderedFile values tagged with the producing agent and asset type.
+// Shared by the generic-projection strategy across all agents.
+func walkProjectionFiles(
+	a *asset.Asset,
+	ag agent.Agent,
 	sourceRel,
 	targetRel string,
-) []errs.DomainError {
+) ([]RenderedFile, []errs.DomainError) {
+	var files []RenderedFile
 	var domainErrs []errs.DomainError
-	source := filepath.Join(asset.Dir, sourceRel)
+	source := filepath.Join(a.Dir, sourceRel)
 	walkErr := filepath.WalkDir(source, func(path string, dir os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -287,15 +208,23 @@ func walkProjection(
 		body, readErr := os.ReadFile(path)
 		if readErr != nil {
 			relPath := filepath.ToSlash(filepath.Join(sourceRel, rel))
-			domainErrs = append(domainErrs, classifyFileError(asset.ID, relPath, "read", readErr))
+			domainErrs = append(domainErrs, classifyFileError(a.ID, relPath, "read", readErr))
 			return nil
 		}
 		target := filepath.ToSlash(filepath.Join(targetRel, rel))
-		files[target] = RenderedFile{Path: target, Body: body, Mode: 0o644, AssetID: asset.ID, SourceRel: filepath.ToSlash(filepath.Join(sourceRel, rel))}
+		files = append(files, RenderedFile{
+			Path:      target,
+			Body:      body,
+			Mode:      0o644,
+			AssetID:   a.ID,
+			SourceRel: filepath.ToSlash(filepath.Join(sourceRel, rel)),
+			Agent:     ag,
+			Type:      a.Type,
+		})
 		return nil
 	})
 	if walkErr != nil {
-		domainErrs = append(domainErrs, AssetReadError{AssetID: asset.ID, RelPath: sourceRel, Op: "walk", Err: walkErr})
+		domainErrs = append(domainErrs, AssetReadError{AssetID: a.ID, RelPath: sourceRel, Op: "walk", Err: walkErr})
 	}
-	return domainErrs
+	return files, domainErrs
 }

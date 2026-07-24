@@ -8,6 +8,13 @@ Follows [ADR 0015](./0015-drift-keep-preserves-baseline.md) (Keep
 preserves the baseline) and refines invariant #6 in `CLAUDE.md`
 ("Profile is authoritative; render never reads the repo as input").
 
+> **Superseded in part by [ADR 0021](./0021-render-reverse-strategy-table.md).**
+> The reverse-mapping mechanics this ADR describes as living in
+> `internal/sync` (`assetProjectionDirs` / `owningAssetSourceRelFor`) now
+> live in `render` behind `ProjectPlan.ReverseLookup`, owned by the same
+> `(agent, type)` strategy that renders forward. The Adopt *policy* below
+> is unchanged.
+
 ## Context
 
 `agentfiles` treats a profile folder as the source of truth. Every

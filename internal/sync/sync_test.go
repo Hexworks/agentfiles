@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/hexworks/agentfiles/internal/agent"
+	"github.com/hexworks/agentfiles/internal/asset"
 	"github.com/hexworks/agentfiles/internal/config"
 	"github.com/hexworks/agentfiles/internal/profile"
 	"github.com/hexworks/agentfiles/internal/project"
@@ -967,20 +968,17 @@ func TestPreview_ChangeUnknown_LeavesOwningAssetIDEmptyForOrphan(t *testing.T) {
 }
 
 // TestPreview_ChangeUnknown_LeavesOwningAssetIDEmptyForAmbiguousDir
-// exercises the "same rendered dir, multiple assets" branch of
-// assetProjectionDirs: when two known assets both project into the
-// same rendered directory the walker cannot pick an owner, so Adopt
-// is not offered.
+// exercises the "same rendered dir, multiple assets" branch of the
+// reverse lookup: when two known assets both project into the same
+// rendered directory the walker cannot pick an owner, so Adopt is not
+// offered for an untracked sibling there.
 func TestPreview_ChangeUnknown_LeavesOwningAssetIDEmptyForAmbiguousDir(t *testing.T) {
-	dirs := assetProjectionDirs([]render.RenderedFile{
-		{Path: ".claude/skills/shared/a.md", AssetID: "one", SourceRel: "a.md"},
-		{Path: ".claude/skills/shared/b.md", AssetID: "two", SourceRel: "b.md"},
-	})
-	if _, ok := dirs[".claude/skills/shared"]; ok {
-		t.Fatalf("assetProjectionDirs kept ambiguous dir: %+v", dirs)
-	}
-	if got, _, _ := owningAssetSourceRelFor(".claude/skills/shared/new.md", dirs); got != "" {
-		t.Fatalf("OwningAssetID for ambiguous dir = %q, want empty", got)
+	plan := &render.ProjectPlan{Files: []render.RenderedFile{
+		{Path: ".claude/skills/shared/a.md", AssetID: "one", SourceRel: "a.md", Agent: agent.ClaudeCode, Type: asset.TypeSkill},
+		{Path: ".claude/skills/shared/b.md", AssetID: "two", SourceRel: "b.md", Agent: agent.ClaudeCode, Type: asset.TypeSkill},
+	}}
+	if got, _, ok := plan.ReverseLookup(".claude/skills/shared/new.md"); ok || got != "" {
+		t.Fatalf("OwningAssetID for ambiguous dir = %q (ok=%v), want empty", got, ok)
 	}
 }
 

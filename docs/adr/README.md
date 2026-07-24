@@ -49,4 +49,5 @@ Each ADR uses a small Michael Nygard style structure:
 - 0018 — License under AGPL-3.0 with copyright-assignment CLA
 - 0019 — Optional git-aware commits
 - 0020 — Adopt is the single sanctioned repo → profile flow
+- 0021 — Per-(Agent, Type) render/reverse strategy table
 

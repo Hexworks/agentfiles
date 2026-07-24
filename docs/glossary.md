@@ -205,6 +205,18 @@ same group so a project cannot select both:
 The computed desired output set for a project after selected assets and enabled
 agents are resolved.
 
+## Render Strategy
+
+A self-contained unit that renders one `(agent, asset type)` pair. Strategies
+live in a global lookup table keyed by the typed `(agent.Agent, asset.Type)`
+pair; render dispatches by map lookup, never a type switch. Each strategy owns
+**both** directions — `Render` (forward: asset source → repo files) and
+`Reverse` (back: repo path → asset source, for [Adopt](#adopt)) — so the two
+cannot drift. A strategy is the authority on its own invertibility: a lossy
+layout (the cursor flat-file skill) reports `ok=false`. A selected pair with no
+registered strategy raises an accumulated `UnsupportedRenderingError`. See
+ADR 0021.
+
 ## Preview
 
 The sync-layer representation of pending changes, including creates, updates,
@@ -213,7 +225,8 @@ drift, and delete candidates.
 ## Managed Surfaces
 
 The limited set of output locations that `agentfiles` is allowed to manage:
-`AGENTS.md`, `.claude/`, `.cursor/`, `.codex/`, `.opencode/`, and `.mcp.json`.
+`AGENTS.md`, `CLAUDE.md`, `.claude/`, `.cursor/`, `.codex/`, `.opencode/`, and
+`.mcp.json`.
 The tighter inner fence is the [Asset Container Root](#asset-container-root)
 set — a strict subset whose direct child folders are eligible for
 folder-based asset registration.
@@ -321,9 +334,12 @@ Two flavours:
   outside a known projection dir remain the Register-as-Asset flow.
 
 Adopt is the deliberate exception to `CLAUDE.md` invariant #6 (render
-never reads the repo as input). When git integration is enabled, a
-second commit is recorded on the profile repo (`chore(agentfiles):
-adopt N file(s) into profile`). See ADR 0020.
+never reads the repo as input). The repo → asset reverse mapping is
+owned by the producing [Render Strategy](#render-strategy) via
+`render.ProjectPlan.ReverseLookup` (ADR 0021), not re-derived in sync.
+When git integration is enabled, a second commit is recorded on the
+profile repo (`chore(agentfiles): adopt N file(s) into profile`). See
+ADR 0020.
 
 ## Adopt Request
 

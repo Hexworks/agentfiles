@@ -108,6 +108,66 @@ sequenceDiagram
 8. The bridge command emits a `NotificationMsg`; success or failure
    shows as a toast and is appended to the in-memory log.
 
+## Scenario: Render Strategy Dispatch
+
+Rendering resolves each `(asset × enabled agent)` through the global
+strategy table keyed by `(agent.Agent, asset.Type)` — a map lookup, never
+a type switch (ADR 0021). Each strategy owns both directions, so the
+forward projection and the reverse Adopt mapping share one owner.
+
+Forward — a `Plan`/`Apply` renders desired files:
+
+```mermaid
+sequenceDiagram
+    participant App as app
+    participant Sync as sync
+    participant Render as render
+    participant Table as strategy table
+    participant Strat as strategy(agent,type)
+
+    App->>Sync: Plan(profile, project)
+    Sync->>Render: Build(profile, project)
+    loop asset × enabled+supported agent
+        Render->>Table: strategyFor(agent, asset.Type)
+        alt hit
+            Table-->>Render: strategy
+            Render->>Strat: Render(asset, agent)
+            Strat-->>Render: []RenderedFile (pure, no writes)
+        else miss
+            Table-->>Render: ok=false
+            Render->>Render: accumulate UnsupportedRenderingError
+        end
+    end
+    Render-->>Sync: ProjectPlan{Files} + typed errors
+    Sync->>Sync: hash + classify vs repo/state
+    Sync-->>App: Preview
+```
+
+Reverse — an Adopt re-derives the source path for a repo file:
+
+```mermaid
+sequenceDiagram
+    participant App as app
+    participant Sync as sync
+    participant Plan as ProjectPlan
+    participant Strat as strategy(agent,type)
+    participant Profile as profile asset
+
+    App->>Sync: Apply(preview, DriftAdopt/UnknownAdopt)
+    Sync->>Plan: ReverseLookup(repoPath)
+    Plan->>Strat: Reverse(ctx)
+    alt invertible
+        Strat-->>Plan: (sourceRel, true)
+        Plan-->>Sync: (assetID, sourceRel, true)
+        Sync-->>App: AdoptRequest{path, assetID, sourceRel}
+        App->>Profile: write <asset.Dir>/<sourceRel>
+    else lossy (cursor flat-file skill)
+        Strat-->>Plan: ok=false
+        Plan-->>Sync: ok=false
+        Sync-->>App: no AdoptRequest (Adopt not offered)
+    end
+```
+
 ## Drift Lifecycle
 
 Classification of a single managed path is a pure function of three hashes:
@@ -161,6 +221,7 @@ sequenceDiagram
     User->>TUI: toggle drift row → Adopt, [Apply]
     TUI->>App: SyncProject{Drift:[{path, adopt}]}
     App->>Sync: Plan + Apply(DriftAdopt)
+    Sync->>Sync: ProjectPlan.ReverseLookup(path) → strategy.Reverse
     Sync-->>App: AdoptRequests{path, asset_id, source_rel}
     App->>Repo: read local body
     App->>Profile: write <asset.Dir>/<source_rel>

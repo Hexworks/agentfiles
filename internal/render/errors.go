@@ -4,8 +4,29 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/hexworks/agentfiles/internal/agent"
+	"github.com/hexworks/agentfiles/internal/asset"
 	"github.com/hexworks/agentfiles/internal/errs"
 )
+
+// UnsupportedRenderingError reports a selected asset whose (Agent, Type)
+// pair has no registered render strategy. Build accumulates it — never
+// short-circuits — so a project that pairs one unsupported combination
+// with otherwise valid selections still reports every problem at once.
+// It replaces the fall-through silence of the old per-type switch: a
+// missing pair is now an explicit, typed failure.
+type UnsupportedRenderingError struct {
+	Agent agent.Agent
+	Type  asset.Type
+}
+
+func (e UnsupportedRenderingError) Error() string {
+	return fmt.Sprintf("missing render strategy for %s %s", e.Agent, e.Type)
+}
+
+func (UnsupportedRenderingError) Severity() errs.Severity {
+	return errs.SeverityError
+}
 
 // ExclusiveGroupConflictError reports two or more selected assets that share a
 // non-empty exclusive_group. AssetIDs lists every asset id that participated

@@ -66,8 +66,16 @@ const SkillStarterFileName = "SKILL.md"
 
 // AgentsDocStarterFileName is the starter file written into a freshly
 // scaffolded agents_doc asset directory; it is also the well-known target
-// filename rendered into a project for the codex agent.
+// filename rendered into a project for the codex, cursor, and opencode
+// agents. It is always the agents_doc source filename, regardless of the
+// per-agent render target (see ClaudeDocFileName).
 const AgentsDocStarterFileName = "AGENTS.md"
+
+// ClaudeDocFileName is the well-known target filename an agents_doc asset
+// renders to for the claude-code agent. The source file inside the asset
+// stays AgentsDocStarterFileName ("AGENTS.md"); only the projected target
+// differs. It is a managed surface (see internal/surfaces).
+const ClaudeDocFileName = "CLAUDE.md"
 
 // SettingsStarterFileName is the starter file written into a freshly
 // scaffolded settings asset directory.

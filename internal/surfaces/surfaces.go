@@ -21,6 +21,7 @@ import (
 // IsAllowed appends "/" when building the prefix form.
 var roots = []string{
 	"AGENTS.md",
+	"CLAUDE.md",
 	".claude",
 	".cursor",
 	".codex",
