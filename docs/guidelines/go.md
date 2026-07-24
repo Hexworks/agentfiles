@@ -52,6 +52,51 @@ state := map[string]any{
 }
 ```
 
+## Prefer Structs Over Tuples
+
+When a group of values travels together — as a function's return, a
+parameter list, or a field — name it. **Two values may stay a tuple; three
+or more must be a named struct.** With two values the order is usually
+obvious (`value, err`, `key, value`, `x, y`); with three or more, callers
+can no longer tell which position means what without jumping to the
+definition, and every added value multiplies the risk of a silent
+argument-order swap.
+
+Idiomatic Go pairs are exempt regardless: `(T, error)`, `(value, ok)`,
+`(index, found)`. These are language conventions and stay as-is.
+
+```go
+// Do: name the result once, reuse it everywhere.
+type RenderPlan struct {
+	Files   []FileChange
+	Ignored []string
+	Deletes []string
+}
+
+func Build(p *profile.Profile, proj *project.Manifest) (RenderPlan, errs.DomainError) {
+	...
+}
+```
+
+```go
+// Don't: three positional returns the caller has to decode by position.
+func Build(...) ([]FileChange, []string, []string, errs.DomainError) {
+	...
+}
+```
+
+The same rule applies to parameters — an options struct once the arguments
+pass three — and to composite literals, where a repeated anonymous
+`struct{...}` with three fields should be promoted to a named type. A
+short-lived two-field anonymous struct (a table-test row, a quick grouping
+inside one function) is fine; name it the moment it grows a third field or
+escapes the function.
+
+A named struct also documents itself (`AddProjectArgs{Path: p}` says what
+`p` is), cannot be swapped by accident, survives a new field without a
+breaking signature change, and can grow methods (`Validate`, `Normalize`,
+`Error`) where a tuple cannot.
+
 ## Return Actionable Errors
 
 Errors should explain what failed and why the caller should care. For
