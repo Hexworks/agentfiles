@@ -313,14 +313,17 @@ func (s *Service) DiffFile(profileRef, projectID, path string) (appapi.DiffBodie
 		return appapi.DiffBodies{}, DiffDesiredMissingError{Path: path}
 	}
 	abs := filepath.Join(proj.Path, filepath.FromSlash(path))
-	// Refuse to disclose out-of-repo contents through a symlink: a
+	// Refuse to read through a symlink, exactly as the Adopt and sync write
+	// paths do (service.go executeAdoptRequests, sync.writeRendered): a
 	// booby-trapped repo could swap a managed file for a link to
-	// ~/.ssh/id_rsa or /etc/passwd and read its bytes into the diff modal.
-	// Intra-repo links resolve inside proj.Path and are allowed; only ones
-	// that escape are refused. A missing file (Lstat fails) falls through to
-	// os.ReadFile so it still surfaces as a DiffLocalReadError.
-	if _, lstatErr := os.Lstat(abs); lstatErr == nil && !utils.IsUnderRoot(abs, proj.Path) {
-		return appapi.DiffBodies{}, DiffLocalSymlinkError{Path: path}
+	// ~/.ssh/id_rsa, ~/.env, or /etc/passwd and read its bytes into the diff
+	// modal (and the terminal scrollback). Any symlink is refused — no
+	// intra-repo exception — so read and write treat a symlinked managed
+	// file identically. A missing file (Lstat fails) falls through to
+	// os.ReadFile so it still surfaces as a DiffLocalReadError. See task
+	// 0035 review issue #1.
+	if info, lstatErr := os.Lstat(abs); lstatErr == nil && info.Mode()&os.ModeSymlink != 0 {
+		return appapi.DiffBodies{}, llmsync.UnsafeSymlinkError{Path: abs}
 	}
 	local, readErr := os.ReadFile(abs)
 	if readErr != nil {

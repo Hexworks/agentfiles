@@ -147,28 +147,30 @@ func TestDiffFile_LocalReadFailureReturnsTypedError(t *testing.T) {
 	}
 }
 
-// TestDiffFile_LocalSymlinkEscapingRepoRefused pins the disclosure guard: a
-// managed file swapped for a symlink pointing outside the repo must be refused
-// with a typed error rather than reading the target's bytes into the diff.
-func TestDiffFile_LocalSymlinkEscapingRepoRefused(t *testing.T) {
+// TestDiffFile_LocalSymlinkRefused pins the disclosure guard: a managed file
+// swapped for a symlink is refused with the same sync.UnsafeSymlinkError the
+// Adopt and sync write paths raise — no intra-repo exception, so read and write
+// treat a symlinked managed file identically. The target is placed *inside* the
+// repo to prove even a non-escaping link is refused, not just an escaping one.
+func TestDiffFile_LocalSymlinkRefused(t *testing.T) {
 	svc, profileID, projectID, repoPath := seedDiffProject(t)
 
-	outside := filepath.Join(t.TempDir(), "secret")
-	if err := os.WriteFile(outside, []byte("id_rsa contents\n"), 0o600); err != nil {
+	inside := filepath.Join(repoPath, "secret")
+	if err := os.WriteFile(inside, []byte("secret contents\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	link := filepath.Join(repoPath, ".claude", "skills", "mine", "SKILL.md")
 	if err := os.Remove(link); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(outside, link); err != nil {
+	if err := os.Symlink(inside, link); err != nil {
 		t.Fatal(err)
 	}
 
 	bodies, err := svc.DiffFile(profileID, projectID, ".claude/skills/mine/SKILL.md")
-	var typed DiffLocalSymlinkError
+	var typed llmsync.UnsafeSymlinkError
 	if !errors.As(err, &typed) {
-		t.Fatalf("err = %T (%v), want DiffLocalSymlinkError", err, err)
+		t.Fatalf("err = %T (%v), want sync.UnsafeSymlinkError", err, err)
 	}
 	if string(bodies.Local) != "" {
 		t.Errorf("Local = %q, want empty (no bytes read through the symlink)", bodies.Local)
