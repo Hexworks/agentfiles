@@ -24,13 +24,18 @@ func TestIsAllowed(t *testing.T) {
 		{".mcp.jsonfoo", false},
 		{"randomfile", false},
 		{".agentfiles/state.json", false},
-		{".claude/../etc/passwd", false},
-		{".claude/x/../../etc", false},
-		{"/etc/passwd", false},
-		{`..\.claude\evil`, false},
-		{"../foo", false},
-		{".claude/./skills/x", true},
-		{"", false},
+		// --- path traversal / escape rejection (task 0007) ---
+		{".claude/../etc/passwd", false}, // cleans to "etc/passwd": refused by root-mismatch, not the "../" guard
+		{".claude/x/../../etc", false},   // cleans to "../etc": escapes above repo root
+		{"/etc/passwd", false},           // absolute path
+		{`..\.claude\evil`, false},       // backslash separators: rejected before cleaning
+		{"../foo", false},                // escapes above repo root
+		{".claude/./skills/x", true},     // benign "." segment must survive Clean, not be over-rejected
+		{".claude/../.claude/x", true},   // escape + re-enter cleans to ".claude/x": stays inside the fence
+		{"..", false},                    // hits the cleaned == ".." branch directly
+		{".claude/..", false},            // cleans to ".": traverses back to cwd, not a managed root
+		{".", false},                     // cwd itself is not a managed surface
+		{"", false},                      // empty target guarded explicitly
 	}
 	for _, c := range cases {
 		if got := IsAllowed(c.target); got != c.want {

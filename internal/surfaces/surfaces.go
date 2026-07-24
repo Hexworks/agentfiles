@@ -35,14 +35,30 @@ func Roots() []string {
 }
 
 // IsAllowed reports whether target sits inside one of the managed-surface
-// roots. The target is slash-normalized and path.Clean-ed first, so a
-// traversal form like ".claude/../../etc/passwd" (which resolves outside
-// every root) and an absolute or "../"-escaping form are all refused. A
-// cleaned target is allowed only if it equals a root exactly
-// (e.g. "AGENTS.md") or sits under one (root + "/", e.g.
-// ".claude/settings.local.json").
+// roots, refusing anything that could escape them. Two independent
+// defenses apply, in order:
+//
+//  1. Escape rejection. The target is slash-normalized and path.Clean-ed,
+//     then any form that cleans to an absolute path ("/etc/passwd") or a
+//     "../"-escape above the repo root (".claude/x/../../etc" -> "../etc")
+//     is rejected outright. A literal backslash is refused before cleaning
+//     to mirror the inner sync.validatePathKey fence, so a foreign-separator
+//     form ("..\.claude\evil") cannot slip through as one opaque segment.
+//
+//  2. Root membership. Whatever survives must still equal a managed root
+//     exactly ("AGENTS.md") or sit under one (root + "/", e.g.
+//     ".claude/settings.local.json"). This is what refuses a traversal that
+//     cleans to a plain relative path outside every root — ".claude/../etc/passwd"
+//     cleans to "etc/passwd", which is not caught by the escape guard but
+//     matches no root.
+//
+// A ".."-bearing input that re-resolves back inside a root is permitted:
+// ".claude/../.claude/x" cleans to ".claude/x" and stays allowed.
 func IsAllowed(target string) bool {
 	if target == "" {
+		return false
+	}
+	if strings.Contains(target, `\`) {
 		return false
 	}
 	cleaned := path.Clean(filepath.ToSlash(target))
