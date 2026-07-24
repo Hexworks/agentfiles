@@ -1,7 +1,7 @@
 ---
 id: 0007
 type: task
-status: in-review
+status: done
 topics: security, go, sync_and_safety
 notes: Original write-escape vuln is already closed at the sync layer by validatePathKey (task 0006 write-path guards). Remaining work is hardening IsAllowed itself + removing its stale FIX marker + tests. See Background.
 ---
