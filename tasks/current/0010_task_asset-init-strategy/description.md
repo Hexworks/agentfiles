@@ -55,3 +55,49 @@ agents_doc) be rendered?
 `text/template`: embed `.tmpl` files and execute them against the `Manifest`.
 Behavior must stay byte-identical to today's inline starters. Generic types
 (mcp, rule, hook) have no strategy entry and produce no starter file.
+
+## Acceptance Criteria
+
+Boundary-crossing criteria exercise **real** `asset.Init` against the real
+filesystem in `t.TempDir()` and assert bytes on disk (not a constant the code
+also produced). Expected strings are the user-visible contract, authored
+independently of the template files.
+
+- [ ] `make fmt && make test && make lint && make build` all pass.
+- [ ] `TestInit_SkillStarter_InterpolatesNameAndDescription`: real `asset.Init`
+      into `t.TempDir()` with `Name:"Rev", Description:"desc"`, reads
+      `assets/skill/<id>/SKILL.md` off disk, asserts exact bytes
+      `"---\nname: Rev\ndescription: desc\n---\n\nDescribe the skill here.\n"`.
+- [ ] `TestInit_AgentsDocStarter`: real `Init`, reads `AGENTS.md`, asserts
+      `"# <name>\n"`.
+- [ ] `TestInit_SettingsStarter_IsStatic`: real `Init`, reads `codex.toml`,
+      asserts `"# codex settings\n"`.
+- [ ] `TestInit_GenericTypes_WriteNoStarterFile`: for each of `mcp`, `rule`,
+      `hook`, real `Init` produces a dir containing **only** `asset.json` (no
+      starter file), asserted by listing the on-disk dir.
+- [ ] `TestRequiredContentFile_DerivesFromStrategy`:
+      `skill`/`agents_doc`/`settings` return their `config.*StarterFileName` +
+      `true`; `mcp`/`rule`/`hook` return `("", false)`.
+- [ ] Existing `TestFolderRegisterableTypes_AreConventionTypesOnly` and
+      `TestInitFromFolder_*` still pass unchanged (no behavior regression).
+- [ ] Single source: `starters` map is the only `Type → (filename, template)`
+      table; the old `writeStarter` and `RequiredContentFile` switches are
+      deleted.
+
+## Out of scope
+
+- The `render` per-`(Type, Agent)` switch (`internal/render/render.go`) —
+  tracked by task 0011.
+- Adding any new asset type.
+- Moving `asset.Type` to a leaf package.
+
+## Verification
+
+1. Run `make fmt && make test && make lint && make build` — all green.
+2. `go test ./internal/asset/...` — the five new `TestInit_*` /
+   `TestRequiredContentFile_*` tests pass alongside the pre-existing
+   `TestFolderRegisterableTypes_*` / `TestInitFromFolder_*`.
+3. `grep -n "switch" internal/asset/asset.go` — no `Type`-switch remains in
+   `writeStarter` or `RequiredContentFile` (both are `starters`-map lookups).
+4. `ls internal/asset/templates/` shows `skill.md.tmpl`, `agents_doc.md.tmpl`,
+   `settings.toml.tmpl`, embedded via `//go:embed` in `starter.go`.
