@@ -243,6 +243,26 @@ func (e DiffLocalReadError) Unwrap() error {
 	return e.Err
 }
 
+// DiffLocalSymlinkError reports that DiffFile refused to read the on-disk
+// file for a diff because it resolves through a symlink that escapes the
+// project root. A booby-trapped repo could swap a managed file for a link
+// to ~/.ssh/id_rsa, ~/.env, or /etc/passwd; reading it would disclose the
+// target's contents into the diff modal (and the terminal scrollback).
+// Intra-repo links are allowed — only ones that escape proj.Path are
+// refused, mirroring the pathselector FollowSymlinks containment rule and
+// the Adopt-side symlink guard.
+type DiffLocalSymlinkError struct {
+	Path string
+}
+
+func (e DiffLocalSymlinkError) Error() string {
+	return fmt.Sprintf("refusing to diff local file %s: resolves outside the project root via a symlink", e.Path)
+}
+
+func (DiffLocalSymlinkError) Severity() errs.Severity {
+	return errs.SeverityError
+}
+
 // UnsafeProfilePathError reports that DeleteProfileWithFolder refused a
 // pathological deletion target: the empty string, the filesystem root,
 // the user's home directory, or an ancestor of the profile registry

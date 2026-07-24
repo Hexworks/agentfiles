@@ -778,6 +778,14 @@ func validatePathKey(path string) errs.DomainError {
 	return nil
 }
 
+// ValidatePathKey exposes the FileChange path-key guard to callers outside
+// the sync package (e.g. app.DiffFile) that join a slash key with a project
+// root and need the same boundary check against absolute paths, a wrong OS
+// separator, and ".." escapes before reaching filepath.Join.
+func ValidatePathKey(path string) errs.DomainError {
+	return validatePathKey(path)
+}
+
 // writeRendered writes a single RenderedFile to the project, preserving its
 // mode. The path is resolved relative to projectPath. If the target
 // exists and is a symbolic link the write is refused with

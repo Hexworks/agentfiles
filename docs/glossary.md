@@ -273,6 +273,23 @@ local edit into the owning profile asset — see [Adopt](#adopt). Keep never
 adopts the on-disk hash as the new baseline (doing so would silently flip
 drift to update — see bug 0033). See ADR 0015 and ADR 0020.
 
+## Diff
+
+A read-only comparison, offered on the Plan Project screen, of a managed
+file's *desired* (managed) body against its on-disk *local* body — the same
+two sides the [Drift](#drift) and update rows already name. It is surfaced as
+a `[Diff]` row action (mnemonic `d`) **only** on
+[ChangeUpdate](#change-kind) and [Drift](#drift) rows, the two
+[Change Kinds](#change-kind) that carry both a desired body (from the
+[Render Plan](#render-plan)) and a local body on disk; create / delete /
+unknown rows lack one side and offer no diff. The direction of the unified
+diff flips by kind (update shows old = local / new = managed; drift shows
+old = managed / new = local), but it never writes — resolution stays on the
+Keep / Overwrite / Adopt / Delete toggles. The two bodies are produced by
+`app.Service.DiffFile`, which re-renders lazily and reads the local file only
+for display; unlike [Adopt](#adopt) it never feeds repo content back into the
+profile (`CLAUDE.md` invariant #6 holds).
+
 ## Adopt
 
 The single sanctioned repo → profile write path. Promotes a local edit

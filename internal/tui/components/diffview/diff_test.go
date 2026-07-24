@@ -28,6 +28,12 @@ func TestBuildDiff_UpdateDirection(t *testing.T) {
 	if !strings.Contains(out, "+desiredonly") {
 		t.Errorf("update diff missing added desired line:\n%s", out)
 	}
+	// and: the header labels the old side "local" and the new side "managed"
+	// (the user-facing signal of which side is which — a swapped label
+	// constant must fail here, not just a swapped body).
+	if !strings.Contains(out, "--- local") || !strings.Contains(out, "+++ managed") {
+		t.Errorf("update diff header labels wrong, want `--- local` / `+++ managed`:\n%s", out)
+	}
 }
 
 func TestBuildDiff_DriftDirection(t *testing.T) {
@@ -46,6 +52,11 @@ func TestBuildDiff_DriftDirection(t *testing.T) {
 	if !strings.Contains(out, "+localonly") {
 		t.Errorf("drift diff missing added local line:\n%s", out)
 	}
+	// and: the header flips relative to update — old side "managed", new
+	// side "local".
+	if !strings.Contains(out, "--- managed") || !strings.Contains(out, "+++ local") {
+		t.Errorf("drift diff header labels wrong, want `--- managed` / `+++ local`:\n%s", out)
+	}
 }
 
 func TestBuildDiff_EqualBodiesShowsNoDifferences(t *testing.T) {
@@ -56,5 +67,19 @@ func TestBuildDiff_EqualBodiesShowsNoDifferences(t *testing.T) {
 	}
 	if got := BuildDiff(appapi.ChangeDrift, body, body); got != NoDifferencesMessage {
 		t.Errorf("equal bodies (drift) = %q, want %q", got, NoDifferencesMessage)
+	}
+}
+
+// TestBuildDiff_NonDiffableKindDegradesVisibly pins the explicit-case guard:
+// create/delete/unknown rows lack one side of the diff, so a widened gate that
+// reached BuildDiff must surface NotDiffableMessage rather than a one-sided
+// (empty-local) diff.
+func TestBuildDiff_NonDiffableKindDegradesVisibly(t *testing.T) {
+	local := []byte("local\n")
+	desired := []byte("desired\n")
+	for _, kind := range []appapi.ChangeKind{appapi.ChangeCreate, appapi.ChangeDelete, appapi.ChangeUnknown} {
+		if got := BuildDiff(kind, local, desired); got != NotDiffableMessage {
+			t.Errorf("BuildDiff(%q) = %q, want %q", kind, got, NotDiffableMessage)
+		}
 	}
 }

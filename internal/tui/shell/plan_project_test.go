@@ -1350,6 +1350,35 @@ func TestPlanProjectScreen_DiffLocalReadErrorRendersInModal(t *testing.T) {
 	}
 }
 
+// TestPlanProjectScreen_DiffModalResolvedClears pins Acceptance Criterion 5 at
+// the shell seam: once the diff modal is open, the modal.ResolvedMsg that `esc`
+// produces routes through handleResolved's planModalDiff no-op, clears s.modal,
+// and returns the screen to the tree (InputFocused false).
+func TestPlanProjectScreen_DiffModalResolvedClears(t *testing.T) {
+	changes := []appapi.FileChange{{Path: "a/drift.md", Kind: appapi.ChangeDrift}}
+	f := newPlanActionsFake("Proj", changes)
+	f.diffBodies = appapi.DiffBodies{Local: []byte("local\n"), Desired: []byte("desired\n")}
+	s := newPlanProjectScreen(f, "alpha", "proj-1")
+	planLoadInto(t, s, f)
+
+	fn := s.treeActionsFn()
+	n := &treetable.Node{Data: planNode{kind: planNodeFile, path: "a/drift.md", change: changes[0]}}
+	btn := diffButtonIn(fn(n))
+	if btn == nil {
+		t.Fatal("drift row missing [Diff] button")
+	}
+	if _, _ = s.Update(btn.Trigger()()); s.modal == nil {
+		t.Fatal("diff modal not opened")
+	}
+
+	if _, _ = s.Update(modal.ResolvedMsg{ID: diffModalID}); s.modal != nil {
+		t.Fatal("s.modal not cleared after diff modal resolved")
+	}
+	if s.InputFocused() {
+		t.Error("InputFocused = true after diff modal closed, want false")
+	}
+}
+
 // assertBtn checks a button's label + mnemonic. Reused across the
 // per-state action button tests.
 func assertBtn(t *testing.T, b *mnemonic.Button, label string, m rune) {

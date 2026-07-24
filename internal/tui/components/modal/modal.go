@@ -39,7 +39,30 @@ const (
 	// its Content — 1 border line + 1 padding line on top and bottom,
 	// applied uniformly by both frame paths.
 	ChromeHeight = 4
+	// ScrollableChromeRows is the number of text rows a scrollable viewport
+	// dialog (help, diff) reserves inside its border for chrome: a title
+	// row (3) + a bottom scroll-percent row (3) + a one-line key footer (1).
+	// Callers derive their viewport height with [ScrollableInner].
+	ScrollableChromeRows = 7
 )
+
+// ScrollableInner translates a scrollable viewport dialog's outer dimensions
+// into the inner viewport width and height, deducting the rounded border (2
+// on each axis) and the [ScrollableChromeRows] text rows. Both axes clamp at 1
+// so the viewport stays valid on very narrow terminals. Shared by the help
+// and diff dialogs so their frames stay identical by construction — change the
+// chrome here and both move together.
+func ScrollableInner(width, height int) (int, int) {
+	innerW := width - 2
+	if innerW < 1 {
+		innerW = 1
+	}
+	vH := height - 2 - ScrollableChromeRows
+	if vH < 1 {
+		vH = 1
+	}
+	return innerW, vH
+}
 
 // LifecycleState enumerates the three states a [Content] can be in. It
 // replaces an earlier two-bool encoding so illegal combinations cannot be

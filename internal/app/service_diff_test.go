@@ -8,6 +8,7 @@ import (
 
 	"github.com/hexworks/agentfiles/internal/appapi"
 	"github.com/hexworks/agentfiles/internal/asset"
+	llmsync "github.com/hexworks/agentfiles/internal/sync"
 )
 
 // seedDiffProject builds a real profile+project whose repo holds one managed
@@ -143,6 +144,47 @@ func TestDiffFile_LocalReadFailureReturnsTypedError(t *testing.T) {
 	}
 	if typed.Path != ".claude/skills/mine/SKILL.md" {
 		t.Errorf("DiffLocalReadError.Path = %q, want the requested path", typed.Path)
+	}
+}
+
+// TestDiffFile_LocalSymlinkEscapingRepoRefused pins the disclosure guard: a
+// managed file swapped for a symlink pointing outside the repo must be refused
+// with a typed error rather than reading the target's bytes into the diff.
+func TestDiffFile_LocalSymlinkEscapingRepoRefused(t *testing.T) {
+	svc, profileID, projectID, repoPath := seedDiffProject(t)
+
+	outside := filepath.Join(t.TempDir(), "secret")
+	if err := os.WriteFile(outside, []byte("id_rsa contents\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(repoPath, ".claude", "skills", "mine", "SKILL.md")
+	if err := os.Remove(link); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, link); err != nil {
+		t.Fatal(err)
+	}
+
+	bodies, err := svc.DiffFile(profileID, projectID, ".claude/skills/mine/SKILL.md")
+	var typed DiffLocalSymlinkError
+	if !errors.As(err, &typed) {
+		t.Fatalf("err = %T (%v), want DiffLocalSymlinkError", err, err)
+	}
+	if string(bodies.Local) != "" {
+		t.Errorf("Local = %q, want empty (no bytes read through the symlink)", bodies.Local)
+	}
+}
+
+// TestDiffFile_RejectsPathEscape pins the boundary path-key guard: a crafted
+// "../.." key is rejected before any join/read, independent of render's clean
+// output shape.
+func TestDiffFile_RejectsPathEscape(t *testing.T) {
+	svc, profileID, projectID, _ := seedDiffProject(t)
+
+	_, err := svc.DiffFile(profileID, projectID, "../../etc/passwd")
+	var typed llmsync.InvalidPathError
+	if !errors.As(err, &typed) {
+		t.Fatalf("err = %T (%v), want sync.InvalidPathError", err, err)
 	}
 }
 

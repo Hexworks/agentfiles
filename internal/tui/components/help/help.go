@@ -77,7 +77,7 @@ func New(id string, req Request, width, height int) *modal.Modal {
 		path:  req.Path,
 		keys:  defaultKeymap(),
 	}
-	innerW, vH := helpInner(width, height)
+	innerW, vH := modal.ScrollableInner(width, height)
 
 	vp := viewport.New(viewport.WithWidth(innerW), viewport.WithHeight(vH))
 	vp.SoftWrap = true
@@ -85,23 +85,6 @@ func New(id string, req Request, width, height int) *modal.Modal {
 	c.applySize(width, height, innerW, vH)
 
 	return modal.New(id, c, modal.WithStyle(styles.HelpModalStyle))
-}
-
-// helpInner translates the outer modal dimensions into the inner
-// viewport width and height after deducting the rounded border (2 each
-// axis) and the four chrome rows inside the border: title row (3) +
-// bottom row (3) + help footer (1) = 7. The height clamps at 1 so the
-// viewport stays valid on very narrow terminals.
-func helpInner(width, height int) (int, int) {
-	innerW := width - 2
-	if innerW < 1 {
-		innerW = 1
-	}
-	vH := height - 2 - 7
-	if vH < 1 {
-		vH = 1
-	}
-	return innerW, vH
 }
 
 // applySize updates the cached width/height, resizes the viewport, and
@@ -121,7 +104,7 @@ func (c *content) applySize(width, height, innerW, vH int) {
 
 // SetSize re-runs the help layout for new outer dimensions.
 func (c *content) SetSize(width, height int) {
-	innerW, vH := helpInner(width, height)
+	innerW, vH := modal.ScrollableInner(width, height)
 	c.applySize(width, height, innerW, vH)
 }
 

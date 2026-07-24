@@ -52,6 +52,10 @@ const (
 	planModalDiff
 )
 
+// diffModalID identifies the diff modal in its ResolvedMsg, so the id lives
+// in one place instead of a bare literal at the open site.
+const diffModalID = "plan-diff"
+
 // planNodeKind classifies a treetable row payload. The root row is its
 // own kind so callers do not have to special-case the empty path.
 type planNodeKind int
@@ -796,7 +800,7 @@ func (s *planProjectScreen) handleDiffReady(m diffReadyMsg) (Screen, tea.Cmd) {
 	} else {
 		body = diffview.BuildDiff(m.kind, m.bodies.Local, m.bodies.Desired)
 	}
-	s.openModal(diffview.New("plan-diff", m.path, body, mw, mh), planModalDiff)
+	s.openModal(diffview.New(diffModalID, m.path, body, mw, mh), planModalDiff)
 	return s, s.modal.Init()
 }
 
@@ -939,10 +943,18 @@ func (s *planProjectScreen) handleResolved(msg modal.ResolvedMsg) tea.Cmd {
 	s.modalKind = planModalNone
 	dirKey := s.registerDirKey
 	s.registerDirKey = ""
-	if kind == planModalRegisterAsset {
+	switch kind {
+	case planModalRegisterAsset:
 		return s.afterRegisterAsset(msg, dirKey)
+	case planModalDiff, planModalNone:
+		// The diff modal is read-only, so closing it has no post-action;
+		// planModalNone means no modal was open. Both are deliberate no-ops
+		// — spelled out so a future kind that needs a post-action is not
+		// silently swallowed by a fall-through.
+		return nil
+	default:
+		return nil
 	}
-	return nil
 }
 
 func (s *planProjectScreen) afterRegisterAsset(msg modal.ResolvedMsg, dirKey string) tea.Cmd {

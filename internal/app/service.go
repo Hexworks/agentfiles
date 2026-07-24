@@ -298,6 +298,12 @@ func (s *Service) DiffFile(profileRef, projectID, path string) (appapi.DiffBodie
 	if err != nil {
 		return appapi.DiffBodies{}, err
 	}
+	// Validate the free-form slash key at the boundary rather than trusting
+	// render's output shape: the same guard sync runs before every on-disk
+	// join, so a crafted "../.." key can never reach filepath.Join here.
+	if keyErr := llmsync.ValidatePathKey(path); keyErr != nil {
+		return appapi.DiffBodies{}, keyErr
+	}
 	plan, buildErrs := render.Build(loaded.Profile, proj)
 	if len(buildErrs) > 0 {
 		return appapi.DiffBodies{}, errs.Errors(buildErrs)
@@ -306,7 +312,17 @@ func (s *Service) DiffFile(profileRef, projectID, path string) (appapi.DiffBodie
 	if !found {
 		return appapi.DiffBodies{}, DiffDesiredMissingError{Path: path}
 	}
-	local, readErr := os.ReadFile(filepath.Join(proj.Path, filepath.FromSlash(path)))
+	abs := filepath.Join(proj.Path, filepath.FromSlash(path))
+	// Refuse to disclose out-of-repo contents through a symlink: a
+	// booby-trapped repo could swap a managed file for a link to
+	// ~/.ssh/id_rsa or /etc/passwd and read its bytes into the diff modal.
+	// Intra-repo links resolve inside proj.Path and are allowed; only ones
+	// that escape are refused. A missing file (Lstat fails) falls through to
+	// os.ReadFile so it still surfaces as a DiffLocalReadError.
+	if _, lstatErr := os.Lstat(abs); lstatErr == nil && !utils.IsUnderRoot(abs, proj.Path) {
+		return appapi.DiffBodies{}, DiffLocalSymlinkError{Path: path}
+	}
+	local, readErr := os.ReadFile(abs)
 	if readErr != nil {
 		return appapi.DiffBodies{}, DiffLocalReadError{Path: path, Err: readErr}
 	}

@@ -47,7 +47,7 @@ func New(id, title, body string, width, height int) *modal.Modal {
 		body:  body,
 		keys:  defaultKeymap(),
 	}
-	innerW, vH := diffInner(width, height)
+	innerW, vH := modal.ScrollableInner(width, height)
 	vp := viewport.New(viewport.WithWidth(innerW), viewport.WithHeight(vH))
 	vp.SoftWrap = true
 	c.viewport = vp
@@ -60,23 +60,6 @@ func New(id, title, body string, width, height int) *modal.Modal {
 // viewport rather than as a toast or a blank pane.
 func ErrorText(err error) string {
 	return fmt.Sprintf("Failed to produce diff:\n\n%s", err.Error())
-}
-
-// diffInner translates the outer modal dimensions into the inner viewport
-// width and height, deducting the rounded border (2 each axis) and the four
-// chrome rows inside the border: title row (3) + bottom row (3) + help footer
-// (1) = 7. Mirrors help.helpInner so the two dialogs frame identically. Both
-// axes clamp at 1 so the viewport stays valid on very narrow terminals.
-func diffInner(width, height int) (int, int) {
-	innerW := width - 2
-	if innerW < 1 {
-		innerW = 1
-	}
-	vH := height - 2 - 7
-	if vH < 1 {
-		vH = 1
-	}
-	return innerW, vH
 }
 
 // applySize updates the cached width/height, resizes the viewport, and re-sets
@@ -92,7 +75,7 @@ func (c *content) applySize(width, height, innerW, vH int) {
 
 // SetSize re-runs the diff layout for new outer dimensions.
 func (c *content) SetSize(width, height int) {
-	innerW, vH := diffInner(width, height)
+	innerW, vH := modal.ScrollableInner(width, height)
 	c.applySize(width, height, innerW, vH)
 }
 
