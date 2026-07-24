@@ -24,6 +24,13 @@ func TestIsAllowed(t *testing.T) {
 		{".mcp.jsonfoo", false},
 		{"randomfile", false},
 		{".agentfiles/state.json", false},
+		{".claude/../etc/passwd", false},
+		{".claude/x/../../etc", false},
+		{"/etc/passwd", false},
+		{`..\.claude\evil`, false},
+		{"../foo", false},
+		{".claude/./skills/x", true},
+		{"", false},
 	}
 	for _, c := range cases {
 		if got := IsAllowed(c.target); got != c.want {

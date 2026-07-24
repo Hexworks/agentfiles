@@ -35,16 +35,22 @@ func Roots() []string {
 }
 
 // IsAllowed reports whether target sits inside one of the managed-surface
-// roots. A target is allowed if it equals a root exactly (e.g. "AGENTS.md")
-// or sits inside one (e.g. ".claude/settings.local.json").
-//
-// FIX: task#0007 — does not reject ".." segments. A target like
-// ".claude/../../etc/passwd" passes the prefix check today; tighten by
-// cleaning the target and rejecting any escape from the managed root.
+// roots. The target is slash-normalized and path.Clean-ed first, so a
+// traversal form like ".claude/../../etc/passwd" (which resolves outside
+// every root) and an absolute or "../"-escaping form are all refused. A
+// cleaned target is allowed only if it equals a root exactly
+// (e.g. "AGENTS.md") or sits under one (root + "/", e.g.
+// ".claude/settings.local.json").
 func IsAllowed(target string) bool {
-	target = filepath.ToSlash(target)
+	if target == "" {
+		return false
+	}
+	cleaned := path.Clean(filepath.ToSlash(target))
+	if cleaned == ".." || strings.HasPrefix(cleaned, "../") || strings.HasPrefix(cleaned, "/") {
+		return false
+	}
 	for _, root := range roots {
-		if target == root || strings.HasPrefix(target, root+"/") {
+		if cleaned == root || strings.HasPrefix(cleaned, root+"/") {
 			return true
 		}
 	}
