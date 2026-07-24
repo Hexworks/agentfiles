@@ -159,31 +159,31 @@ Unit-first, real-stack where a boundary is crossed (`testing.md` cross-boundary 
 
 ## Acceptance Criteria (DoD checkboxes)
 
-- [ ] `[Diff]` (`d`) renders on Plan Project **only** for `ChangeUpdate` and
+- [x] `[Diff]` (`d`) renders on Plan Project **only** for `ChangeUpdate` and
       `ChangeDrift` file rows; absent on create/delete/unknown. `go test
       ./internal/tui/shell -run TestDiffButton` passes.
-- [ ] `d` mnemonic never collides (Update = `o`,`d`; Drift = `o`,`p`/`w`/`t`,`d`).
+- [x] `d` mnemonic never collides (Update = `o`,`d`; Drift = `o`,`p`/`w`/`t`,`d`).
       `go test ./internal/tui/shell -run TestPlanProjectMnemonicUniqueness` passes.
-- [ ] `Service.DiffFile(profileRef, projectID, path)` returns on-disk (local) and
+- [x] `Service.DiffFile(profileRef, projectID, path)` returns on-disk (local) and
       rendered (desired) bodies via read-only re-render, reachable through the
       `actions` seam; `tui/shell` never imports `internal/app`. `go test
       ./internal/app -run TestDiffFile` passes (real render + real `os.ReadFile`,
       drifted + updated file).
-- [ ] Unified-diff text produced with `go-udiff` in `internal/tui`; direction is
+- [x] Unified-diff text produced with `go-udiff` in `internal/tui`; direction is
       Update → old=local/new=desired, Drift → old=managed/new=local. `go test
       ./internal/tui/components/diffview -run TestBuildDiff` passes.
-- [ ] Byte-identical bodies show a `No differences` message, not a blank pane
+- [x] Byte-identical bodies show a `No differences` message, not a blank pane
       (`TestBuildDiff_EqualBodiesShowsNoDifferences`).
-- [ ] Pressing `d` opens a scrollable viewport-backed modal (same frame as `?`
+- [x] Pressing `d` opens a scrollable viewport-backed modal (same frame as `?`
       help) with the colored unified diff; `esc` closes it back to the tree, `q`
       stays global quit. Added/removed lines visually distinguished.
-- [ ] A local-file read failure surfaces a typed error rendered inside the modal
+- [x] A local-file read failure surfaces a typed error rendered inside the modal
       (not a panic or blank): `go test ./internal/app -run
       TestDiffFile_LocalReadFailureReturnsTypedError` and
       `go test ./internal/tui/shell -run
       TestPlanProjectScreen_DiffLocalReadErrorRendersInModal` pass.
-- [ ] Baseline gate: `make build && make test && make lint` all pass.
-- [ ] Smoke (ticked only after a live run): `./bin/af` → Plan Project on a
+- [x] Baseline gate: `make build && make test && make lint` all pass.
+- [x] Smoke (ticked only after a live run): `./bin/af` → Plan Project on a
       project with a drifted managed file → cursor on the drift row → press `d` →
       modal shows the unified diff (managed vs local) → `esc` returns to the tree.
 

@@ -80,6 +80,16 @@ type SyncProjectInput struct {
 	IgnoredPaths []string
 }
 
+// DiffFileInput carries the ids for the Plan Project [Diff] row action:
+// the profile + project plus the forward-slash project-relative path of the
+// file to diff. The service re-renders read-only and reads the on-disk body;
+// the TUI never hands over a pre-resolved absolute path.
+type DiffFileInput struct {
+	ProfileRef string
+	ProjectID  string
+	Path       string
+}
+
 type LoadAssetInput struct {
 	ProfileRef string
 	AssetID    string

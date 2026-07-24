@@ -41,6 +41,10 @@ type fakePlanActions struct {
 	createInputs []actions.CreateAssetFromFolderInput
 	createID     string
 	createErr    errs.DomainError
+
+	diffInputs []actions.DiffFileInput
+	diffBodies appapi.DiffBodies
+	diffErr    errs.DomainError
 }
 
 func (f *fakePlanActions) LoadProfile(in actions.LoadProfileInput) (*appapi.LoadedProfile, errs.DomainError) {
@@ -73,6 +77,14 @@ func (f *fakePlanActions) CreateAssetFromFolder(in actions.CreateAssetFromFolder
 		return "", f.createErr
 	}
 	return f.createID, nil
+}
+
+func (f *fakePlanActions) DiffFile(in actions.DiffFileInput) (appapi.DiffBodies, errs.DomainError) {
+	f.diffInputs = append(f.diffInputs, in)
+	if f.diffErr != nil {
+		return appapi.DiffBodies{}, f.diffErr
+	}
+	return f.diffBodies, nil
 }
 
 func newPlanActionsFake(projName string, changes []appapi.FileChange) *fakePlanActions {
@@ -267,7 +279,9 @@ func TestPlanProjectScreen_TreeActionsFnFileRowsAlwaysGetOpen(t *testing.T) {
 	f := newPlanActionsFake("Proj", nil)
 	s := newPlanProjectScreen(f, "alpha", "proj-1")
 	fn := s.treeActionsFn()
-	for _, kind := range []appapi.ChangeKind{appapi.ChangeCreate, appapi.ChangeUpdate, appapi.ChangeDelete} {
+	// Create and delete rows carry only [Open]; they lack one side of a diff
+	// so no [Diff] is offered (update is exercised separately below).
+	for _, kind := range []appapi.ChangeKind{appapi.ChangeCreate, appapi.ChangeDelete} {
 		t.Run(string(kind), func(t *testing.T) {
 			n := &treetable.Node{Data: planNode{kind: planNodeFile, path: "p", change: appapi.FileChange{Path: "p", Kind: kind}}}
 			got := fn(n)
@@ -277,6 +291,15 @@ func TestPlanProjectScreen_TreeActionsFnFileRowsAlwaysGetOpen(t *testing.T) {
 			assertBtn(t, got[0], "Open", 'o')
 		})
 	}
+	t.Run("update also gets Diff", func(t *testing.T) {
+		n := &treetable.Node{Data: planNode{kind: planNodeFile, path: "p", change: appapi.FileChange{Path: "p", Kind: appapi.ChangeUpdate}}}
+		got := fn(n)
+		if len(got) != 2 {
+			t.Fatalf("fn(update) returned %d buttons, want 2 ([Open]+[Diff])", len(got))
+		}
+		assertBtn(t, got[0], "Open", 'o')
+		assertBtn(t, got[1], "Diff", 'd')
+	})
 	root := &treetable.Node{Data: planNode{kind: planNodeRoot}}
 	if got := fn(root); got != nil {
 		t.Errorf("fn(root) = %v, want nil", got)
@@ -1026,13 +1049,22 @@ func TestPlanProjectRowButtonsMatchMatrix(t *testing.T) {
 			fn := s.treeActionsFn()
 			n := &treetable.Node{Data: planNode{kind: planNodeFile, path: path, change: ch}}
 			got := fn(n)
-			wantLen := 1 + len(tc.wantLabels)
+			// Drift rows carry a trailing [Diff] after the toggles; unknown
+			// rows do not (no managed baseline to diff against). See 0045.
+			diffBtns := 0
+			if tc.kind == appapi.ChangeDrift {
+				diffBtns = 1
+			}
+			wantLen := 1 + len(tc.wantLabels) + diffBtns
 			if len(got) != wantLen {
-				t.Fatalf("button count = %d, want %d ([Open]+%d)", len(got), wantLen, len(tc.wantLabels))
+				t.Fatalf("button count = %d, want %d ([Open]+%d+%d diff)", len(got), wantLen, len(tc.wantLabels), diffBtns)
 			}
 			assertBtn(t, got[0], "Open", 'o')
 			for i, wantLabel := range tc.wantLabels {
 				assertBtn(t, got[i+1], wantLabel, tc.wantMnemonics[i])
+			}
+			if diffBtns == 1 {
+				assertBtn(t, got[len(got)-1], "Diff", 'd')
 			}
 
 			// Press each button and assert the resulting resolution map
@@ -1206,6 +1238,115 @@ func TestPlanProjectMnemonicUniqueness(t *testing.T) {
 		if !saw[k] {
 			t.Errorf("walk never visited row kind %d — cursor navigation regression", k)
 		}
+	}
+}
+
+// diffButtonIn returns the [Diff] button among a row's action buttons, or nil
+// when the row offers none.
+func diffButtonIn(btns []*mnemonic.Button) *mnemonic.Button {
+	for _, b := range btns {
+		if b.Label() == "Diff" {
+			return b
+		}
+	}
+	return nil
+}
+
+// TestDiffButton pins Acceptance Criterion 1: the [Diff] (`d`) action renders
+// exactly on ChangeUpdate and ChangeDrift file rows, and never on create,
+// delete, or unknown rows (each lacks one side of the diff).
+func TestDiffButton(t *testing.T) {
+	f := newPlanActionsFake("Proj", nil)
+	s := newPlanProjectScreen(f, "alpha", "proj-1")
+	fn := s.treeActionsFn()
+	cases := []struct {
+		kind appapi.ChangeKind
+		want bool
+	}{
+		{appapi.ChangeCreate, false},
+		{appapi.ChangeUpdate, true},
+		{appapi.ChangeDelete, false},
+		{appapi.ChangeDrift, true},
+		{appapi.ChangeUnknown, false},
+	}
+	for _, tc := range cases {
+		t.Run(string(tc.kind), func(t *testing.T) {
+			n := &treetable.Node{Data: planNode{kind: planNodeFile, path: "p", change: appapi.FileChange{Path: "p", Kind: tc.kind}}}
+			btn := diffButtonIn(fn(n))
+			if tc.want {
+				if btn == nil {
+					t.Fatalf("kind %s: [Diff] button absent, want present", tc.kind)
+				}
+				if btn.Mnemonic() != 'd' {
+					t.Errorf("kind %s: Diff mnemonic = %q, want 'd'", tc.kind, btn.Mnemonic())
+				}
+			} else if btn != nil {
+				t.Errorf("kind %s: [Diff] button present, want absent", tc.kind)
+			}
+		})
+	}
+}
+
+// TestPlanProjectScreen_DiffButtonDispatchesDiffFile presses [Diff] on a
+// drift row and asserts the command forwards the row path through the actions
+// seam and the returned message opens the diff modal.
+func TestPlanProjectScreen_DiffButtonDispatchesDiffFile(t *testing.T) {
+	changes := []appapi.FileChange{{Path: "a/drift.md", Kind: appapi.ChangeDrift}}
+	f := newPlanActionsFake("Proj", changes)
+	f.diffBodies = appapi.DiffBodies{Local: []byte("local\n"), Desired: []byte("desired\n")}
+	s := newPlanProjectScreen(f, "alpha", "proj-1")
+	planLoadInto(t, s, f)
+
+	fn := s.treeActionsFn()
+	n := &treetable.Node{Data: planNode{kind: planNodeFile, path: "a/drift.md", change: changes[0]}}
+	btn := diffButtonIn(fn(n))
+	if btn == nil {
+		t.Fatal("drift row missing [Diff] button")
+	}
+
+	msg := btn.Trigger()()
+	ready, ok := msg.(diffReadyMsg)
+	if !ok {
+		t.Fatalf("Diff press produced %T, want diffReadyMsg", msg)
+	}
+	if len(f.diffInputs) != 1 || f.diffInputs[0].Path != "a/drift.md" {
+		t.Fatalf("DiffFile inputs = %+v, want one call for a/drift.md", f.diffInputs)
+	}
+	if ready.err != nil {
+		t.Fatalf("diffReadyMsg.err = %v, want nil", ready.err)
+	}
+
+	if _, _ = s.Update(ready); s.modal == nil {
+		t.Fatal("diff modal not opened after diffReadyMsg")
+	}
+	if !s.InputFocused() {
+		t.Error("InputFocused = false with diff modal open, want true")
+	}
+}
+
+// TestPlanProjectScreen_DiffLocalReadErrorRendersInModal pins Acceptance
+// Criterion 7: a typed local-read failure opens the modal showing the error
+// (no panic, no blank pane) rather than dropping a toast.
+func TestPlanProjectScreen_DiffLocalReadErrorRendersInModal(t *testing.T) {
+	changes := []appapi.FileChange{{Path: "u/upd.md", Kind: appapi.ChangeUpdate}}
+	f := newPlanActionsFake("Proj", changes)
+	f.diffErr = stubDomainErr{msg: "read local file u/upd.md: no such file", sev: errs.SeverityError}
+	s := newPlanProjectScreen(f, "alpha", "proj-1")
+	planLoadInto(t, s, f)
+
+	fn := s.treeActionsFn()
+	n := &treetable.Node{Data: planNode{kind: planNodeFile, path: "u/upd.md", change: changes[0]}}
+	btn := diffButtonIn(fn(n))
+	if btn == nil {
+		t.Fatal("update row missing [Diff] button")
+	}
+
+	msg := btn.Trigger()().(diffReadyMsg)
+	if msg.err == nil {
+		t.Fatal("diffReadyMsg.err = nil, want the typed read error")
+	}
+	if _, _ = s.Update(msg); s.modal == nil {
+		t.Fatal("diff modal not opened for error case, want error rendered in modal")
 	}
 }
 

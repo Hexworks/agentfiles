@@ -90,6 +90,10 @@ func (f *fakeSelectActions) CreateAssetFromFolder(in actions.CreateAssetFromFold
 	return "", nil
 }
 
+func (f *fakeSelectActions) DiffFile(in actions.DiffFileInput) (appapi.DiffBodies, errs.DomainError) {
+	return appapi.DiffBodies{}, nil
+}
+
 func newSelectActionsFake(assets []*asset.Asset, proj *project.Manifest) *fakeSelectActions {
 	prof := &profile.Profile{
 		Root:     "/tmp/x",

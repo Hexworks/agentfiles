@@ -143,6 +143,16 @@ type UnknownResolution struct {
 	Decision UnknownDecision
 }
 
+// DiffBodies carries the two sides of a file diff the Plan Project screen
+// renders: Local is the on-disk body under the project root, Desired is the
+// body render would produce for the same path. The direction the TUI presents
+// them (which side is `-` and which is `+`) is kind-dependent and decided in
+// internal/tui, not here — the boundary only ships the raw bytes.
+type DiffBodies struct {
+	Local   []byte
+	Desired []byte
+}
+
 // Resolutions bundles per-file drift and unknown choices plus the
 // folder keys to ignore for one Apply call.
 type Resolutions struct {

@@ -17,6 +17,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/asset"
 	"github.com/hexworks/agentfiles/internal/errs"
 	"github.com/hexworks/agentfiles/internal/project"
+	"github.com/hexworks/agentfiles/internal/tui/components/diffview"
 	"github.com/hexworks/agentfiles/internal/tui/components/help"
 	"github.com/hexworks/agentfiles/internal/tui/components/mnemonic"
 	"github.com/hexworks/agentfiles/internal/tui/components/modal"
@@ -37,6 +38,7 @@ type planProjectActions interface {
 	PlanProject(in actions.PlanProjectInput) (*appapi.Preview, errs.DomainError)
 	SyncProject(in actions.SyncProjectInput) (appapi.ApplyOutcome, errs.DomainError)
 	CreateAssetFromFolder(in actions.CreateAssetFromFolderInput) (string, errs.DomainError)
+	DiffFile(in actions.DiffFileInput) (appapi.DiffBodies, errs.DomainError)
 }
 
 // planModalKind identifies which modal flow the Plan Project screen is
@@ -47,6 +49,7 @@ type planModalKind int
 const (
 	planModalNone planModalKind = iota
 	planModalRegisterAsset
+	planModalDiff
 )
 
 // planNodeKind classifies a treetable row payload. The root row is its
@@ -245,7 +248,11 @@ func (s *planProjectScreen) buildTree() {
 			},
 			treetable.ValueColumn{Title: "Resolution", Width: 14, Value: s.actionValue},
 		),
-		treetable.WithActions(treetable.Column{Title: "Actions", Width: 26}, s.treeActionsFn()),
+		// Width fits the widest cursor-row button set: a drift-trilean row in
+		// its Keep state renders [Open] [Overwrite] [Adopt] [Diff] (33 cols
+		// incl. separators). The bubbles table hard-clips the cell to this
+		// width, so anything narrower drops the trailing [Diff] button (0045).
+		treetable.WithActions(treetable.Column{Title: "Actions", Width: 34}, s.treeActionsFn()),
 		treetable.WithHeight(treetableHeight),
 		treetable.WithStyles(focusAwareTreetableStyles()),
 		treetable.WithTitle("Changes"),
@@ -317,7 +324,7 @@ func (s *planProjectScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 	// own resolution, and async results in flight).
 	if s.modal != nil {
 		switch msg.(type) {
-		case modal.ResolvedMsg, tea.WindowSizeMsg, planProjectLoadedMsg, mutationDoneMsg, syncDoneMsg, registerAssetDoneMsg:
+		case modal.ResolvedMsg, tea.WindowSizeMsg, planProjectLoadedMsg, mutationDoneMsg, syncDoneMsg, registerAssetDoneMsg, diffReadyMsg:
 			// fall through to type-specific handling
 		default:
 			return s.forwardToModal(msg)
@@ -333,6 +340,8 @@ func (s *planProjectScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 		return s.handleSyncDone(m)
 	case registerAssetDoneMsg:
 		return s.handleRegisterAssetDone(m)
+	case diffReadyMsg:
+		return s.handleDiffReady(m)
 	case modal.ResolvedMsg:
 		return s, s.handleResolved(m)
 	case tea.WindowSizeMsg:
@@ -606,8 +615,14 @@ func (s *planProjectScreen) treeActionsFn() treetable.ActionsFunc {
 		}
 		btns := []*mnemonic.Button{s.openFileBtn(d.path)}
 		switch d.change.Kind {
+		case appapi.ChangeUpdate:
+			// Update and drift rows are the only kinds with both a desired
+			// and a local body, so [Diff] is offered only here (create/
+			// delete/unknown each lack one side). See task 0045.
+			btns = append(btns, s.diffFileBtn(d.path, d.change.Kind))
 		case appapi.ChangeDrift:
 			btns = append(btns, s.driftToggleButtons(d.path, d.change.AdoptProvenance.Available())...)
+			btns = append(btns, s.diffFileBtn(d.path, d.change.Kind))
 		case appapi.ChangeUnknown:
 			btns = append(btns, s.unknownToggleButtons(d.path, d.change.OwningAssetID != "")...)
 		}
@@ -635,6 +650,15 @@ func ignoreRowBtn(ignored bool, handler func() tea.Cmd) *mnemonic.Button {
 
 func (s *planProjectScreen) openFileBtn(path string) *mnemonic.Button {
 	return mnemonic.New("Open", 'o', func() tea.Cmd { return s.onOpen(path) })
+}
+
+// diffFileBtn is the row-level [Diff] action offered on ChangeUpdate and
+// ChangeDrift file rows. 'd' is free on those rows: update carries only
+// [Open]/'o'; drift carries [Open]/'o' plus the drift toggles ('p'/'w'/'t').
+// The unknown row's [Delete]/'d' never coexists with a [Diff] because unknown
+// rows are never offered one.
+func (s *planProjectScreen) diffFileBtn(path string, kind appapi.ChangeKind) *mnemonic.Button {
+	return mnemonic.New("Diff", 'd', func() tea.Cmd { return s.onDiff(path, kind) })
 }
 
 // driftToggleButtons returns the row's non-selected drift options as
@@ -728,6 +752,52 @@ func (s *planProjectScreen) onOpen(path string) tea.Cmd {
 		return nil
 	}
 	return editor.Open(filepath.Join(s.projectPath, path))
+}
+
+// diffReadyMsg envelopes the result of a [Diff] press. Either bodies carries
+// the two sides to render or err carries the typed failure; kind selects the
+// diff direction and path titles the modal. Kept off the Update path so the
+// re-render + local read run in a command, not in Update (see docs/tui.md).
+type diffReadyMsg struct {
+	path   string
+	kind   appapi.ChangeKind
+	bodies appapi.DiffBodies
+	err    errs.DomainError
+}
+
+// onDiff returns a command that fetches the two diff bodies through the
+// actions seam and wraps the result in a diffReadyMsg. The I/O (read-only
+// re-render + local file read) happens in the command, off the Update path.
+func (s *planProjectScreen) onDiff(path string, kind appapi.ChangeKind) tea.Cmd {
+	if path == "" {
+		return nil
+	}
+	profileRef := s.profileID
+	projectID := s.projectID
+	return func() tea.Msg {
+		bodies, err := s.actions.DiffFile(actions.DiffFileInput{
+			ProfileRef: profileRef,
+			ProjectID:  projectID,
+			Path:       path,
+		})
+		return diffReadyMsg{path: path, kind: kind, bodies: bodies, err: err}
+	}
+}
+
+// handleDiffReady opens the diff modal. On a typed error it renders the
+// message inside the same frame (not a toast, not a blank pane) so a file
+// deleted between plan and diff surfaces cleanly; otherwise it builds the
+// colored unified diff. The modal is sized from the cached window dimensions.
+func (s *planProjectScreen) handleDiffReady(m diffReadyMsg) (Screen, tea.Cmd) {
+	mw, mh := modalSize(s.width, s.height)
+	var body string
+	if m.err != nil {
+		body = diffview.ErrorText(m.err)
+	} else {
+		body = diffview.BuildDiff(m.kind, m.bodies.Local, m.bodies.Desired)
+	}
+	s.openModal(diffview.New("plan-diff", m.path, body, mw, mh), planModalDiff)
+	return s, s.modal.Init()
 }
 
 func (s *planProjectScreen) toggleDrift(path string, next appapi.DriftDecision) tea.Cmd {

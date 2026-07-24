@@ -29,6 +29,13 @@ func (a *Actions) PlanProject(in PlanProjectInput) (*appapi.Preview, errs.Domain
 	return a.svc.Plan(in.ProfileRef, in.ProjectID)
 }
 
+// DiffFile returns the local (on-disk) and desired (rendered) bodies for a
+// file row, so the Plan Project screen can render a read-only unified diff.
+// Forwards to the service, which re-renders read-only.
+func (a *Actions) DiffFile(in DiffFileInput) (appapi.DiffBodies, errs.DomainError) {
+	return a.svc.DiffFile(in.ProfileRef, in.ProjectID, in.Path)
+}
+
 // SyncProject applies the desired files to the project repository,
 // honoring the per-file Drift and Unknown resolutions plus the ignored
 // folder keys in the input. When git integration is enabled and the

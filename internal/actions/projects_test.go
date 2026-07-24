@@ -166,6 +166,27 @@ func TestActions_PlanProject_ReturnsPreview(t *testing.T) {
 	}
 }
 
+// TestActions_DiffFile_ForwardsToService is a light forwarding assertion: the
+// input struct's ids reach Service.DiffFile, which returns ProjectNotFoundError
+// for an unknown project. A missing-project forward is enough to prove the
+// seam plumbs ProfileRef/ProjectID/Path through without a heavy render fixture.
+func TestActions_DiffFile_ForwardsToService(t *testing.T) {
+	f := newFixture(t, withProfile())
+
+	_, err := f.A.DiffFile(actions.DiffFileInput{
+		ProfileRef: "personal",
+		ProjectID:  "ghost",
+		Path:       ".claude/skills/x/SKILL.md",
+	})
+	if err == nil {
+		t.Fatal("expected error for unknown project")
+	}
+	var typed app.ProjectNotFoundError
+	if !errors.As(err, &typed) {
+		t.Fatalf("err = %T (%v), want ProjectNotFoundError", err, err)
+	}
+}
+
 func TestActions_SyncProject_AppliesAndReturnsPreview(t *testing.T) {
 	f := newFixture(t, withProfile())
 	if _, addErr := f.A.AddProject(actions.AddProjectInput{

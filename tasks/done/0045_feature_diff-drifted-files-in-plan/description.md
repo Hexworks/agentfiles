@@ -1,7 +1,7 @@
 ---
 id: 0045
 type: feature
-status: pending
+status: done
 topics: tui, go, sync_and_safety
 notes: Diff is only meaningful for change kinds that have BOTH a managed/desired body and a local on-disk body. That is ChangeUpdate (desired rendered vs on-disk) and ChangeDrift (desired managed vs on-disk drifted). ChangeCreate (no local), ChangeDelete (no local), and ChangeUnknown (no managed) cannot be diffed. Current row action wiring lives in internal/tui/shell/plan_project.go (treeActionsFn ~L587, openFileBtn ~L636); Open is added to all file leaves.
 ---

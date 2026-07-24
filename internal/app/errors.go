@@ -204,6 +204,45 @@ func (e AdoptReadError) Unwrap() error {
 	return e.Err
 }
 
+// DiffDesiredMissingError reports that DiffFile could not find the
+// requested path in the freshly computed render plan. Defensive: the Plan
+// Project screen only offers [Diff] on ChangeUpdate / ChangeDrift rows,
+// both of which always render a desired body, so this signals the plan
+// changed under the user (asset unselected, path renamed) between plan and
+// diff rather than an expected condition.
+type DiffDesiredMissingError struct {
+	Path string
+}
+
+func (e DiffDesiredMissingError) Error() string {
+	return fmt.Sprintf("no desired (managed) content for %s in the current plan", e.Path)
+}
+
+func (DiffDesiredMissingError) Severity() errs.Severity {
+	return errs.SeverityError
+}
+
+// DiffLocalReadError reports a failure to read the on-disk file whose body
+// the diff needs (e.g. it was deleted between plan and diff). Wraps the
+// underlying os error so the TUI can render a specific message via
+// errors.As and surface it inside the diff modal instead of panicking.
+type DiffLocalReadError struct {
+	Path string
+	Err  error
+}
+
+func (e DiffLocalReadError) Error() string {
+	return fmt.Sprintf("read local file %s: %s", e.Path, e.Err.Error())
+}
+
+func (DiffLocalReadError) Severity() errs.Severity {
+	return errs.SeverityError
+}
+
+func (e DiffLocalReadError) Unwrap() error {
+	return e.Err
+}
+
 // UnsafeProfilePathError reports that DeleteProfileWithFolder refused a
 // pathological deletion target: the empty string, the filesystem root,
 // the user's home directory, or an ancestor of the profile registry

@@ -208,7 +208,11 @@ Adopt disabled until the next re-apply. See ADR 0020.
 ### `app`
 
 Coordinates the higher-level operations used by the TUI: profile creation,
-project ownership checks, planning, and apply. Accumulator-shape calls
+project ownership checks, planning, and apply. `Service.DiffFile(profileRef,
+projectID, path)` supports the Plan Project `[Diff]` action: it re-renders
+read-only, matches the desired body by path, and reads the on-disk body under
+the project root, returning both as `appapi.DiffBodies` (typed
+`DiffDesiredMissingError` / `DiffLocalReadError` on failure). Accumulator-shape calls
 return `[]errs.DomainError`; non-accumulator calls wrap render slices in
 `errs.Errors` and return a single `error`. Typed-error conventions live in
 [`docs/guidelines/errors.md`](../guidelines/errors.md).
@@ -240,7 +244,8 @@ Boundary value types shared by the TUI, the actions layer, and the
 app service — `CommitOutcome` (discriminated: `Committed`, `Skipped`,
 `Failed` with a `SkipReason` for each skip flavor), `Preview`,
 `FileChange`, `ChangeKind`, `DriftDecision` / `UnknownDecision`,
-`LoadedProfile`, `Resolutions`, plus the helpers `RegisterableDirs`,
+`LoadedProfile`, `Resolutions`, `DiffBodies` (the two sides of a Plan Project
+diff), plus the helpers `RegisterableDirs`,
 `DesiredIgnored`, `DriftResolutionsFromMap`, and `SanitizeSubject`.
 The leaf lives here so the documented `tui/shell → actions → app`
 edge stays honest: shell reads value types from this package and
@@ -357,6 +362,19 @@ draws a rounded frame with the caption spliced into the top border, and
 `DefaultStyles()` supplies the palette-derived look. The frame logic was
 extracted from `treetable` so the treetable, modal captions, and any
 future framed widget share one implementation.
+
+### `tui/components/diffview`
+
+Reusable read-only diff overlay for the Plan Project screen. `BuildDiff(kind,
+local, desired)` produces a colored unified diff with `go-udiff`, choosing the
+`-`/`+` direction by `appapi.ChangeKind` (update → old=local/new=desired; drift
+→ old=managed/new=local) and returning a `No differences.` message when the two
+bodies are byte-identical. `New(id, title, body, w, h)` wraps a
+`viewport.Model` as a `modal.Content` (same frame as the `help` dialog: `esc`
+closes, `SetSize` reflows, scroll-percent footer), and `ErrorText(err)` renders
+a `DiffLocalReadError` inside that same frame instead of a toast or blank pane.
+The domain returns raw bytes (`appapi.DiffBodies`); this package owns all
+formatting and color, keeping the `internal/tui` boundary intact.
 
 ### `tui/modals/pathselector`
 

@@ -20,6 +20,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/project"
 	"github.com/hexworks/agentfiles/internal/projectstore"
 	"github.com/hexworks/agentfiles/internal/registry"
+	"github.com/hexworks/agentfiles/internal/render"
 	"github.com/hexworks/agentfiles/internal/settings"
 	"github.com/hexworks/agentfiles/internal/surfaces"
 	llmsync "github.com/hexworks/agentfiles/internal/sync"
@@ -280,6 +281,48 @@ func (s *Service) planSync(profileRef, projectID string) (*llmsync.Preview, errs
 		return nil, ProjectNotFoundError{ProjectID: projectID}
 	}
 	return llmsync.Plan(loaded.Profile, proj)
+}
+
+// DiffFile returns the two bodies the Plan Project screen needs to render a
+// read-only unified diff for path: the desired (managed) body render would
+// produce, and the local body currently on disk under the project root. It
+// re-renders read-only — no bodies are cached in the Preview — so the diff
+// always reflects the current profile source. path is the forward-slash
+// project-relative key from a FileChange.
+//
+// Missing-from-plan → DiffDesiredMissingError (defensive; update/drift rows
+// always render). Local read failure → DiffLocalReadError so a file removed
+// between plan and diff surfaces a typed error instead of a panic.
+func (s *Service) DiffFile(profileRef, projectID, path string) (appapi.DiffBodies, errs.DomainError) {
+	loaded, proj, err := s.resolveProject(profileRef, projectID)
+	if err != nil {
+		return appapi.DiffBodies{}, err
+	}
+	plan, buildErrs := render.Build(loaded.Profile, proj)
+	if len(buildErrs) > 0 {
+		return appapi.DiffBodies{}, errs.Errors(buildErrs)
+	}
+	desired, found := desiredBody(plan, path)
+	if !found {
+		return appapi.DiffBodies{}, DiffDesiredMissingError{Path: path}
+	}
+	local, readErr := os.ReadFile(filepath.Join(proj.Path, filepath.FromSlash(path)))
+	if readErr != nil {
+		return appapi.DiffBodies{}, DiffLocalReadError{Path: path, Err: readErr}
+	}
+	return appapi.DiffBodies{Local: local, Desired: desired}, nil
+}
+
+// desiredBody finds the rendered body for a forward-slash target path in the
+// plan. Render keys every desired file by that same path, so a linear scan is
+// the exact reverse of the FileChange the row was built from.
+func desiredBody(plan *render.ProjectPlan, path string) ([]byte, bool) {
+	for _, f := range plan.Files {
+		if f.Path == path {
+			return f.Body, true
+		}
+	}
+	return nil, false
 }
 
 func previewFromSync(p *llmsync.Preview) *appapi.Preview {

@@ -12,6 +12,26 @@ and apply it. Rows show `Status` and `Current Action`.
 - `? unknown` — file lives under a managed surface but is not in the desired
   set and was not tracked before.
 
+## File row actions (open / diff)
+
+Every file leaf offers **Open** (`o`), which opens the file under the project
+root in your `$EDITOR`; the plan reloads when you exit so any edit is reflected.
+
+`~ update` and `* drift` rows additionally offer **Diff** (`d`), a read-only
+unified diff between the on-disk file and the managed (rendered) content. It
+opens a scrollable modal (`↑`/`↓` or `k`/`j` to scroll, `esc` to close) with
+added lines in green and removed lines in red. The direction depends on the row:
+
+- `~ update` — old side is the current on-disk file, new side is the incoming
+  managed content, so the diff previews what **Apply** would change.
+- `* drift` — old side is the managed baseline, new side is the drifted local
+  file, so the diff shows how the file diverged from what `af` wrote.
+
+Byte-identical bodies show a `No differences.` message instead of a blank pane.
+`+ add`, `- delete`, and `? unknown` rows offer no **Diff** — each lacks one
+side of the comparison. The diff is read-only; resolution stays on the toggles
+below.
+
 ## Row actions (drift / unknown only)
 
 The cursor row shows a toggle button reflecting the **other** option:
