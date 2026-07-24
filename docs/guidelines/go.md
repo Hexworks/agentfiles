@@ -97,6 +97,42 @@ A named struct also documents itself (`AddProjectArgs{Path: p}` says what
 breaking signature change, and can grow methods (`Validate`, `Normalize`,
 `Error`) where a tuple cannot.
 
+## Route With A Switch, Not An If-Else Chain
+
+When control flow selects between **more than two** branches on the same
+value, use a `switch`. Two branches may stay an `if`/`else`; the moment a
+third branch appears, promote it to a `switch`. A switch names the value
+being routed on once, keeps the cases aligned and easy to scan, and makes a
+missing case obvious.
+
+```go
+// Do: three-way routing reads as a switch.
+switch change.Kind {
+case ChangeCreate:
+	return applyCreate(change)
+case ChangeUpdate:
+	return applyUpdate(change)
+case ChangeDelete:
+	return applyDelete(change)
+default:
+	return UnknownChangeError{Kind: change.Kind}
+}
+```
+
+```go
+// Don't: an if-else ladder hides the routed value and the missing default.
+if change.Kind == ChangeCreate {
+	return applyCreate(change)
+} else if change.Kind == ChangeUpdate {
+	return applyUpdate(change)
+} else if change.Kind == ChangeDelete {
+	return applyDelete(change)
+}
+```
+
+Prefer a `default` case that handles the unexpected value — usually by
+returning a typed error — so a new variant can't slip through silently.
+
 ## Return Actionable Errors
 
 Errors should explain what failed and why the caller should care. For
