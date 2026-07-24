@@ -290,47 +290,50 @@ func TestFolderRegisterableTypes_AreConventionTypesOnly(t *testing.T) {
 	}
 }
 
-func TestInit_SkillStarter_InterpolatesNameAndDescription(t *testing.T) {
-	root := t.TempDir()
-	dir, err := Init(root, Manifest{ID: "rev", Name: "Rev", Type: TypeSkill, Description: "desc"})
+// initAndReadStarter runs the real Init into a fresh temp dir and returns the
+// bytes of the named starter file it wrote, so each starter test carries only
+// its manifest, filename, and expected bytes.
+func initAndReadStarter(t *testing.T, manifest Manifest, filename string) []byte {
+	t.Helper()
+	dir, err := Init(t.TempDir(), manifest)
 	if err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	got, readErr := os.ReadFile(filepath.Join(dir, "SKILL.md"))
+	got, readErr := os.ReadFile(filepath.Join(dir, filename))
 	if readErr != nil {
-		t.Fatalf("read SKILL.md: %v", readErr)
+		t.Fatalf("read %s: %v", filename, readErr)
 	}
+	return got
+}
+
+func TestInit_SkillStarter_InterpolatesNameAndDescription(t *testing.T) {
+	got := initAndReadStarter(t, Manifest{ID: "rev", Name: "Rev", Type: TypeSkill, Description: "desc"}, "SKILL.md")
 	want := "---\nname: Rev\ndescription: desc\n---\n\nDescribe the skill here.\n"
 	if string(got) != want {
 		t.Fatalf("SKILL.md = %q, want %q", string(got), want)
 	}
 }
 
+func TestInit_SkillStarter_DoesNotEscapeSpecialChars(t *testing.T) {
+	// text/template (unlike html/template) performs no escaping; freeze that
+	// contract so a future switch to html/template can't silently HTML-escape
+	// the markdown starter body.
+	got := initAndReadStarter(t, Manifest{ID: "rev", Name: "Rev", Type: TypeSkill, Description: `a < b & "c" > d`}, "SKILL.md")
+	want := "---\nname: Rev\ndescription: a < b & \"c\" > d\n---\n\nDescribe the skill here.\n"
+	if string(got) != want {
+		t.Fatalf("SKILL.md = %q, want %q (special chars must stay verbatim)", string(got), want)
+	}
+}
+
 func TestInit_AgentsDocStarter(t *testing.T) {
-	root := t.TempDir()
-	dir, err := Init(root, Manifest{ID: "doc", Name: "My Doc", Type: TypeAgentsDoc})
-	if err != nil {
-		t.Fatalf("Init: %v", err)
-	}
-	got, readErr := os.ReadFile(filepath.Join(dir, "AGENTS.md"))
-	if readErr != nil {
-		t.Fatalf("read AGENTS.md: %v", readErr)
-	}
+	got := initAndReadStarter(t, Manifest{ID: "doc", Name: "My Doc", Type: TypeAgentsDoc}, "AGENTS.md")
 	if want := "# My Doc\n"; string(got) != want {
 		t.Fatalf("AGENTS.md = %q, want %q", string(got), want)
 	}
 }
 
 func TestInit_SettingsStarter_IsStatic(t *testing.T) {
-	root := t.TempDir()
-	dir, err := Init(root, Manifest{ID: "cfg", Name: "Cfg", Type: TypeSettings})
-	if err != nil {
-		t.Fatalf("Init: %v", err)
-	}
-	got, readErr := os.ReadFile(filepath.Join(dir, "codex.toml"))
-	if readErr != nil {
-		t.Fatalf("read codex.toml: %v", readErr)
-	}
+	got := initAndReadStarter(t, Manifest{ID: "cfg", Name: "Cfg", Type: TypeSettings}, "codex.toml")
 	if want := "# codex settings\n"; string(got) != want {
 		t.Fatalf("codex.toml = %q, want %q", string(got), want)
 	}
@@ -375,6 +378,29 @@ func TestRequiredContentFile_DerivesFromStrategy(t *testing.T) {
 		if file != c.file || ok != c.ok {
 			t.Fatalf("RequiredContentFile(%q) = (%q, %v), want (%q, %v)", c.typ, file, ok, c.file, c.ok)
 		}
+	}
+}
+
+func TestRenderStarter_WrapsExecFailureAsStarterRenderError(t *testing.T) {
+	// Register a starter template that references a field the Manifest lacks, so
+	// execution fails — the branch a future template edit could trip. Proves the
+	// failure is a typed StarterRenderError carrying the Type and unwrapping.
+	const stem = "starter-render-fail-test"
+	if _, err := starterTmpl.New(stem + templateExt).Parse("{{.NoSuchField}}"); err != nil {
+		t.Fatalf("register test template: %v", err)
+	}
+
+	_, err := renderStarter(starter{filename: "x", template: stem}, Manifest{Type: TypeSkill})
+
+	var typed StarterRenderError
+	if !errors.As(err, &typed) {
+		t.Fatalf("expected StarterRenderError, got %T: %v", err, err)
+	}
+	if typed.Type != TypeSkill {
+		t.Fatalf("expected Type %q preserved, got %q", TypeSkill, typed.Type)
+	}
+	if typed.Unwrap() == nil {
+		t.Fatal("expected wrapped template error preserved")
 	}
 }
 

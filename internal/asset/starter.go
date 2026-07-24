@@ -27,7 +27,7 @@ var starterTmpl = template.Must(template.ParseFS(starterTemplates, "templates/*.
 // produces its body.
 type starter struct {
 	filename string // written into the asset dir (a config.*StarterFileName)
-	template string // base name inside templates/, e.g. "skill.md.tmpl"
+	template string // template stem; must match a parsed templates/<stem>.tmpl
 }
 
 // starters is the single source of truth for the per-Type starter contract:
@@ -37,17 +37,21 @@ type starter struct {
 // (TypeMCP, TypeRule, TypeHook) have no entry: their content is user-authored,
 // so they emit no starter file.
 var starters = map[Type]starter{
-	TypeSkill:     {config.SkillStarterFileName, "skill.md.tmpl"},
-	TypeAgentsDoc: {config.AgentsDocStarterFileName, "agents_doc.md.tmpl"},
-	TypeSettings:  {config.SettingsStarterFileName, "settings.toml.tmpl"},
+	TypeSkill:     {config.SkillStarterFileName, "skill.md"},
+	TypeAgentsDoc: {config.AgentsDocStarterFileName, "agents_doc.md"},
+	TypeSettings:  {config.SettingsStarterFileName, "settings.toml"},
 }
+
+// templateExt is appended to a starter's template stem to name the parsed
+// embedded template (templates/<stem>.tmpl).
+const templateExt = ".tmpl"
 
 // renderStarter executes s's template against manifest and returns the starter
 // body bytes. A template-execution failure is wrapped in StarterRenderError so
 // the caller can report which type failed.
 func renderStarter(s starter, manifest Manifest) ([]byte, errs.DomainError) {
 	var buf bytes.Buffer
-	if err := starterTmpl.ExecuteTemplate(&buf, s.template, manifest); err != nil {
+	if err := starterTmpl.ExecuteTemplate(&buf, s.template+templateExt, manifest); err != nil {
 		return nil, StarterRenderError{Type: manifest.Type, Err: err}
 	}
 	return buf.Bytes(), nil
