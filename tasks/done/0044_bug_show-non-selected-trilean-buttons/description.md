@@ -1,7 +1,7 @@
 ---
 id: 0044
 type: bug
-status: in-review
+status: done
 topics: tui, sync_and_safety, charm
 depends_on: 0035
 ---
@@ -9,7 +9,7 @@ depends_on: 0035
 # Show non-selected trilean options as row buttons on Plan Project
 
 Today the drift/unknown row action column on the Plan Project screen shows a
-**single** cycling button whose label is the *next* state in the trilean cycle
+**single** cycling button whose label is the _next_ state in the trilean cycle
 (Keep → Overwrite → Adopt → Keep for drift; Keep → Delete → Adopt → Keep for
 unknown-owned-by-asset). Users must remember what the current selection means
 and mentally simulate the cycle to reach the option they want.
@@ -52,36 +52,36 @@ severity: Keep < Overwrite/Delete < Adopt).
 
 ### Drift row (`ChangeDrift`) with `AdoptEligible == true` — trilean
 
-| Current selection | Button 1     | Mnemonic | Button 2     | Mnemonic |
-| ----------------- | ------------ | -------- | ------------ | -------- |
-| Keep (default)    | `[Overwrite]` | `w`      | `[Adopt]`    | `t`      |
-| Overwrite         | `[Keep]`     | `p`      | `[Adopt]`    | `t`      |
-| Adopt             | `[Keep]`     | `p`      | `[Overwrite]` | `w`      |
+| Current selection | Button 1      | Mnemonic | Button 2      | Mnemonic |
+| ----------------- | ------------- | -------- | ------------- | -------- |
+| Keep (default)    | `[Overwrite]` | `w`      | `[Adopt]`     | `t`      |
+| Overwrite         | `[Keep]`      | `p`      | `[Adopt]`     | `t`      |
+| Adopt             | `[Keep]`      | `p`      | `[Overwrite]` | `w`      |
 
 ### Drift row (`ChangeDrift`) with `AdoptEligible == false` — bilean (legacy v2 state)
 
-| Current selection | Button 1     | Mnemonic |
-| ----------------- | ------------ | -------- |
+| Current selection | Button 1      | Mnemonic |
+| ----------------- | ------------- | -------- |
 | Keep (default)    | `[Overwrite]` | `w`      |
-| Overwrite         | `[Keep]`     | `p`      |
+| Overwrite         | `[Keep]`      | `p`      |
 
 No status-column indicator: status stays `* drift`. Legacy v2 entries flip to
 v3 on the next re-apply, so the missing `[Adopt]` is transient.
 
 ### Unknown row (`ChangeUnknown`) with `OwningAssetID != ""` — trilean
 
-| Current selection | Button 1  | Mnemonic | Button 2 | Mnemonic |
-| ----------------- | --------- | -------- | -------- | -------- |
-| Keep (default)    | `[Delete]` | `d`      | `[Adopt]` | `t`      |
-| Delete            | `[Keep]`  | `p`      | `[Adopt]` | `t`      |
-| Adopt             | `[Keep]`  | `p`      | `[Delete]` | `d`      |
+| Current selection | Button 1   | Mnemonic | Button 2   | Mnemonic |
+| ----------------- | ---------- | -------- | ---------- | -------- |
+| Keep (default)    | `[Delete]` | `d`      | `[Adopt]`  | `t`      |
+| Delete            | `[Keep]`   | `p`      | `[Adopt]`  | `t`      |
+| Adopt             | `[Keep]`   | `p`      | `[Delete]` | `d`      |
 
 ### Unknown row (`ChangeUnknown`) with `OwningAssetID == ""` — bilean
 
-| Current selection | Button 1  | Mnemonic |
-| ----------------- | --------- | -------- |
+| Current selection | Button 1   | Mnemonic |
+| ----------------- | ---------- | -------- |
 | Keep (default)    | `[Delete]` | `d`      |
-| Delete            | `[Keep]`  | `p`      |
+| Delete            | `[Keep]`   | `p`      |
 
 ### Non-drift, non-unknown rows (`ChangeCreate` / `ChangeUpdate` / `ChangeDelete`)
 
