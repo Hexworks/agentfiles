@@ -1,7 +1,7 @@
 ---
 id: 0035
 type: feature
-status: in-review
+status: done
 topics: sync_and_safety, domain_model, tui
 depends_on: 0033
 ---
@@ -10,7 +10,7 @@ depends_on: 0033
 
 A third drift resolution alongside `DriftKeep` (leave alone) and
 `DriftOverwrite` (replace local with rendered): **Adopt** takes the user's
-**local edit** and makes it the *canonical* representation by writing it back
+**local edit** and makes it the _canonical_ representation by writing it back
 into the **profile** (source of truth). Adopt is the mirror of Update:
 
 - **Update** — profile changed, local rendered file is stale → rewrite local.
@@ -18,8 +18,8 @@ into the **profile** (source of truth). Adopt is the mirror of Update:
   local.
 
 A companion **UnknownAdopt** covers the related case where an untracked file
-sits *inside* a known asset's rendered folder (e.g. a new `example-3.md`
-under `.claude/skills/foo/`). Untracked *folders* remain Register territory
+sits _inside_ a known asset's rendered folder (e.g. a new `example-3.md`
+under `.claude/skills/foo/`). Untracked _folders_ remain Register territory
 and are out of scope here.
 
 ## Use case
@@ -71,43 +71,43 @@ flow: repo → profile. To keep the exception well-scoped:
 ## Acceptance Criteria
 
 - [ ] `internal/sync` exports `DriftAdopt DriftDecision = "adopt"` and
-  `UnknownAdopt UnknownDecision = "adopt"`; `internal/appapi` mirrors both.
+      `UnknownAdopt UnknownDecision = "adopt"`; `internal/appapi` mirrors both.
 - [ ] `sync.Preview.FileChange` (unknown kind) carries `OwningAssetID string`
-  populated when the unknown path sits under a known asset projection dir;
-  verified by `TestPreview_ChangeUnknown_PopulatesOwningAssetIDForKnownAsset`.
+      populated when the unknown path sits under a known asset projection dir;
+      verified by `TestPreview_ChangeUnknown_PopulatesOwningAssetIDForKnownAsset`.
 - [ ] `.agentfiles/state.json` schema bumps to v3; each entry adds
-  `asset_id` and `source_rel`; loader accepts v2 entries as legacy (Adopt
-  disabled for them); verified by
-  `TestState_LoadV2LegacyEntries_LeavesAdoptDisabled` and
-  `TestState_WriteV3_IncludesAssetIDAndSourceRel`.
+      `asset_id` and `source_rel`; loader accepts v2 entries as legacy (Adopt
+      disabled for them); verified by
+      `TestState_LoadV2LegacyEntries_LeavesAdoptDisabled` and
+      `TestState_WriteV3_IncludesAssetIDAndSourceRel`.
 - [ ] `sync.Apply` with `Resolutions.Drift = [{Path:P, Decision:DriftAdopt}]`
-  returns P in the adopt reverse-write list and marks P non-drift on next
-  plan; verified by `TestApply_DriftAdopt_WritesProfileAndClearsDrift`.
+      returns P in the adopt reverse-write list and marks P non-drift on next
+      plan; verified by `TestApply_DriftAdopt_WritesProfileAndClearsDrift`.
 - [ ] `sync.Apply` with `Resolutions.Unknown = [{Path:P, Decision:UnknownAdopt}]`
-  fails when `OwningAssetID` is empty and succeeds otherwise; verified by
-  `TestApply_UnknownAdopt_RejectsOrphanFile` and
-  `TestApply_UnknownAdopt_WritesProfileAssetFile`.
+      fails when `OwningAssetID` is empty and succeeds otherwise; verified by
+      `TestApply_UnknownAdopt_RejectsOrphanFile` and
+      `TestApply_UnknownAdopt_WritesProfileAssetFile`.
 - [ ] `app.Service.Apply` copies each repo file in the adopt list to
-  `<profile>/assets/<asset_id>/<source_rel>` and invokes
-  `GitCommitter.Commit` on the profile dir when `settings.git.enabled ==
-  true`; verified by `TestService_Apply_AdoptCommitsProfileWhenGitEnabled`
-  and `TestService_Apply_AdoptSkipsCommitWhenGitDisabled`.
+      `<profile>/assets/<asset_id>/<source_rel>` and invokes
+      `GitCommitter.Commit` on the profile dir when `settings.git.enabled ==
+true`; verified by `TestService_Apply_AdoptCommitsProfileWhenGitEnabled`
+      and `TestService_Apply_AdoptSkipsCommitWhenGitDisabled`.
 - [ ] TUI drift row action toggles Keep → Overwrite → Adopt → Keep;
-  verified by `TestPlanProjectScreen_DriftToggleCyclesKeepOverwriteAdopt`.
+      verified by `TestPlanProjectScreen_DriftToggleCyclesKeepOverwriteAdopt`.
 - [ ] TUI unknown row action includes Adopt option only when
-  `OwningAssetID != ""`; verified by
-  `TestPlanProjectScreen_UnknownAdoptShownOnlyWhenOwnedByAsset`.
+      `OwningAssetID != ""`; verified by
+      `TestPlanProjectScreen_UnknownAdoptShownOnlyWhenOwnedByAsset`.
 - [ ] `docs/architecture/`, `docs/adr/` (new ADR: Adopt as sanctioned
-  reverse flow), `docs/glossary.md`, and the CLAUDE.md source-of-truth
-  invariant updated to describe Adopt as the single sanctioned repo →
-  profile flow; verified by manual review plus
-  `grep -R "Adopt" docs/ CLAUDE.md` producing hits in each.
+      reverse flow), `docs/glossary.md`, and the CLAUDE.md source-of-truth
+      invariant updated to describe Adopt as the single sanctioned repo →
+      profile flow; verified by manual review plus
+      `grep -R "Adopt" docs/ CLAUDE.md` producing hits in each.
 - [ ] Smoke: `./bin/af → project screen → plan → local edit
-  .claude/skills/foo/SKILL.md → replan → row toggled to Adopt → apply →
-  replan shows no drift/update on that path`.
+.claude/skills/foo/SKILL.md → replan → row toggled to Adopt → apply →
+replan shows no drift/update on that path`.
 - [ ] Smoke: same flow with `settings.git.enabled = true` → `git log` in
-  the profile repo shows the Adopt commit; sibling `.codex` skill file
-  shows as `update` on the next plan.
+      the profile repo shows the Adopt commit; sibling `.codex` skill file
+      shows as `update` on the next plan.
 
 ## Out of scope
 
@@ -137,8 +137,8 @@ flow: repo → profile. To keep the exception well-scoped:
 - `go test ./internal/tui/shell -run TestPlanProjectScreen_DriftToggleCyclesKeepOverwriteAdopt`.
 - `go test ./internal/tui/shell -run TestPlanProjectScreen_UnknownAdoptShownOnlyWhenOwnedByAsset`.
 - Smoke: `./bin/af → project screen → plan → edit
-  .claude/skills/foo/SKILL.md locally → replan → toggle row to Adopt →
-  apply → replan → no drift/update on that path`.
+.claude/skills/foo/SKILL.md locally → replan → toggle row to Adopt →
+apply → replan → no drift/update on that path`.
 - Smoke: same flow with `settings.git.enabled = true` → `git log` in the
   profile repo shows the Adopt commit; the sibling `.codex` file appears
   as `update` on the next plan.
