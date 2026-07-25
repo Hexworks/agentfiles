@@ -187,8 +187,12 @@ produce a plan when two selected assets share the same non-empty group, which
 forces the conflict to be resolved at selection time rather than silently
 overwriting files.
 
-Example: two `agents_doc` assets that both populate `AGENTS.md` declare the
-same group so a project cannot select both:
+Example: two `agents_doc` assets declare the same group so a project cannot
+select both. Since `agents_doc` now renders per-agent (`CLAUDE.md` for
+claude-code, `AGENTS.md` for the others), two such assets would collide on
+`CLAUDE.md` for a claude-code project and on `AGENTS.md` for the rest; the
+shared group prevents the collision on whichever target the enabled agents
+share:
 
 ```json
 // codex-default/asset.json
@@ -325,8 +329,10 @@ Two flavours:
 - `DriftAdopt` on a drifted managed file: the profile asset's source
   file is overwritten with the local body, and the on-disk repo file
   is left as-is. On the next plan the profile catches up and the row
-  disappears; sibling agent projections (e.g. the `.codex` mirror of a
-  `.claude` skill file) surface as ordinary `update` rows.
+  disappears; sibling agent projections that share the same source
+  surface as ordinary `update` rows — e.g. the `.codex` mirror of a
+  `.claude` skill file, or the `CLAUDE.md`↔`AGENTS.md` pair an adopted
+  `agents_doc` edit now shares one source across.
 - `UnknownAdopt` on an untracked file that sits inside a known asset's
   rendered projection dir (e.g. a new `example-3.md` under
   `.claude/skills/foo/`). The file is copied into

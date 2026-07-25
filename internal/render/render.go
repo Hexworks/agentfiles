@@ -36,11 +36,16 @@ type RenderedFile struct {
 	// pipeline read. See ADR 0020.
 	SourceRel string
 	// Agent and Type record which (agent, asset-type) strategy produced
-	// this file. ReverseLookup reads them to pick the strategy that owns
-	// the reverse mapping for Adopt; a later preview can also group files
-	// by agent off Agent.
+	// this file. They are provenance metadata kept for previews and
+	// diagnostics (e.g. grouping files by agent); the reverse dispatch
+	// uses Strategy directly, not these.
 	Agent agent.Agent
 	Type  asset.Type
+	// Strategy is the render strategy that produced this file, stamped by
+	// Build after Render returns. ReverseLookup dispatches Adopt's reverse
+	// mapping off this handle, so forward and reverse resolve through the
+	// same strategy instance without re-consulting the global table.
+	Strategy Strategy
 }
 
 // ProjectPlan is the desired state of one project before sync compares it with
@@ -154,6 +159,10 @@ func addRenderedFilesFor(files map[string]RenderedFile, a *asset.Asset, enabledA
 		rendered, renderErrs := strat.Render(a, ag)
 		domainErrs = append(domainErrs, renderErrs...)
 		for _, file := range rendered {
+			// Stamp the producing strategy so ReverseLookup dispatches
+			// off it directly instead of re-resolving (agent, type)
+			// through the global table.
+			file.Strategy = strat
 			files[file.Path] = file
 		}
 	}
@@ -201,9 +210,15 @@ func walkProjectionFiles(
 			return nil
 		}
 		rel, relErr := filepath.Rel(source, path)
-		// should not happen, maybe produce error here instead?
 		if relErr != nil {
-			rel = filepath.Base(path)
+			// filepath.Rel only fails when path is not rooted under
+			// source, which cannot happen inside a WalkDir rooted at
+			// source. Treat it as a bug (errors.md exception #2): record
+			// it and skip the file rather than flatten a nested path to
+			// its bare name with filepath.Base, which would corrupt both
+			// Path and SourceRel.
+			domainErrs = append(domainErrs, classifyFileError(a.ID, sourceRel, "rel", relErr))
+			return nil
 		}
 		body, readErr := os.ReadFile(path)
 		if readErr != nil {

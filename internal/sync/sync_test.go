@@ -977,8 +977,8 @@ func TestPreview_ChangeUnknown_LeavesOwningAssetIDEmptyForAmbiguousDir(t *testin
 		{Path: ".claude/skills/shared/a.md", AssetID: "one", SourceRel: "a.md", Agent: agent.ClaudeCode, Type: asset.TypeSkill},
 		{Path: ".claude/skills/shared/b.md", AssetID: "two", SourceRel: "b.md", Agent: agent.ClaudeCode, Type: asset.TypeSkill},
 	}}
-	if got, _, ok := plan.ReverseLookup(".claude/skills/shared/new.md"); ok || got != "" {
-		t.Fatalf("OwningAssetID for ambiguous dir = %q (ok=%v), want empty", got, ok)
+	if m, ok := plan.ReverseLookup(".claude/skills/shared/new.md"); ok || m.AssetID != "" {
+		t.Fatalf("OwningAssetID for ambiguous dir = %q (ok=%v), want empty", m.AssetID, ok)
 	}
 }
 

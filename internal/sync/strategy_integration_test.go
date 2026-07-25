@@ -162,7 +162,7 @@ func TestReverse_CursorSkill_NotInvertible(t *testing.T) {
 	// The known flat file is itself non-invertible: the strategy is the
 	// authority, independent of any stored provenance.
 	renderPlan := &render.ProjectPlan{Files: firstPlan.Files}
-	if _, _, ok := renderPlan.ReverseLookup(".cursor/commands/foo.md"); ok {
+	if _, ok := renderPlan.ReverseLookup(".cursor/commands/foo.md"); ok {
 		t.Fatal("ReverseLookup(.cursor/commands/foo.md) ok=true, want false (cursor skill is lossy)")
 	}
 

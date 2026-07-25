@@ -258,8 +258,13 @@ func (p AdoptProvenance) Available() bool {
 //   - enough metadata to write a fresh managed state on apply
 //   - a FirstApply flag so the TUI can surface clean-slate semantics
 type Preview struct {
-	ProjectPath  string
-	Files        []render.RenderedFile
+	ProjectPath string
+	Files       []render.RenderedFile
+	// Plan is the render plan Files were produced from. Apply reuses it
+	// for ReverseLookup so the memoized reverse index is shared rather
+	// than rebuilt from Files, and so a future ProjectPlan field
+	// ReverseLookup comes to need is carried, not silently zeroed.
+	Plan         *render.ProjectPlan
 	Changes      []FileChange
 	ManagedState *ManagedState
 	ProfileID    string
@@ -320,12 +325,12 @@ func Plan(p *profile.Profile, proj *project.Manifest) (*Preview, errs.DomainErro
 			// strategy that produced the owning directory; sync no longer
 			// re-derives it (task 0011). Only the owning asset id matters
 			// here — the source-rel is resolved again at Apply time.
-			assetID, _, _ := rendered.ReverseLookup(pth)
+			match, _ := rendered.ReverseLookup(pth)
 			changes = append(changes, FileChange{
 				Path:          pth,
 				Kind:          ChangeUnknown,
 				Reason:        ReasonUnknown,
-				OwningAssetID: assetID,
+				OwningAssetID: match.AssetID,
 			})
 		}
 	}
@@ -335,6 +340,7 @@ func Plan(p *profile.Profile, proj *project.Manifest) (*Preview, errs.DomainErro
 	return &Preview{
 		ProjectPath:  proj.Path,
 		Files:        rendered.Files,
+		Plan:         rendered,
 		Changes:      changes,
 		ManagedState: state,
 		ProfileID:    p.Manifest.ID,
@@ -540,13 +546,20 @@ func newApplyLoop(preview *Preview, drift map[string]DriftDecision, unknown map[
 			SourceRel: f.SourceRel,
 		}
 	}
+	// Reuse the render plan threaded through Preview so ReverseLookup
+	// shares its memoized reverse index. Fall back to a Files-only
+	// reconstruction for a hand-built Preview that carries no plan.
+	plan := preview.Plan
+	if plan == nil {
+		plan = &render.ProjectPlan{Files: preview.Files}
+	}
 	return &applyLoop{
 		preview:        preview,
 		driftByPath:    drift,
 		unknownByPath:  unknown,
 		bodiesByPath:   bodies,
 		recordedHashes: recorded,
-		plan:           &render.ProjectPlan{Files: preview.Files},
+		plan:           plan,
 	}
 }
 
@@ -681,8 +694,8 @@ func (a *applyLoop) classifyUnknownAdopt(change FileChange) {
 		})
 		return
 	}
-	assetID, sourceRel, ok := a.plan.ReverseLookup(change.Path)
-	if !ok || assetID == "" || sourceRel == "" {
+	match, ok := a.plan.ReverseLookup(change.Path)
+	if !ok || match.AssetID == "" || match.SourceRel == "" {
 		a.domainErrs = append(a.domainErrs, AdoptUnavailableError{
 			Path:   change.Path,
 			Reason: "reverse-mapping failed",
@@ -691,8 +704,8 @@ func (a *applyLoop) classifyUnknownAdopt(change FileChange) {
 	}
 	a.adoptRequests = append(a.adoptRequests, AdoptRequest{
 		Path:      change.Path,
-		AssetID:   assetID,
-		SourceRel: sourceRel,
+		AssetID:   match.AssetID,
+		SourceRel: match.SourceRel,
 		Mode:      unknownAdoptMode(a.preview.ProjectPath, change.Path),
 	})
 }

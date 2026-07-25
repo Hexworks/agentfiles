@@ -53,13 +53,25 @@ func mustID(t *testing.T, manifestJSON string) string {
 	return m.ID
 }
 
+// goldenEntry is one path→content row of the captured oracle.
+type goldenEntry struct {
+	Body      string `json:"body"`
+	SourceRel string `json:"source_rel"`
+}
+
 // TestBuild_UnchangedPairs_Golden pins that a fixture rendered across all
-// four agents is byte-/path-identical to the hand-authored golden for
-// every pair whose behavior the strategy refactor left untouched (all
-// skill layouts, all settings, the generic projection, and (Codex,
-// AgentsDoc)). The new (claude-code, AgentsDoc) → CLAUDE.md pair is the
-// only entry beyond the pre-refactor set and is asserted here too so the
-// golden is a full-set equality, not a subset check.
+// four agents is byte-/path-identical to a golden **captured from the
+// pre-refactor Build** (commit 58af094, before the strategy table) for
+// every pair whose behavior the refactor left untouched — all skill
+// layouts, all settings, the generic projection, and (Codex/Cursor/
+// OpenCode, AgentsDoc). The oracle in testdata/golden_unchanged_pairs.json
+// was produced by running that older Build over this exact fixture (see
+// internal/render/capture_golden_test.go in the 58af094 worktree), so a
+// human cannot re-encode the same mistake on both sides of the equality.
+//
+// The oracle deliberately omits CLAUDE.md: the (claude-code, AgentsDoc) →
+// CLAUDE.md pair is new behavior the pre-refactor Build never produced, so
+// it is asserted separately below and folded into the total-count check.
 func TestBuild_UnchangedPairs_Golden(t *testing.T) {
 	root := t.TempDir()
 	if _, err := profile.Init(root, "Personal"); err != nil {
@@ -93,35 +105,21 @@ func TestBuild_UnchangedPairs_Golden(t *testing.T) {
 		t.Fatalf("build: %v", buildErrs)
 	}
 
-	type want struct{ body, sourceRel string }
-	golden := map[string]want{
-		// skill — folder-per-skill for the three container agents.
-		".codex/skills/review/SKILL.md":        {"skill-body", "SKILL.md"},
-		".codex/skills/review/ref/notes.md":    {"notes", "ref/notes.md"},
-		".claude/skills/review/SKILL.md":       {"skill-body", "SKILL.md"},
-		".claude/skills/review/ref/notes.md":   {"notes", "ref/notes.md"},
-		".opencode/skills/review/SKILL.md":     {"skill-body", "SKILL.md"},
-		".opencode/skills/review/ref/notes.md": {"notes", "ref/notes.md"},
-		// skill — cursor flat file.
-		".cursor/commands/review.md": {"skill-body", "SKILL.md"},
-		// settings — only codex + claude-code sources exist.
-		".codex/config.toml":          {"codex-cfg", "codex.toml"},
-		".claude/settings.local.json": {"claude-cfg", "claude-code.json"},
-		// generic projection.
-		".codex/guard.md": {"guard-body", "body.md"},
-		// agents_doc — AGENTS.md is the unchanged (Codex/Cursor/OpenCode)
-		// pair; CLAUDE.md is the new (claude-code) pair.
-		"AGENTS.md": {"doc-body", "AGENTS.md"},
-		"CLAUDE.md": {"doc-body", "AGENTS.md"},
+	raw, readErr := os.ReadFile(filepath.Join("testdata", "golden_unchanged_pairs.json"))
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	golden := map[string]goldenEntry{}
+	if err := json.Unmarshal(raw, &golden); err != nil {
+		t.Fatalf("bad golden fixture: %v", err)
 	}
 
-	got := map[string]want{}
+	got := map[string]goldenEntry{}
 	for _, f := range plan.Files {
-		got[f.Path] = want{string(f.Body), f.SourceRel}
+		got[f.Path] = goldenEntry{Body: string(f.Body), SourceRel: f.SourceRel}
 	}
-	if len(got) != len(golden) {
-		t.Fatalf("rendered %d files, want %d\n got: %v", len(got), len(golden), got)
-	}
+
+	// Every pre-refactor pair must round-trip byte-/path-identically.
 	for path, w := range golden {
 		g, ok := got[path]
 		if !ok {
@@ -132,12 +130,65 @@ func TestBuild_UnchangedPairs_Golden(t *testing.T) {
 			t.Errorf("%q = %+v, want %+v", path, g, w)
 		}
 	}
+
+	// The new (claude-code, AgentsDoc) pair the oracle does not carry.
+	if g, ok := got["CLAUDE.md"]; !ok {
+		t.Errorf("missing new rendered file %q", "CLAUDE.md")
+	} else if want := (goldenEntry{Body: "doc-body", SourceRel: "AGENTS.md"}); g != want {
+		t.Errorf("CLAUDE.md = %+v, want %+v", g, want)
+	}
+
+	// Full-set equality: the golden pairs plus the single new CLAUDE.md.
+	if len(got) != len(golden)+1 {
+		t.Fatalf("rendered %d files, want %d\n got: %v", len(got), len(golden)+1, got)
+	}
+}
+
+// TestBuild_AgentsDoc_CompatibleAgentsGate pins the one intentional
+// behavior change of the strategy refactor: Build now applies
+// asset.SupportsAgent uniformly at the dispatch gate, so agents_doc
+// honors compatible_agents like every other type (the pre-refactor codex
+// arm bypassed it). An agents_doc restricted to claude-code but enabled
+// for codex+claude must render only CLAUDE.md — codex is silently
+// skipped, not reported as a missing strategy.
+func TestBuild_AgentsDoc_CompatibleAgentsGate(t *testing.T) {
+	root := t.TempDir()
+	if _, err := profile.Init(root, "Personal"); err != nil {
+		t.Fatal(err)
+	}
+	writeAsset(t, root, "agents_doc", `{"id":"doc","name":"doc","type":"agents_doc","compatible_agents":["claude-code"]}`, map[string]string{
+		"AGENTS.md": "doc-body",
+	})
+	loaded, err := profile.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	plan, buildErrs := Build(loaded, &project.Manifest{
+		ID: "app", Name: "app", Path: "/tmp/app",
+		EnabledAgents:    []agent.Agent{agent.Codex, agent.ClaudeCode},
+		SelectedAssetIDs: []string{"doc"},
+	})
+	// The unsupported agent (codex) is skipped, never turned into an
+	// UnsupportedRenderingError.
+	if len(buildErrs) > 0 {
+		t.Fatalf("build: %v", buildErrs)
+	}
+	var got []string
+	for _, f := range plan.Files {
+		got = append(got, f.Path)
+	}
+	if len(got) != 1 || got[0] != "CLAUDE.md" {
+		t.Fatalf("rendered %v, want only [CLAUDE.md] (codex skipped by compatible_agents)", got)
+	}
 }
 
 // TestStrategyFor_MissingPair_AggregatesUnsupportedError pins that an
-// enabled agent with no strategy for a selected asset's type surfaces a
-// single joined UnsupportedRenderingError naming the agent and type,
-// rather than short-circuiting or silently rendering nothing.
+// enabled agent with no strategy for the selected assets' type surfaces
+// one joined UnsupportedRenderingError *per* miss — the loop keeps going
+// after the first rather than short-circuiting. Two selected skills under
+// the same unregistered agent must therefore yield two errors, both
+// naming the agent and type.
 func TestStrategyFor_MissingPair_AggregatesUnsupportedError(t *testing.T) {
 	if _, ok := strategyFor(agent.Agent("bogus"), asset.TypeSkill); ok {
 		t.Fatal("strategyFor returned ok for an unregistered pair")
@@ -150,6 +201,9 @@ func TestStrategyFor_MissingPair_AggregatesUnsupportedError(t *testing.T) {
 	writeAsset(t, root, "skill", `{"id":"review","name":"review","type":"skill"}`, map[string]string{
 		"SKILL.md": "body",
 	})
+	writeAsset(t, root, "skill", `{"id":"review2","name":"review2","type":"skill"}`, map[string]string{
+		"SKILL.md": "body2",
+	})
 	loaded, err := profile.Load(root)
 	if err != nil {
 		t.Fatal(err)
@@ -158,20 +212,24 @@ func TestStrategyFor_MissingPair_AggregatesUnsupportedError(t *testing.T) {
 	_, buildErrs := Build(loaded, &project.Manifest{
 		ID: "app", Name: "app", Path: "/tmp/app",
 		EnabledAgents:    []agent.Agent{agent.Agent("bogus")},
-		SelectedAssetIDs: []string{"review"},
+		SelectedAssetIDs: []string{"review", "review2"},
 	})
-	if len(buildErrs) != 1 {
-		t.Fatalf("expected exactly one accumulated error, got %v", buildErrs)
+	// Two selected assets, each unrenderable for the bogus agent: the
+	// loop must accumulate both, proving it never short-circuits.
+	if len(buildErrs) != 2 {
+		t.Fatalf("expected two accumulated errors, got %v", buildErrs)
 	}
-	var unsupported UnsupportedRenderingError
-	if !errors.As(buildErrs[0], &unsupported) {
-		t.Fatalf("expected UnsupportedRenderingError, got %T: %v", buildErrs[0], buildErrs[0])
-	}
-	if unsupported.Agent != agent.Agent("bogus") || unsupported.Type != asset.TypeSkill {
-		t.Fatalf("error carried %+v, want {bogus skill}", unsupported)
-	}
-	if msg := unsupported.Error(); msg != "missing render strategy for bogus skill" {
-		t.Fatalf("Error() = %q, want it to name agent and type", msg)
+	for i, buildErr := range buildErrs {
+		var unsupported UnsupportedRenderingError
+		if !errors.As(buildErr, &unsupported) {
+			t.Fatalf("err[%d]: expected UnsupportedRenderingError, got %T: %v", i, buildErr, buildErr)
+		}
+		if unsupported.Agent != agent.Agent("bogus") || unsupported.Type != asset.TypeSkill {
+			t.Fatalf("err[%d] carried %+v, want {bogus skill}", i, unsupported)
+		}
+		if msg := unsupported.Error(); msg != "missing render strategy for bogus skill" {
+			t.Fatalf("err[%d] Error() = %q, want it to name agent and type", i, msg)
+		}
 	}
 }
 
@@ -243,6 +301,11 @@ func TestReverse_Settings_And_AgentsDoc_RoundTrip(t *testing.T) {
 	assertReverse(t, plan, ".claude/settings.local.json", "cfg", "claude-code.json")
 	assertReverse(t, plan, "CLAUDE.md", "doc", "AGENTS.md")
 	assertReverse(t, plan, "AGENTS.md", "doc", "AGENTS.md")
+
+	// A single-file target has no directory to host a sibling, so an
+	// untracked neighbor of the settings file must not resolve to a
+	// spurious Adopt — the exact-hit arm is the only reachable inverse.
+	assertNoReverse(t, plan, ".claude/settings.local.json.bak")
 }
 
 // TestReverse_GenericProjection_RoundTrip pins that a single-file
@@ -283,11 +346,20 @@ func TestReverse_GenericProjection_RoundTrip(t *testing.T) {
 
 func assertReverse(t *testing.T, plan *ProjectPlan, repoPath, wantAsset, wantSource string) {
 	t.Helper()
-	id, src, ok := plan.ReverseLookup(repoPath)
+	match, ok := plan.ReverseLookup(repoPath)
 	if !ok {
 		t.Fatalf("ReverseLookup(%q) ok=false, want (%q,%q)", repoPath, wantAsset, wantSource)
 	}
-	if id != wantAsset || src != wantSource {
-		t.Fatalf("ReverseLookup(%q) = (%q,%q), want (%q,%q)", repoPath, id, src, wantAsset, wantSource)
+	if match.AssetID != wantAsset || match.SourceRel != wantSource {
+		t.Fatalf("ReverseLookup(%q) = (%q,%q), want (%q,%q)", repoPath, match.AssetID, match.SourceRel, wantAsset, wantSource)
+	}
+}
+
+// assertNoReverse pins that repoPath has no reverse mapping — Adopt must
+// offer nothing for it.
+func assertNoReverse(t *testing.T, plan *ProjectPlan, repoPath string) {
+	t.Helper()
+	if match, ok := plan.ReverseLookup(repoPath); ok {
+		t.Fatalf("ReverseLookup(%q) ok=true (asset %q, source %q), want no reverse", repoPath, match.AssetID, match.SourceRel)
 	}
 }

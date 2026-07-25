@@ -102,9 +102,10 @@ func buildRegistry() map[strategyKey]Strategy {
 }
 
 // strategyFor returns the strategy registered for the (agent, type)
-// pair. ok is false for an unregistered pair; callers turn that into an
-// accumulated UnsupportedRenderingError (Build) or a failed reverse
-// lookup (ReverseLookup).
+// pair. ok is false for an unregistered pair; Build turns that into an
+// accumulated UnsupportedRenderingError. Reverse dispatch does not go
+// through here — a rendered file carries its producing Strategy, so
+// ReverseLookup calls it directly.
 func strategyFor(ag agent.Agent, t asset.Type) (Strategy, bool) {
 	s, ok := registry[strategyKey{ag, t}]
 	return s, ok

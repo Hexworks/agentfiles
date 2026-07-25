@@ -1,0 +1,46 @@
+{
+  ".claude/settings.local.json": {
+    "body": "claude-cfg",
+    "source_rel": "claude-code.json"
+  },
+  ".claude/skills/review/SKILL.md": {
+    "body": "skill-body",
+    "source_rel": "SKILL.md"
+  },
+  ".claude/skills/review/ref/notes.md": {
+    "body": "notes",
+    "source_rel": "ref/notes.md"
+  },
+  ".codex/config.toml": {
+    "body": "codex-cfg",
+    "source_rel": "codex.toml"
+  },
+  ".codex/guard.md": {
+    "body": "guard-body",
+    "source_rel": "body.md"
+  },
+  ".codex/skills/review/SKILL.md": {
+    "body": "skill-body",
+    "source_rel": "SKILL.md"
+  },
+  ".codex/skills/review/ref/notes.md": {
+    "body": "notes",
+    "source_rel": "ref/notes.md"
+  },
+  ".cursor/commands/review.md": {
+    "body": "skill-body",
+    "source_rel": "SKILL.md"
+  },
+  ".opencode/skills/review/SKILL.md": {
+    "body": "skill-body",
+    "source_rel": "SKILL.md"
+  },
+  ".opencode/skills/review/ref/notes.md": {
+    "body": "notes",
+    "source_rel": "ref/notes.md"
+  },
+  "AGENTS.md": {
+    "body": "doc-body",
+    "source_rel": "AGENTS.md"
+  }
+}

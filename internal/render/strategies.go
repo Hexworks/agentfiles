@@ -3,6 +3,7 @@ package render
 import (
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/hexworks/agentfiles/internal/agent"
 	"github.com/hexworks/agentfiles/internal/asset"
@@ -12,12 +13,30 @@ import (
 	"github.com/hexworks/agentfiles/internal/utils"
 )
 
-// suffixReverse is the shared reverse behavior for every non-lossy
-// strategy. An exact rendered-file match returns the recorded SourceRel
-// verbatim (it already captures any filename change the forward render
-// applied); an unknown sibling file preserves its tail below the owning
-// directory's target root. Embedding it keeps the four structural
-// strategies from repeating the same inverse.
+// exactReverse is the reverse behavior for single-file, root-level
+// strategies (agents_doc, settings): the rendered target is one file with
+// no directory to host an untracked sibling, so the only invertible case
+// is an exact rendered-file match. The recorded SourceRel already
+// captures any filename change the forward render applied
+// (AGENTS.md→CLAUDE.md, codex.toml→config.toml). A sibling path
+// (ExactSourceRel empty) is not adoptable, so no spurious Adopt is
+// offered for a stray neighbor.
+type exactReverse struct{}
+
+func (exactReverse) Reverse(ctx ReverseContext) (string, bool) {
+	if ctx.ExactSourceRel != "" {
+		return ctx.ExactSourceRel, true
+	}
+	return "", false
+}
+
+// suffixReverse is the shared reverse behavior for the dir-shaped
+// non-lossy strategies (skill folders, generic directory projections). An
+// exact rendered-file match returns the recorded SourceRel verbatim (it
+// already captures any filename change the forward render applied); an
+// unknown sibling file preserves its tail below the owning directory's
+// target root. Embedding it keeps those strategies from repeating the
+// same inverse.
 type suffixReverse struct{}
 
 func (suffixReverse) Reverse(ctx ReverseContext) (string, bool) {
@@ -39,8 +58,8 @@ func reverseSuffixPreserving(ctx ReverseContext) (string, bool) {
 		tail = ctx.RepoPath
 	case ctx.RepoPath == ctx.TargetRoot:
 		tail = ""
-	case len(ctx.RepoPath) > len(ctx.TargetRoot) && ctx.RepoPath[:len(ctx.TargetRoot)+1] == ctx.TargetRoot+"/":
-		tail = ctx.RepoPath[len(ctx.TargetRoot)+1:]
+	case strings.HasPrefix(ctx.RepoPath, ctx.TargetRoot+"/"):
+		tail = strings.TrimPrefix(ctx.RepoPath, ctx.TargetRoot+"/")
 	default:
 		return "", false
 	}
@@ -129,10 +148,11 @@ func (cursorSkillStrategy) Reverse(ReverseContext) (string, bool) {
 // agentsDocStrategy renders the single agents_doc source file to a
 // per-agent target: CLAUDE.md for claude-code, AGENTS.md for the others.
 // The source filename stays AGENTS.md regardless, so Reverse of the
-// renamed CLAUDE.md relies on the recorded SourceRel (suffixReverse's
-// exact-match arm), not the target's tail.
+// renamed CLAUDE.md relies on the recorded SourceRel — the only reachable
+// arm of exactReverse, since a single root-level file has no sibling to
+// re-derive.
 type agentsDocStrategy struct {
-	suffixReverse
+	exactReverse
 	target string
 }
 
@@ -156,7 +176,7 @@ func (s agentsDocStrategy) Render(a *asset.Asset, ag agent.Agent) ([]RenderedFil
 // target names its descriptor owns. A missing source file is not an
 // error — the asset simply has nothing to project for this agent.
 type settingsStrategy struct {
-	suffixReverse
+	exactReverse
 	descriptor agent.Descriptor
 }
 

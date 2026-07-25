@@ -65,9 +65,9 @@ func TestAdopt_SkillDrift_EndToEnd(t *testing.T) {
 	if len(buildErrs) > 0 {
 		t.Fatalf("build: %v", buildErrs)
 	}
-	assetID, sourceRel, ok := plan.ReverseLookup(".claude/skills/mine/SKILL.md")
-	if !ok || assetID != "mine" || sourceRel != "SKILL.md" {
-		t.Fatalf("ReverseLookup = (%q,%q,%v), want (mine, SKILL.md, true)", assetID, sourceRel, ok)
+	match, ok := plan.ReverseLookup(".claude/skills/mine/SKILL.md")
+	if !ok || match.AssetID != "mine" || match.SourceRel != "SKILL.md" {
+		t.Fatalf("ReverseLookup = (%q,%q,%v), want (mine, SKILL.md, true)", match.AssetID, match.SourceRel, ok)
 	}
 
 	// Adopt the drift: Service.Apply must write the local body back into
@@ -78,8 +78,8 @@ func TestAdopt_SkillDrift_EndToEnd(t *testing.T) {
 		t.Fatalf("adopt apply: %v", err)
 	}
 
-	assetDir := loaded.Profile.Assets[assetID].Dir
-	got, readErr := os.ReadFile(filepath.Join(assetDir, filepath.FromSlash(sourceRel)))
+	assetDir := loaded.Profile.Assets[match.AssetID].Dir
+	got, readErr := os.ReadFile(filepath.Join(assetDir, filepath.FromSlash(match.SourceRel)))
 	if readErr != nil {
 		t.Fatalf("read profile asset: %v", readErr)
 	}

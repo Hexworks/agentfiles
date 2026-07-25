@@ -5,10 +5,17 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/hexworks/agentfiles/internal/agent"
-	"github.com/hexworks/agentfiles/internal/asset"
 	"github.com/hexworks/agentfiles/internal/surfaces"
 )
+
+// ReverseMatch is the asset-relative source a managed repo path was
+// rendered from: the owning asset id plus the source path inside it.
+// ReverseLookup returns it as the value half of a (value, ok) pair so the
+// two same-typed strings cannot be swapped at a call site.
+type ReverseMatch struct {
+	AssetID   string
+	SourceRel string
+}
 
 // ReverseLookup maps a managed repo path back to the asset and source
 // path it was rendered from, so sync's Adopt flow (ADR 0020) can write a
@@ -27,43 +34,41 @@ import (
 //
 // ok is false when repoPath has no owning asset or the owning strategy is
 // non-invertible.
-func (p *ProjectPlan) ReverseLookup(repoPath string) (assetID, sourceRel string, ok bool) {
+func (p *ProjectPlan) ReverseLookup(repoPath string) (ReverseMatch, bool) {
 	idx := p.reverseIndex()
 
 	if rf, hit := idx.exact[repoPath]; hit {
-		strat, sok := strategyFor(rf.Agent, rf.Type)
-		if !sok {
-			return "", "", false
+		if rf.Strategy == nil {
+			return ReverseMatch{}, false
 		}
-		src, rok := strat.Reverse(ReverseContext{
+		src, rok := rf.Strategy.Reverse(ReverseContext{
 			RepoPath:       repoPath,
 			ExactSourceRel: rf.SourceRel,
 			AssetID:        rf.AssetID,
 		})
 		if !rok {
-			return "", "", false
+			return ReverseMatch{}, false
 		}
-		return rf.AssetID, src, true
+		return ReverseMatch{AssetID: rf.AssetID, SourceRel: src}, true
 	}
 
 	entry, found := idx.owner(repoPath)
 	if !found {
-		return "", "", false
+		return ReverseMatch{}, false
 	}
-	strat, sok := strategyFor(entry.Agent, entry.Type)
-	if !sok {
-		return "", "", false
+	if entry.Strategy == nil {
+		return ReverseMatch{}, false
 	}
-	src, rok := strat.Reverse(ReverseContext{
+	src, rok := entry.Strategy.Reverse(ReverseContext{
 		RepoPath:   repoPath,
 		TargetRoot: entry.TargetRoot,
 		SourceRoot: entry.SourceRoot,
 		AssetID:    entry.AssetID,
 	})
 	if !rok {
-		return "", "", false
+		return ReverseMatch{}, false
 	}
-	return entry.AssetID, src, true
+	return ReverseMatch{AssetID: entry.AssetID, SourceRel: src}, true
 }
 
 // reverseIndex is the memoized reverse-lookup structure derived from a
@@ -75,14 +80,13 @@ type reverseIndex struct {
 }
 
 // owningDir records one rendered directory together with the asset and
-// (agent, type) strategy that produced it, plus the target/source roots
-// that let the strategy re-derive an untracked sibling's source path.
+// the strategy that produced it, plus the target/source roots that let
+// the strategy re-derive an untracked sibling's source path.
 type owningDir struct {
 	AssetID    string
 	SourceRoot string
 	TargetRoot string
-	Agent      agent.Agent
-	Type       asset.Type
+	Strategy   Strategy
 }
 
 func (p *ProjectPlan) reverseIndex() *reverseIndex {
@@ -127,8 +131,7 @@ func buildOwningDirs(files []RenderedFile) map[string]owningDir {
 				AssetID:    f.AssetID,
 				SourceRoot: sourceRoot,
 				TargetRoot: targetRoot,
-				Agent:      f.Agent,
-				Type:       f.Type,
+				Strategy:   f.Strategy,
 			}}
 			continue
 		}
