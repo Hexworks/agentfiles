@@ -1,7 +1,7 @@
 ---
 id: 0041
 type: bug
-status: pending
+status: in-progress
 topics: tui, security
 depends_on: 0040
 ---
