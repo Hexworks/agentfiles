@@ -3,7 +3,7 @@ id: 0043
 type: task
 status: Pending
 topics: sync_and_safety, testing, documentation
-depends_on: 0035
+depends_on: 0035, 0001
 ---
 
 # Schema-migration guardrails (post-mortem from 0035)
@@ -65,7 +65,7 @@ Deliver three guardrails so this class of bug is caught before merge:
 
 - Fixing the underlying v2→v3 preservation bug in `internal/sync/sync.go`
   — handled by the `preserveDriftBaseline freezes legacy v2 entries
-  forever` issue in `tasks/current/0035_feature_adopt-drift-into-profile/review.md`
+forever` issue in `tasks/current/0035_feature_adopt-drift-into-profile/review.md`
   and resolved by `af.task.review-apply 35`.
 - Broader task-workflow overhaul; each guardrail is a minimal addition.
 - Retroactive schema migration tooling for v2 entries — description
