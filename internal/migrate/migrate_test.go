@@ -56,7 +56,11 @@ func (h *harness) seedV1Profile(t *testing.T, id, name, rel string, projects []*
 		t.Fatal(err)
 	}
 	for _, p := range projects {
-		if err := utils.WriteJSON(filepath.Join(profileRoot, v1ProjectsDirName, p.ID+".json"), p); err != nil {
+		body, mErr := json.MarshalIndent(p, "", "  ")
+		if mErr != nil {
+			t.Fatalf("seed project: %v", mErr)
+		}
+		if err := utils.WriteFile(filepath.Join(profileRoot, v1ProjectsDirName, p.ID+".json"), append(body, '\n'), 0o644); err != nil {
 			t.Fatalf("seed project: %v", err)
 		}
 	}
@@ -81,7 +85,11 @@ func (h *harness) mergeSeed(t *testing.T, id, name, rel string, projects []*proj
 		t.Fatal(err)
 	}
 	for _, p := range projects {
-		if err := utils.WriteJSON(filepath.Join(profileRoot, v1ProjectsDirName, p.ID+".json"), p); err != nil {
+		body, mErr := json.MarshalIndent(p, "", "  ")
+		if mErr != nil {
+			t.Fatalf("seed project: %v", mErr)
+		}
+		if err := utils.WriteFile(filepath.Join(profileRoot, v1ProjectsDirName, p.ID+".json"), append(body, '\n'), 0o644); err != nil {
 			t.Fatalf("seed project: %v", err)
 		}
 	}

@@ -34,6 +34,27 @@ type State struct {
 	Projects map[string][]*project.Manifest `json:"projects"`
 }
 
+// Migrate stamps a legacy (version 0) store up to the current schema
+// version at the persistence boundary. Pointer receiver so the stamp lands
+// on the decoded value. Per-project Normalize/Validate is a separate
+// orphan-and-shape pass (validateState) that needs the wired seams.
+func (s *State) Migrate() errs.DomainError {
+	if s.Version == 0 {
+		s.Version = Version
+	}
+	return nil
+}
+
+// Validate rejects a store written by a newer build than this one
+// understands (forward-compat guard). Pointer receiver so *State satisfies
+// utils.Persisted alongside Migrate.
+func (s *State) Validate() errs.DomainError {
+	if s.Version > Version {
+		return errs.NewerSchemaVersionError{Have: s.Version, Known: Version}
+	}
+	return nil
+}
+
 // OwnedProject pairs a project manifest with the id of the profile that
 // owns it. Returned by AllProjects for the global repo-path uniqueness
 // check.
@@ -140,7 +161,7 @@ func (s *Store) Save(state *State) errs.DomainError {
 			normalized.Projects[profileID] = sorted
 		}
 	}
-	return utils.WriteJSONAtomic(s.Path, normalized, 0o700, 0o600)
+	return utils.WriteJSONAtomic(s.Path, *normalized, 0o700, 0o600)
 }
 
 // readState reads the file into a State value. A missing file is treated
@@ -150,8 +171,8 @@ func (s *Store) readState() (*State, errs.DomainError) {
 	if !utils.Exists(s.Path) {
 		return &State{Version: Version, Projects: map[string][]*project.Manifest{}}, nil
 	}
-	var state State
-	if err := utils.ReadJSON(s.Path, &state); err != nil {
+	state, err := utils.ReadJSON[State](s.Path)
+	if err != nil {
 		return nil, err
 	}
 	if state.Projects == nil {

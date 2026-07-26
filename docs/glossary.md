@@ -562,3 +562,32 @@ extension when `Options.ShowFiles` is set, and offers a runtime
 `Show hidden / Hide hidden` toggle (mnemonic `h`). The selection is
 delivered as a typed `pathselector.Result{Path, IsDir}` on the
 `modal.ResolvedMsg` — extract it with `pathselector.ResultFromMsg`.
+
+## Persistence Boundary
+
+The single point through which every on-disk JSON document is read and
+written: `utils.ReadJSON` and `utils.WriteJSON` / `WriteJSONMode` /
+`WriteJSONAtomic`, generic over the `utils.Persisted[T]` constraint. The
+boundary runs *migrate then validate* on every load and save, so a caller
+cannot decode or persist a document without those steps — validation is
+compiler-enforced, not remembered. See
+[ADR 0022](adr/0022-validated-versioned-persistence-boundary.md).
+
+## Schema Version
+
+The integer `version` envelope field carried by every persisted document
+(`registry.Registry`, `projectstore.State`, `settings.Settings`,
+`profile.Manifest`, `asset.Manifest`, and `sync.ManagedState`). It marks
+which schema a file on disk was written against so a later build can
+migrate it forward, and lets an older build reject a file newer than it
+understands (`errs.NewerSchemaVersionError`). Distinct from
+`ManagedState.generator_version`, which tracks the entry payload format
+(ADR 0020), not the schema envelope.
+
+## Legacy Sentinel
+
+The `version` value `0` — what a document written before schema versioning
+decodes to, since the key is absent. The [Persistence Boundary](#persistence-boundary)
+treats `0` as "pre-versioning legacy" and its `Migrate()` stamps it up to
+the type's current [Schema Version](#schema-version), so existing files keep
+loading and gain the version on next save. It is never a validation error.

@@ -30,6 +30,26 @@ type Manifest struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
+// Migrate stamps a legacy (version 0) profile manifest up to the current
+// schema version at the persistence boundary. Pointer receiver so the stamp
+// lands on the decoded value.
+func (m *Manifest) Migrate() errs.DomainError {
+	if m.Version == 0 {
+		m.Version = Version
+	}
+	return nil
+}
+
+// Validate rejects a profile manifest written by a newer build than this
+// one understands (forward-compat guard). Pointer receiver so *Manifest
+// satisfies utils.Persisted alongside Migrate.
+func (m *Manifest) Validate() errs.DomainError {
+	if m.Version > Version {
+		return errs.NewerSchemaVersionError{Have: m.Version, Known: Version}
+	}
+	return nil
+}
+
 // Profile is the in-memory representation of a profile after scanning its
 // asset subdirectory. Project selections live in a separate aggregate
 // (see ADR 0017); callers that need both view them through
@@ -65,7 +85,7 @@ func Init(root, name string) (*Manifest, errs.DomainError) {
 			return nil, err
 		}
 	}
-	if err := utils.WriteJSON(filepath.Join(root, config.ProfileManifestFileName), manifest); err != nil {
+	if err := utils.WriteJSON(filepath.Join(root, config.ProfileManifestFileName), *manifest); err != nil {
 		return nil, err
 	}
 	return manifest, nil
@@ -79,8 +99,8 @@ func Load(root string) (*Profile, errs.DomainError) {
 	if absErr != nil {
 		return nil, absErr
 	}
-	var manifest Manifest
-	if err := utils.ReadJSON(filepath.Join(root, config.ProfileManifestFileName), &manifest); err != nil {
+	manifest, err := utils.ReadJSON[Manifest](filepath.Join(root, config.ProfileManifestFileName))
+	if err != nil {
 		return nil, err
 	}
 	profile := &Profile{

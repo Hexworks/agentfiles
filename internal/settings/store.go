@@ -43,21 +43,17 @@ func (s *Store) Load() (Settings, errs.DomainError) {
 	if !utils.Exists(s.Path) {
 		return Default(), nil
 	}
-	var v Settings
-	if err := utils.ReadJSON(s.Path, &v); err != nil {
+	v, err := utils.ReadJSON[Settings](s.Path)
+	if err != nil {
 		return Settings{}, err
 	}
-	if v.Version == 0 {
-		v.Version = Version
-	}
+	// ReadJSON already stamped the schema version via Migrate.
 	return v, nil
 }
 
 // Save writes settings to disk atomically with owner-only permissions,
 // matching the projects/registry stores.
 func (s *Store) Save(v Settings) errs.DomainError {
-	if v.Version == 0 {
-		v.Version = Version
-	}
+	// WriteJSONAtomic stamps the schema version via Migrate on its own copy.
 	return utils.WriteJSONAtomic(s.Path, v, 0o700, 0o600)
 }

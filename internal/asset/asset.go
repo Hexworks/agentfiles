@@ -75,6 +75,10 @@ type Projection struct {
 //   - whether it conflicts with other assets
 //   - how its files should be projected into a repo
 type Manifest struct {
+	// Version is the asset.json schema version. Legacy manifests written
+	// before versioning carry no key and decode to 0, the legacy sentinel
+	// that Migrate stamps up to Version on load.
+	Version     int    `json:"version"`
 	ID          string `json:"id"`
 	Name        string `json:"name"`
 	Type        Type   `json:"type"`
@@ -124,9 +128,27 @@ type Asset struct {
 	Dir string
 }
 
+// Version is the current asset.json schema version.
+const Version = 1
+
+// Migrate upgrades a decoded manifest to the current schema version. A
+// missing version (0) is the pre-versioning legacy sentinel and is stamped
+// to Version; nothing else changes. Pointer receiver so the stamp lands on
+// the value ReadJSON/WriteJSON decoded.
+func (m *Manifest) Migrate() errs.DomainError {
+	if m.Version == 0 {
+		m.Version = Version
+	}
+	return nil
+}
+
 // Validate checks only the domain-level shape of the manifest. It does not
-// inspect agent-specific projection semantics.
+// inspect agent-specific projection semantics. It also rejects a version
+// newer than this build understands (forward-compat guard).
 func (m Manifest) Validate() errs.DomainError {
+	if m.Version > Version {
+		return errs.NewerSchemaVersionError{Have: m.Version, Known: Version}
+	}
 	if m.ID == "" || m.Name == "" {
 		return ErrAssetIDNameRequired
 	}
@@ -154,13 +176,12 @@ func unknownAgents(m Manifest) []agent.Agent {
 	return agent.Unknown(ids)
 }
 
-// Load reads and validates one asset directory.
+// Load reads one asset directory. ReadJSON migrates and validates the
+// manifest at the persistence boundary, so no separate Validate call is
+// needed here.
 func Load(dir string) (*Asset, errs.DomainError) {
-	var manifest Manifest
-	if err := utils.ReadJSON(filepath.Join(dir, config.AssetManifestFileName), &manifest); err != nil {
-		return nil, err
-	}
-	if err := manifest.Validate(); err != nil {
+	manifest, err := utils.ReadJSON[Manifest](filepath.Join(dir, config.AssetManifestFileName))
+	if err != nil {
 		return nil, err
 	}
 	return &Asset{Manifest: manifest, Dir: dir}, nil
@@ -295,9 +316,8 @@ func Delete(dir string) errs.DomainError {
 // caller is responsible for ensuring dir is the authoritative directory
 // for this asset (typically resolved from a loaded profile).
 func SaveManifest(dir string, manifest Manifest) errs.DomainError {
-	if err := manifest.Validate(); err != nil {
-		return err
-	}
+	// WriteJSON migrates then validates before persisting, so an invalid
+	// manifest is never written and no separate Validate call is needed.
 	return utils.WriteJSON(filepath.Join(dir, config.AssetManifestFileName), manifest)
 }
 

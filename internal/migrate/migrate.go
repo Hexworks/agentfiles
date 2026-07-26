@@ -299,8 +299,17 @@ func harvestProjectsDir(dir string) ([]*project.Manifest, errs.DomainError) {
 		}
 		manifest := &project.Manifest{}
 		manifestPath := filepath.Join(dir, entry.Name())
-		if readErr := utils.ReadJSON(manifestPath, manifest); readErr != nil {
-			return nil, readErr
+		// project.Manifest is persisted nested inside projectstore.State,
+		// not as its own versioned document, so it is not a utils.Persisted
+		// type. These v1-layout standalone manifest files are read raw here
+		// (same escape-hatch precedent as readV1Registry) and validated by
+		// the explicit Normalize/Validate calls below.
+		data, readErr := os.ReadFile(manifestPath)
+		if readErr != nil {
+			return nil, utils.ReadJSONError{Path: manifestPath, Err: readErr}
+		}
+		if unmErr := json.Unmarshal(data, manifest); unmErr != nil {
+			return nil, utils.ReadJSONError{Path: manifestPath, Err: unmErr}
 		}
 		if normErr := manifest.Normalize(); normErr != nil {
 			return nil, normErr

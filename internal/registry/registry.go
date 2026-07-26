@@ -41,6 +41,26 @@ type Registry struct {
 	Profiles []ProfileRef `json:"profiles"`
 }
 
+// Migrate stamps a legacy (version 0) registry up to the current schema
+// version. Pointer receiver so ReadJSON/WriteJSON own version stamping at
+// the persistence boundary — callers no longer stamp Version manually.
+func (r *Registry) Migrate() errs.DomainError {
+	if r.Version == 0 {
+		r.Version = Version
+	}
+	return nil
+}
+
+// Validate rejects a registry written by a newer build than this one
+// understands (forward-compat guard). Pointer receiver so *Registry
+// satisfies utils.Persisted alongside Migrate.
+func (r *Registry) Validate() errs.DomainError {
+	if r.Version > Version {
+		return errs.NewerSchemaVersionError{Have: r.Version, Known: Version}
+	}
+	return nil
+}
+
 // Store owns loading and saving the global profile registry file.
 type Store struct {
 	Path string
@@ -77,13 +97,12 @@ func (s *Store) Load() (*Registry, errs.DomainError) {
 	if !utils.Exists(s.Path) {
 		return &Registry{Version: Version, Profiles: []ProfileRef{}}, nil
 	}
-	var reg Registry
-	if err := utils.ReadJSON(s.Path, &reg); err != nil {
+	reg, err := utils.ReadJSON[Registry](s.Path)
+	if err != nil {
 		return nil, err
 	}
-	if reg.Version == 0 {
-		reg.Version = Version
-	}
+	// ReadJSON already stamped the schema version via Migrate; only the
+	// nil-slice convenience remains.
 	if reg.Profiles == nil {
 		reg.Profiles = []ProfileRef{}
 	}
@@ -96,11 +115,13 @@ func (s *Store) Load() (*Registry, errs.DomainError) {
 // profile paths (machine-identifying data) and should not be visible to
 // other local users on a multi-user host.
 func (s *Store) Save(reg *Registry) errs.DomainError {
-	reg.Version = Version
 	slices.SortFunc(reg.Profiles, func(a, b ProfileRef) int {
 		return strings.Compare(a.Name, b.Name)
 	})
-	return utils.WriteJSONMode(s.Path, reg, 0o700, 0o600)
+	// WriteJSONMode stamps the schema version via Migrate on its own copy,
+	// so the manual reg.Version assignment is gone. Deref to hand a value
+	// to the value-copy write pipeline.
+	return utils.WriteJSONMode(s.Path, *reg, 0o700, 0o600)
 }
 
 // Add appends a profile reference after checking the registry-wide uniqueness

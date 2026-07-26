@@ -26,6 +26,14 @@ import (
 // (v3) to carry the AssetID/SourceRel provenance Adopt needs. See ADR 0020.
 const GeneratorVersion = "2.0.0"
 
+// SchemaVersion is the integer schema version of the state.json document
+// itself. It is distinct from GeneratorVersion: GeneratorVersion is the
+// semver that tracks the ManagedFileEntry payload format (bare hash vs.
+// object shape, see ADR 0020), whereas SchemaVersion is the envelope
+// version the persistence boundary migrates and validates (decision C of
+// task 0001 — state.json carries both).
+const SchemaVersion = 1
+
 // ManagedFileEntry is one row in ManagedState.ManagedFiles. Hash is the
 // SHA-256 of the last-applied body; AssetID and SourceRel are the
 // reverse-mapping keys Adopt uses to write the local edit back into
@@ -81,6 +89,12 @@ func (e *ManagedFileEntry) UnmarshalJSON(data []byte) error {
 //   - drift (a previously managed file was edited locally)
 //   - an unknown file (lives in a managed surface but we never tracked it)
 type ManagedState struct {
+	// Version is the state.json schema-envelope version migrated and
+	// validated at the persistence boundary. Legacy state files predate it
+	// and decode to 0 (the legacy sentinel), stamped up to SchemaVersion on
+	// load. It sits alongside GeneratorVersion, which keeps its distinct
+	// ManagedFileEntry-format meaning (decision C, task 0001).
+	Version          int       `json:"version"`
 	ProfileID        string    `json:"profile_id"`
 	ProjectID        string    `json:"project_id"`
 	GeneratorVersion string    `json:"generator_version"`
@@ -95,6 +109,28 @@ type ManagedState struct {
 	// the next plan, so the folder vanishes from the changes preview. Stored
 	// in the same forward-slash form as ManagedFiles keys.
 	IgnoredPaths []string `json:"ignored_paths"`
+}
+
+// Migrate stamps a legacy (version 0) state file up to the current schema
+// version. GeneratorVersion is untouched — it tracks the entry payload
+// format, a separate concern. Pointer receiver so the stamp lands at the
+// persistence boundary.
+func (s *ManagedState) Migrate() errs.DomainError {
+	if s.Version == 0 {
+		s.Version = SchemaVersion
+	}
+	return nil
+}
+
+// Validate rejects a state file written by a newer build than this one
+// understands (forward-compat guard). Per-entry key safety is enforced
+// separately in loadState, which needs the file path for its corruption
+// errors.
+func (s *ManagedState) Validate() errs.DomainError {
+	if s.Version > SchemaVersion {
+		return errs.NewerSchemaVersionError{Have: s.Version, Known: SchemaVersion}
+	}
+	return nil
 }
 
 // ChangeKind classifies a single entry in a sync preview.
@@ -496,7 +532,7 @@ func Apply(preview *Preview, r Resolutions) (ApplyResult, errs.DomainError) {
 		IgnoredPaths:     ignoredNormalized,
 	}
 	statePath := filepath.Join(preview.ProjectPath, config.StateDirName, config.StateFileName)
-	if err := utils.WriteJSON(statePath, state); err != nil {
+	if err := utils.WriteJSON(statePath, *state); err != nil {
 		loop.domainErrs = append(loop.domainErrs, err)
 	}
 	slices.Sort(loop.mutated)
@@ -850,8 +886,8 @@ func loadState(projectPath string) (*ManagedState, errs.DomainError) {
 	if !utils.Exists(pth) {
 		return nil, StateMissingError{Path: pth}
 	}
-	var state ManagedState
-	if err := utils.ReadJSON(pth, &state); err != nil {
+	state, err := utils.ReadJSON[ManagedState](pth)
+	if err != nil {
 		return nil, err
 	}
 	if state.ManagedFiles == nil {

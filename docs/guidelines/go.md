@@ -133,6 +133,54 @@ if change.Kind == ChangeCreate {
 Prefer a `default` case that handles the unexpected value — usually by
 returning a typed error — so a new variant can't slip through silently.
 
+## Persist Only Validated, Versioned Data
+
+Every document that is written to disk and read back is a schema with a
+lifetime longer than any single build of the program. Treat persistence as
+a boundary, not a convenience:
+
+- **Every persisted document carries a `version`.** An integer envelope
+  field is enough. It is what lets a future build tell an old file from a
+  new one.
+- **Migration and validation run at one boundary, not per caller.** The
+  load and save helpers — not each call site — run *migrate then validate*.
+  A caller that cannot skip validation cannot forget it. Prefer a type
+  constraint so "this type is persistable" is compiler-checked.
+- **A missing version is a legacy sentinel, not an error.** A document
+  written before versioning decodes its `version` to the zero value.
+  Migration stamps it up to the current version so existing files keep
+  loading; it never downgrades.
+- **Reject a version newer than this build knows.** If a document's version
+  exceeds the highest the running build understands, refuse to load it. An
+  old binary that silently rewrites a newer file into an older shape is
+  data loss. Fail loudly instead.
+- **Validate before the write touches the filesystem.** An invalid value
+  must never reach disk — no partial file, no stray temp file, no created
+  directory.
+
+```text
+Do:
+- give each on-disk type a version field and a migrate + validate pair
+- run migrate-then-validate inside the shared read/write helpers
+- treat version 0 as "legacy, migrate up"; treat version > known as "reject"
+```
+
+```text
+Don't:
+- unmarshal straight into a struct and trust it
+- scatter Validate() calls that each caller must remember
+- rename or overload an existing version field that already means
+  something else — add a second one if the concerns differ
+```
+
+Repo specifics: the boundary is `utils.ReadJSON` / `utils.WriteJSON*`,
+generic over the `utils.Persisted[T]` constraint (`*T` with
+`Migrate()`/`Validate()`). `errs.NewerSchemaVersionError` is the shared
+reject-newer error. See [ADR 0022](../adr/0022-validated-versioned-persistence-boundary.md).
+The one sanctioned exception is `internal/migrate`, which reads
+pre-versioning legacy shapes raw (they are transient migration DTOs, not
+`Persisted` types).
+
 ## Return Actionable Errors
 
 Errors should explain what failed and why the caller should care. For

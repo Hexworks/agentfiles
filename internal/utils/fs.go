@@ -55,17 +55,33 @@ func Exists(path string) bool {
 	return err == nil
 }
 
-// ReadJSON reads the file at path and decodes its contents into v.
-// TODO: make this a generic function (@see task#0001)
-func ReadJSON(path string, v any) errs.DomainError {
+// ReadJSON reads the JSON document at path, decodes it into a T, runs its
+// Migrate() then Validate(), and returns the value. Because T is constrained
+// to Persisted, migration (legacy-version stamping) and validation
+// (including the reject-newer forward-compat guard) always run — a caller
+// cannot decode a persisted document without them. Call as
+// ReadJSON[Manifest](path); the pointer type param P is inferred from the
+// constraint.
+//
+// A missing or malformed file yields ReadJSONError; a document whose schema
+// version is newer than this build understands yields
+// errs.NewerSchemaVersionError (with path filled in).
+func ReadJSON[T any, P Persisted[T]](path string) (T, errs.DomainError) {
+	var v T
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return ReadJSONError{Path: path, Err: err}
+		return v, ReadJSONError{Path: path, Err: err}
 	}
-	if err := json.Unmarshal(data, v); err != nil {
-		return ReadJSONError{Path: path, Err: err}
+	if err := json.Unmarshal(data, P(&v)); err != nil {
+		return v, ReadJSONError{Path: path, Err: err}
 	}
-	return nil
+	if mErr := P(&v).Migrate(); mErr != nil {
+		return v, withPath(mErr, path)
+	}
+	if vErr := P(&v).Validate(); vErr != nil {
+		return v, withPath(vErr, path)
+	}
+	return v, nil
 }
 
 // WriteJSON marshals v as pretty-printed JSON with a trailing newline and
@@ -73,28 +89,62 @@ func ReadJSON(path string, v any) errs.DomainError {
 // project-wide default 0o755/0o644 modes for repo-projected files;
 // user-private state should call WriteJSONMode with 0o700/0o600 so the
 // files never become world-readable on a multi-user host.
-// TODO: make this a generic function (@see task#0001)
-func WriteJSON(path string, v any) errs.DomainError {
-	return WriteJSONMode(path, v, 0o755, 0o644)
+//
+// v is taken by value and Migrate/Validate run on that copy before any
+// filesystem side effect, so a value failing Validate is never persisted
+// (and the target directory is not even created) and the caller's value is
+// never mutated by version stamping.
+func WriteJSON[T any, P Persisted[T]](path string, v T) errs.DomainError {
+	return WriteJSONMode[T, P](path, v, 0o755, 0o644)
 }
 
 // WriteJSONMode is WriteJSON with explicit directory and file permission
 // bits. The two centralized user-config files (~/.agentfiles/profiles.json
 // and projects.json) hold machine-identifying paths and pass 0o700/0o600
 // so no other local user can read them.
-func WriteJSONMode(path string, v any, dirMode, fileMode fs.FileMode) errs.DomainError {
+func WriteJSONMode[T any, P Persisted[T]](path string, v T, dirMode, fileMode fs.FileMode) errs.DomainError {
+	data, prepErr := prepareJSON[T, P](path, v)
+	if prepErr != nil {
+		return prepErr
+	}
 	if dirErr := EnsureDirMode(filepath.Dir(path), dirMode); dirErr != nil {
 		return dirErr
 	}
-	data, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return WriteJSONError{Path: path, Err: err}
-	}
-	data = append(data, '\n')
 	if err := os.WriteFile(path, data, fileMode); err != nil {
 		return WriteJSONError{Path: path, Err: err}
 	}
 	return nil
+}
+
+// prepareJSON runs the write-side persistence pipeline on a copy of v —
+// Migrate then Validate then marshal — returning the bytes to persist (with
+// a trailing newline). Validation happens before any caller touches the
+// filesystem, so an invalid value never reaches disk. Shared by every
+// WriteJSON* variant so the invariant cannot drift between them.
+func prepareJSON[T any, P Persisted[T]](path string, v T) ([]byte, errs.DomainError) {
+	if mErr := P(&v).Migrate(); mErr != nil {
+		return nil, withPath(mErr, path)
+	}
+	if vErr := P(&v).Validate(); vErr != nil {
+		return nil, withPath(vErr, path)
+	}
+	data, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return nil, WriteJSONError{Path: path, Err: err}
+	}
+	return append(data, '\n'), nil
+}
+
+// withPath enriches an errs.NewerSchemaVersionError with the file path when
+// the value's Validate() produced it without one (a value does not know
+// which file it was decoded from). Any other error passes through unchanged.
+func withPath(err errs.DomainError, path string) errs.DomainError {
+	var nv errs.NewerSchemaVersionError
+	if errors.As(err, &nv) && nv.Path == "" {
+		nv.Path = path
+		return nv
+	}
+	return err
 }
 
 // WriteJSONAtomic writes v to a same-directory temp file, fsyncs it,
@@ -104,16 +154,15 @@ func WriteJSONMode(path string, v any, dirMode, fileMode fs.FileMode) errs.Domai
 // itself is atomic). Used for the two centralized user-config files
 // where a partial write would strand the migration in a state where the
 // next launch's presence check trips on a corrupt file.
-func WriteJSONAtomic(path string, v any, dirMode, fileMode fs.FileMode) errs.DomainError {
+func WriteJSONAtomic[T any, P Persisted[T]](path string, v T, dirMode, fileMode fs.FileMode) errs.DomainError {
+	data, prepErr := prepareJSON[T, P](path, v)
+	if prepErr != nil {
+		return prepErr
+	}
 	dir := filepath.Dir(path)
 	if dirErr := EnsureDirMode(dir, dirMode); dirErr != nil {
 		return dirErr
 	}
-	data, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return WriteJSONError{Path: path, Err: err}
-	}
-	data = append(data, '\n')
 	tmp, err := os.CreateTemp(dir, filepath.Base(path)+".tmp-*")
 	if err != nil {
 		return WriteJSONError{Path: path, Err: err}

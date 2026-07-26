@@ -5,6 +5,8 @@
 // app.Service, and persist any updates via the Store.
 package settings
 
+import "github.com/hexworks/agentfiles/internal/errs"
+
 // Version is the current settings.json schema version.
 const Version = 1
 
@@ -34,4 +36,24 @@ type Settings struct {
 // defaults do not spread across load sites.
 func Default() Settings {
 	return Settings{Version: Version}
+}
+
+// Migrate stamps a legacy (version 0) settings value up to the current
+// schema version at the persistence boundary. Pointer receiver so the stamp
+// lands on the decoded value.
+func (s *Settings) Migrate() errs.DomainError {
+	if s.Version == 0 {
+		s.Version = Version
+	}
+	return nil
+}
+
+// Validate rejects a settings file written by a newer build than this one
+// understands (forward-compat guard). Pointer receiver so *Settings
+// satisfies utils.Persisted alongside Migrate.
+func (s *Settings) Validate() errs.DomainError {
+	if s.Version > Version {
+		return errs.NewerSchemaVersionError{Have: s.Version, Known: Version}
+	}
+	return nil
 }
