@@ -111,10 +111,9 @@ type ManagedState struct {
 	IgnoredPaths []string `json:"ignored_paths"`
 }
 
-// Migrate stamps a legacy (version 0) state file up to the current schema
-// version. GeneratorVersion is untouched — it tracks the entry payload
-// format, a separate concern. Pointer receiver so the stamp lands at the
-// persistence boundary.
+// Migrate stamps the legacy sentinel to SchemaVersion; see utils.Persisted.
+// GeneratorVersion is untouched — it tracks the entry payload format, a
+// separate concern (decision C, task 0001).
 func (s *ManagedState) Migrate() errs.DomainError {
 	if s.Version == 0 {
 		s.Version = SchemaVersion
@@ -122,13 +121,47 @@ func (s *ManagedState) Migrate() errs.DomainError {
 	return nil
 }
 
-// Validate rejects a state file written by a newer build than this one
-// understands (forward-compat guard). Per-entry key safety is enforced
-// separately in loadState, which needs the file path for its corruption
-// errors.
+// SchemaVersion reports this state's version and the current one; see
+// utils.Persisted.
+func (s *ManagedState) SchemaVersion() (have, known int) { return s.Version, SchemaVersion }
+
+// Validate enforces the per-entry key safety that keeps a tampered state file
+// from driving a write or delete outside the project root: every ManagedFiles
+// key and IgnoredPaths entry must be a safe forward-slash relative path, and a
+// v3 entry must carry both AssetID and SourceRel or neither. It returns a
+// path-less StateCorruptError that the persistence boundary enriches with the
+// file path (see errs.PathSettable), so "loaded through ReadJSON ⇒ safe" holds
+// for ManagedState like every other persisted type. The version guard is owned
+// by the boundary (see SchemaVersion).
 func (s *ManagedState) Validate() errs.DomainError {
-	if s.Version > SchemaVersion {
-		return errs.NewerSchemaVersionError{Have: s.Version, Known: SchemaVersion}
+	for key, entry := range s.ManagedFiles {
+		if err := validatePathKey(key); err != nil {
+			return StateCorruptError{Key: key}
+		}
+		trimmedAsset := strings.TrimSpace(entry.AssetID)
+		trimmedSource := strings.TrimSpace(entry.SourceRel)
+		// A half-populated v3 entry (only one of AssetID/SourceRel set) is a
+		// wiring bug: v2 entries carry neither, v3 entries carry both.
+		// Whitespace-only counts as empty for the same reason.
+		if (trimmedAsset == "") != (trimmedSource == "") {
+			return StateCorruptError{Key: key}
+		}
+		if trimmedAsset != entry.AssetID || trimmedSource != entry.SourceRel {
+			return StateCorruptError{Key: key}
+		}
+		// SourceRel is written into <profile>/assets/<type>/<AssetID>/<SourceRel>
+		// by Adopt; validate it with the same relative-key rule so a tampered
+		// "../evil" can never reach asset.ResolveRelative.
+		if entry.SourceRel != "" {
+			if err := validatePathKey(entry.SourceRel); err != nil {
+				return StateCorruptError{Key: key}
+			}
+		}
+	}
+	for _, key := range s.IgnoredPaths {
+		if err := validatePathKey(key); err != nil {
+			return StateCorruptError{Key: key}
+		}
 	}
 	return nil
 }
@@ -878,8 +911,9 @@ func removeFile(projectPath, path string) errs.DomainError {
 // loadState reads the previous managed snapshot from the target repository.
 // A missing snapshot is reported as StateMissingError (info-severity) so
 // callers can distinguish first-time applies from corrupt state files.
-// Keys in ManagedFiles are validated against the slash-key convention;
-// any unsafe key returns StateCorruptError so traversal through the
+// Per-entry key safety (slash-key convention, provenance completeness) now
+// runs inside ManagedState.Validate at the persistence boundary, which
+// returns a StateCorruptError enriched with pth — so traversal through the
 // state file cannot trigger a write or delete outside the project root.
 func loadState(projectPath string) (*ManagedState, errs.DomainError) {
 	pth := filepath.Join(projectPath, config.StateDirName, config.StateFileName)
@@ -892,36 +926,6 @@ func loadState(projectPath string) (*ManagedState, errs.DomainError) {
 	}
 	if state.ManagedFiles == nil {
 		state.ManagedFiles = map[string]ManagedFileEntry{}
-	}
-	for key, entry := range state.ManagedFiles {
-		if err := validatePathKey(key); err != nil {
-			return nil, StateCorruptError{Path: pth, Key: key}
-		}
-		trimmedAsset := strings.TrimSpace(entry.AssetID)
-		trimmedSource := strings.TrimSpace(entry.SourceRel)
-		// A half-populated v3 entry (only one of AssetID/SourceRel set)
-		// is a wiring bug: v2 entries carry neither, v3 entries carry
-		// both. Whitespace-only counts as empty for the same reason.
-		if (trimmedAsset == "") != (trimmedSource == "") {
-			return nil, StateCorruptError{Path: pth, Key: key}
-		}
-		if trimmedAsset != entry.AssetID || trimmedSource != entry.SourceRel {
-			return nil, StateCorruptError{Path: pth, Key: key}
-		}
-		// SourceRel is written into <profile>/assets/<type>/<AssetID>/<SourceRel>
-		// by Adopt. Validate up front with the same forward-slash
-		// relative-key rule that scopes every other on-disk path so a
-		// tampered "../evil" can never reach asset.ResolveRelative.
-		if entry.SourceRel != "" {
-			if err := validatePathKey(entry.SourceRel); err != nil {
-				return nil, StateCorruptError{Path: pth, Key: key}
-			}
-		}
-	}
-	for _, key := range state.IgnoredPaths {
-		if err := validatePathKey(key); err != nil {
-			return nil, StateCorruptError{Path: pth, Key: key}
-		}
 	}
 	return &state, nil
 }

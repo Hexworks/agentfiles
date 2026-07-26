@@ -26,10 +26,9 @@ func (d *fakeDoc) Migrate() errs.DomainError {
 	return nil
 }
 
+func (d *fakeDoc) SchemaVersion() (have, known int) { return d.Version, fakeDocVersion }
+
 func (d *fakeDoc) Validate() errs.DomainError {
-	if d.Version > fakeDocVersion {
-		return errs.NewerSchemaVersionError{Have: d.Version, Known: fakeDocVersion}
-	}
 	if d.Name == "" {
 		return fakeDocInvalidError{}
 	}

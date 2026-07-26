@@ -131,10 +131,7 @@ type Asset struct {
 // Version is the current asset.json schema version.
 const Version = 1
 
-// Migrate upgrades a decoded manifest to the current schema version. A
-// missing version (0) is the pre-versioning legacy sentinel and is stamped
-// to Version; nothing else changes. Pointer receiver so the stamp lands on
-// the value ReadJSON/WriteJSON decoded.
+// Migrate stamps the legacy sentinel to Version; see utils.Persisted.
 func (m *Manifest) Migrate() errs.DomainError {
 	if m.Version == 0 {
 		m.Version = Version
@@ -142,13 +139,14 @@ func (m *Manifest) Migrate() errs.DomainError {
 	return nil
 }
 
-// Validate checks only the domain-level shape of the manifest. It does not
-// inspect agent-specific projection semantics. It also rejects a version
-// newer than this build understands (forward-compat guard).
-func (m Manifest) Validate() errs.DomainError {
-	if m.Version > Version {
-		return errs.NewerSchemaVersionError{Have: m.Version, Known: Version}
-	}
+// SchemaVersion reports this manifest's version and the current one; see
+// utils.Persisted.
+func (m *Manifest) SchemaVersion() (have, known int) { return m.Version, Version }
+
+// Validate checks only the domain-level shape of the manifest (id/name/type
+// and agent references). It does not inspect agent-specific projection
+// semantics; the version guard is owned by the boundary (see SchemaVersion).
+func (m *Manifest) Validate() errs.DomainError {
 	if m.ID == "" || m.Name == "" {
 		return ErrAssetIDNameRequired
 	}
@@ -157,7 +155,7 @@ func (m Manifest) Validate() errs.DomainError {
 	default:
 		return UnsupportedAssetTypeError{Type: m.Type}
 	}
-	if unknown := unknownAgents(m); len(unknown) > 0 {
+	if unknown := unknownAgents(*m); len(unknown) > 0 {
 		return UnknownCompatibleAgentError{Agents: unknown}
 	}
 	return nil

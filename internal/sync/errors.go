@@ -39,6 +39,17 @@ func (StateCorruptError) Severity() errs.Severity {
 	return errs.SeverityError
 }
 
+// WithPath returns the error with Path filled in, but only when it was
+// created without one — ManagedState.Validate builds it at the persistence
+// boundary without knowing which file it came from. Satisfies
+// errs.PathSettable so utils.ReadJSON can enrich it with the state file path.
+func (e StateCorruptError) WithPath(path string) errs.DomainError {
+	if e.Path == "" {
+		e.Path = path
+	}
+	return e
+}
+
 // DeleteError reports a failure to remove a file during Apply. Covers
 // both ChangeDelete entries (state-recorded files no longer in desired)
 // and ChangeUnknown entries resolved with UnknownDelete.

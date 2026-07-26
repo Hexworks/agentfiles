@@ -41,9 +41,7 @@ type Registry struct {
 	Profiles []ProfileRef `json:"profiles"`
 }
 
-// Migrate stamps a legacy (version 0) registry up to the current schema
-// version. Pointer receiver so ReadJSON/WriteJSON own version stamping at
-// the persistence boundary — callers no longer stamp Version manually.
+// Migrate stamps the legacy sentinel to Version; see utils.Persisted.
 func (r *Registry) Migrate() errs.DomainError {
 	if r.Version == 0 {
 		r.Version = Version
@@ -51,13 +49,13 @@ func (r *Registry) Migrate() errs.DomainError {
 	return nil
 }
 
-// Validate rejects a registry written by a newer build than this one
-// understands (forward-compat guard). Pointer receiver so *Registry
-// satisfies utils.Persisted alongside Migrate.
+// SchemaVersion reports this registry's version and the current one; see
+// utils.Persisted.
+func (r *Registry) SchemaVersion() (have, known int) { return r.Version, Version }
+
+// Validate has no domain shape beyond the version envelope the boundary
+// already guards, so it is a no-op; see utils.Persisted.
 func (r *Registry) Validate() errs.DomainError {
-	if r.Version > Version {
-		return errs.NewerSchemaVersionError{Have: r.Version, Known: Version}
-	}
 	return nil
 }
 
@@ -118,10 +116,13 @@ func (s *Store) Save(reg *Registry) errs.DomainError {
 	slices.SortFunc(reg.Profiles, func(a, b ProfileRef) int {
 		return strings.Compare(a.Name, b.Name)
 	})
-	// WriteJSONMode stamps the schema version via Migrate on its own copy,
-	// so the manual reg.Version assignment is gone. Deref to hand a value
-	// to the value-copy write pipeline.
-	return utils.WriteJSONMode(s.Path, *reg, 0o700, 0o600)
+	// WriteJSONAtomic stamps the schema version via Migrate on its own copy
+	// and, unlike WriteJSONMode, chmods the temp file explicitly so an
+	// already-permissive profiles.json is re-tightened to 0o600 on rewrite
+	// (os.WriteFile leaves an existing file's mode untouched). It also gives
+	// the registry the same crash-atomicity as the projects/settings stores.
+	// Deref to hand a value to the value-copy write pipeline.
+	return utils.WriteJSONAtomic(s.Path, *reg, 0o700, 0o600)
 }
 
 // Add appends a profile reference after checking the registry-wide uniqueness

@@ -30,9 +30,7 @@ type Manifest struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
-// Migrate stamps a legacy (version 0) profile manifest up to the current
-// schema version at the persistence boundary. Pointer receiver so the stamp
-// lands on the decoded value.
+// Migrate stamps the legacy sentinel to Version; see utils.Persisted.
 func (m *Manifest) Migrate() errs.DomainError {
 	if m.Version == 0 {
 		m.Version = Version
@@ -40,13 +38,13 @@ func (m *Manifest) Migrate() errs.DomainError {
 	return nil
 }
 
-// Validate rejects a profile manifest written by a newer build than this
-// one understands (forward-compat guard). Pointer receiver so *Manifest
-// satisfies utils.Persisted alongside Migrate.
+// SchemaVersion reports this manifest's version and the current one; see
+// utils.Persisted.
+func (m *Manifest) SchemaVersion() (have, known int) { return m.Version, Version }
+
+// Validate has no domain shape beyond the version envelope the boundary
+// already guards, so it is a no-op; see utils.Persisted.
 func (m *Manifest) Validate() errs.DomainError {
-	if m.Version > Version {
-		return errs.NewerSchemaVersionError{Have: m.Version, Known: Version}
-	}
 	return nil
 }
 

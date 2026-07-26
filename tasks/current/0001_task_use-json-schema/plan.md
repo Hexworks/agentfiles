@@ -14,7 +14,7 @@ Turn `utils.ReadJSON`/`WriteJSON` into **type-parameterised** functions constrai
 
 | File | Go type | Has `version` today | Has `Validate()` today |
 |---|---|---|---|
-| `~/.agentfiles/profiles.json` | `registry.Index` | `version int` ✓ | ✗ |
+| `~/.agentfiles/profiles.json` | `registry.Registry` | `version int` ✓ | ✗ |
 | `~/.agentfiles/projects.json` | `projectstore.Store` | `version int` ✓ | ✗ |
 | `~/.agentfiles/settings.json` | `settings.Settings` | `version int` ✓ | ✗ |
 | `<profile>/profile.json` | `profile.Profile` | `version int` ✓ | ✗ |
@@ -66,7 +66,7 @@ func WriteJSONAtomic[T any, P Persisted[T]](path string, v T, dirMode, fileMode 
 
 - **`asset.Manifest`**: add `Version int \`json:"version"\`` (first field), add `const Version = 1`, add `Migrate()` (pointer receiver: `if m.Version == 0 { m.Version = Version }`), extend `Validate()` to also `if m.Version > Version { return NewerSchemaVersionError{...} }`. Keep existing shape checks. (Existing `Validate` value receiver is promoted into `*Manifest`'s method set, so it still satisfies the constraint alongside the pointer-receiver `Migrate`.)
 - **`sync.ManagedState`**: add `Version int \`json:"version"\`` **alongside** existing `generator_version` (decision C), add `const SchemaVersion = 1` (distinct from the `GeneratorVersion` semver string, which keeps its `ManagedFileEntry`-format meaning), add `Migrate()` + `Validate()` (currently none) with the sentinel + reject-newer logic.
-- **`registry.Index`, `projectstore.Store`, `settings.Settings`, `profile.Profile`**: they already have `version int` + `const Version = 1`; add `Migrate()` (sentinel 0→`Version`) and `Validate()` (reject-newer + minimal existing field checks). Remove now-redundant manual `reg.Version = Version` stamping in `registry.Save`/`Load` (lines 85/99) — `Migrate` in the write pipeline owns stamping, single source.
+- **`registry.Registry`, `projectstore.Store`, `settings.Settings`, `profile.Profile`**: they already have `version int` + `const Version = 1`; add `Migrate()` (sentinel 0→`Version`) and `Validate()` (reject-newer + minimal existing field checks). Remove now-redundant manual `reg.Version = Version` stamping in `registry.Save`/`Load` (lines 85/99) — `Migrate` in the write pipeline owns stamping, single source.
 - **`project.Manifest`**: already has `Validate()`. It is persisted **inside** `projectstore.Store` (not its own file), so it does not need `Persisted`; `Store.Validate()` will fan out to each project's `Validate()`. Add a no-op-friendly `Migrate()` only if `Store.Migrate` needs to cascade (decide during impl; default: cascade validation only).
 
 ### New error type (`internal/utils/errors.go`)
@@ -146,7 +146,7 @@ Boundary-crossing (filesystem) → real-stack with `t.TempDir()`, per DoD rule.
 - [ ] `TestWriteJSONAtomic_RefusesInvalid` + leaves no `.tmp-*` residue.
 - [ ] `asset.Manifest` gains `version int` + `const Version`; `TestAsset_LoadsLegacyManifestNoVersion` (real legacy `asset.json` in `t.TempDir()`) loads and, on re-save, on-disk `version == 1`; `TestAsset_RejectsNewerManifest` returns `NewerSchemaVersionError`.
 - [ ] `sync.ManagedState` gains `version int` beside `generator_version`; `TestSync_LoadsLegacyStateNoVersion` (real legacy `state.json`) stamps `version:1` while preserving `generator_version`; existing `ManagedFileEntry` bare-hash back-compat test still passes.
-- [ ] `registry.Index`, `projectstore.Store`, `settings.Settings`, `profile.Profile` each: a real legacy file (missing/zero `version`) loads and stamps current; a newer-version file is rejected (one real-file test per type).
+- [ ] `registry.Registry`, `projectstore.Store`, `settings.Settings`, `profile.Profile` each: a real legacy file (missing/zero `version`) loads and stamps current; a newer-version file is rejected (one real-file test per type).
 - [ ] All seven `ReadJSON`/`WriteJSON` call sites compile against the generic API; the redundant standalone `manifest.Validate()` calls in `asset.go` are removed (validation now runs inside `ReadJSON`); `migrate.go:277` raw unmarshal is left intact.
 - [ ] `docs/guidelines/go.md` contains a "Persist Only Validated, Versioned Data" section; `grep -n "Persist Only Validated" docs/guidelines/go.md` matches.
 - [ ] `docs/adr/0022-validated-versioned-persistence-boundary.md` exists and records the JSON-Schema rejection, decision C, legacy-sentinel, reject-newer, and the `Migrate` seam.

@@ -43,16 +43,27 @@ over a `utils.Persisted[T]` constraint:
 type Persisted[T any] interface {
 	*T
 	Migrate() errs.DomainError
+	SchemaVersion() (have, known int)
 	Validate() errs.DomainError
 }
 ```
 
 The pipeline is identical on both sides: **decode/prepare → `Migrate()` →
-`Validate()` → (write only) marshal + persist.** Because `T` is constrained
-to `Persisted`, a caller cannot read or write a persisted document without
-migration and validation running. A type that does not implement both
-methods is a **compile error** at the call site — validation cannot be
-bypassed.
+reject-newer (`SchemaVersion()`) → `Validate()` → (write only) marshal +
+persist.** Because `T` is constrained to `Persisted`, a caller cannot read or
+write a persisted document without migration, the version guard, and
+validation running. A type that does not implement all three methods is a
+**compile error** at the call site — validation cannot be bypassed.
+
+The version guard is a single cross-cutting concern, so it lives in the
+boundary rather than being fanned out into every type's `Validate()`: the
+boundary compares the `(have, known)` pair `SchemaVersion()` reports and
+returns `errs.NewerSchemaVersionError` when `have > known`. `Validate()` is
+then free to check only domain shape — for envelope-only types
+(`registry.Registry`, `profile.Manifest`, `settings.Settings`) it is a
+no-op; `asset.Manifest` checks id/name/type, `projectstore.State` fans out to
+each nested `project.Manifest.Validate()`, and `sync.ManagedState` enforces
+its managed-key path safety.
 
 Rules baked into the boundary:
 
@@ -60,11 +71,14 @@ Rules baked into the boundary:
   treats `0` as the pre-versioning legacy value and stamps it up to the
   type's current `Version`. Existing files keep loading; they gain the
   version on next save.
-- **Reject newer.** `Validate()` returns `errs.NewerSchemaVersionError`
-  when the document's version is greater than the `Version` this build
+- **Reject newer.** The boundary reads the `(have, known)` pair from
+  `SchemaVersion()` and returns `errs.NewerSchemaVersionError` when `have >
+  known` — the document's version is greater than the `Version` this build
   knows. An old binary refuses to load — and therefore cannot mangle — a
-  file a newer binary wrote. The persistence boundary fills the file path
-  into the error (a value does not know which file it came from).
+  file a newer binary wrote. The boundary fills the file path into the error
+  (a value does not know which file it came from); a path-less boundary error
+  that implements `errs.PathSettable` (e.g. `sync.StateCorruptError`) is
+  enriched the same way.
 - **Migrate before Validate on write too**, so a freshly-constructed
   `version:0` value is stamped current before the reject-newer check.
 - **Validate before any filesystem side effect on write.** An invalid value

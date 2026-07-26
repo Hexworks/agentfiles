@@ -78,6 +78,9 @@ func ReadJSON[T any, P Persisted[T]](path string) (T, errs.DomainError) {
 	if mErr := P(&v).Migrate(); mErr != nil {
 		return v, withPath(mErr, path)
 	}
+	if have, known := P(&v).SchemaVersion(); have > known {
+		return v, errs.NewerSchemaVersionError{Path: path, Have: have, Known: known}
+	}
 	if vErr := P(&v).Validate(); vErr != nil {
 		return v, withPath(vErr, path)
 	}
@@ -125,6 +128,9 @@ func prepareJSON[T any, P Persisted[T]](path string, v T) ([]byte, errs.DomainEr
 	if mErr := P(&v).Migrate(); mErr != nil {
 		return nil, withPath(mErr, path)
 	}
+	if have, known := P(&v).SchemaVersion(); have > known {
+		return nil, errs.NewerSchemaVersionError{Path: path, Have: have, Known: known}
+	}
 	if vErr := P(&v).Validate(); vErr != nil {
 		return nil, withPath(vErr, path)
 	}
@@ -135,14 +141,14 @@ func prepareJSON[T any, P Persisted[T]](path string, v T) ([]byte, errs.DomainEr
 	return append(data, '\n'), nil
 }
 
-// withPath enriches an errs.NewerSchemaVersionError with the file path when
-// the value's Validate() produced it without one (a value does not know
-// which file it was decoded from). Any other error passes through unchanged.
+// withPath enriches a boundary error with the file path when the value's
+// Migrate/Validate produced it without one (a value does not know which file
+// it was decoded from). Any error implementing errs.PathSettable is enriched;
+// every other error passes through unchanged.
 func withPath(err errs.DomainError, path string) errs.DomainError {
-	var nv errs.NewerSchemaVersionError
-	if errors.As(err, &nv) && nv.Path == "" {
-		nv.Path = path
-		return nv
+	var ps errs.PathSettable
+	if errors.As(err, &ps) {
+		return ps.WithPath(path)
 	}
 	return err
 }

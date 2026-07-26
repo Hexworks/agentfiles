@@ -38,9 +38,7 @@ func Default() Settings {
 	return Settings{Version: Version}
 }
 
-// Migrate stamps a legacy (version 0) settings value up to the current
-// schema version at the persistence boundary. Pointer receiver so the stamp
-// lands on the decoded value.
+// Migrate stamps the legacy sentinel to Version; see utils.Persisted.
 func (s *Settings) Migrate() errs.DomainError {
 	if s.Version == 0 {
 		s.Version = Version
@@ -48,12 +46,12 @@ func (s *Settings) Migrate() errs.DomainError {
 	return nil
 }
 
-// Validate rejects a settings file written by a newer build than this one
-// understands (forward-compat guard). Pointer receiver so *Settings
-// satisfies utils.Persisted alongside Migrate.
+// SchemaVersion reports this value's version and the current one; see
+// utils.Persisted.
+func (s *Settings) SchemaVersion() (have, known int) { return s.Version, Version }
+
+// Validate has no domain shape beyond the version envelope the boundary
+// already guards, so it is a no-op; see utils.Persisted.
 func (s *Settings) Validate() errs.DomainError {
-	if s.Version > Version {
-		return errs.NewerSchemaVersionError{Have: s.Version, Known: Version}
-	}
 	return nil
 }

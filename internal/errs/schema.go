@@ -36,3 +36,25 @@ func (e NewerSchemaVersionError) Error() string {
 func (NewerSchemaVersionError) Severity() Severity {
 	return SeverityError
 }
+
+// WithPath returns the error with Path filled in, but only when it was
+// created without one — a value's Validate() reports Have/Known without
+// knowing which file it came from. An error already carrying a path is
+// returned unchanged. Satisfies PathSettable so the persistence boundary can
+// enrich it generically.
+func (e NewerSchemaVersionError) WithPath(path string) DomainError {
+	if e.Path == "" {
+		e.Path = path
+	}
+	return e
+}
+
+// PathSettable is implemented by boundary errors created without a file path —
+// the value being validated does not know which file it was decoded from. The
+// persistence boundary (utils.ReadJSON/WriteJSON) injects the path via WithPath
+// so the message can name the offending file. Implementations must only set the
+// path when they were created without one.
+type PathSettable interface {
+	DomainError
+	WithPath(path string) DomainError
+}

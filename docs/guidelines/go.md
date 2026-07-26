@@ -174,9 +174,12 @@ Don't:
 ```
 
 Repo specifics: the boundary is `utils.ReadJSON` / `utils.WriteJSON*`,
-generic over the `utils.Persisted[T]` constraint (`*T` with
-`Migrate()`/`Validate()`). `errs.NewerSchemaVersionError` is the shared
-reject-newer error. See [ADR 0022](../adr/0022-validated-versioned-persistence-boundary.md).
+generic over the `utils.Persisted[T]` constraint (`*T` with `Migrate()`,
+`SchemaVersion()`, and `Validate()`). The boundary runs the reject-newer
+guard once from `SchemaVersion()` (returning the shared
+`errs.NewerSchemaVersionError`), so `Validate()` covers only each type's
+domain shape and may be a no-op for envelope-only types. See
+[ADR 0022](../adr/0022-validated-versioned-persistence-boundary.md).
 The one sanctioned exception is `internal/migrate`, which reads
 pre-versioning legacy shapes raw (they are transient migration DTOs, not
 `Persisted` types).

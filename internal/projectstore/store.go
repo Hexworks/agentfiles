@@ -34,10 +34,9 @@ type State struct {
 	Projects map[string][]*project.Manifest `json:"projects"`
 }
 
-// Migrate stamps a legacy (version 0) store up to the current schema
-// version at the persistence boundary. Pointer receiver so the stamp lands
-// on the decoded value. Per-project Normalize/Validate is a separate
-// orphan-and-shape pass (validateState) that needs the wired seams.
+// Migrate stamps the legacy sentinel to Version; see utils.Persisted. The
+// orphan check and per-project Normalize stay in validateState, which needs
+// the wired seams the boundary does not carry.
 func (s *State) Migrate() errs.DomainError {
 	if s.Version == 0 {
 		s.Version = Version
@@ -45,12 +44,30 @@ func (s *State) Migrate() errs.DomainError {
 	return nil
 }
 
-// Validate rejects a store written by a newer build than this one
-// understands (forward-compat guard). Pointer receiver so *State satisfies
-// utils.Persisted alongside Migrate.
+// SchemaVersion reports this store's version and the current one; see
+// utils.Persisted.
+func (s *State) SchemaVersion() (have, known int) { return s.Version, Version }
+
+// Validate fans the aggregate-consistency invariant out to every nested
+// project.Manifest, so a value obtained through the boundary is shape-valid
+// as a whole. project.Manifest is not itself utils.Persisted (it owns no
+// file), so this is where its shape is guaranteed at load. Orphan-group and
+// Normalize concerns remain in validateState. Failures accumulate so a
+// corrupt file surfaces every bad manifest at once.
 func (s *State) Validate() errs.DomainError {
-	if s.Version > Version {
-		return errs.NewerSchemaVersionError{Have: s.Version, Known: Version}
+	var failures errs.Errors
+	for _, manifests := range s.Projects {
+		for _, m := range manifests {
+			if m == nil {
+				continue
+			}
+			if err := m.Validate(); err != nil {
+				failures = append(failures, err)
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return failures
 	}
 	return nil
 }

@@ -360,7 +360,16 @@ func TestDeleteAsset_PartialFailureLeavesRecoverableState(t *testing.T) {
 		t.Skip("permission-based failure injection cannot run as root")
 	}
 	root := t.TempDir()
-	svc := newSvc(root)
+	// The projects store lives in its own directory so this test can deny
+	// writes to it alone. All three stores write atomically now (ADR 0022 /
+	// review issue #1 routed the registry through WriteJSONAtomic too), so
+	// denying a shared parent would also fail the load-time registry Touch
+	// and abort DeleteAsset before it reached the projects save.
+	projectsDir := filepath.Join(root, "projects-store")
+	if err := os.MkdirAll(projectsDir, 0o755); err != nil {
+		t.Fatalf("mkdir projects store: %v", err)
+	}
+	svc := newSvcSplitProjects(root, projectsDir)
 	profilePath := filepath.Join(root, "profile")
 	if _, err := svc.CreateProfile("Personal", profilePath); err != nil {
 		t.Fatalf("create profile: %v", err)
@@ -376,12 +385,12 @@ func TestDeleteAsset_PartialFailureLeavesRecoverableState(t *testing.T) {
 	}
 
 	// Make the projects store's *directory* unwritable so the per-project
-	// save fails mid-loop. Store.Save now writes atomically via a
-	// same-dir temp file + rename, so denying write to the file itself
-	// no longer blocks the write — the temp file lands next to it. The
-	// asset folder removal in DeleteAsset is separate and still runs, so
-	// the second half of the operation should succeed even though the
-	// first half fails.
+	// save fails mid-loop. The atomic write creates a same-dir temp file, so
+	// denying the directory (not the file) is what blocks it; reading the
+	// existing projects.json still works (r-x), so the profile load — and its
+	// registry Touch under the still-writable root — succeeds. The asset
+	// folder removal in DeleteAsset runs after the failed save, so the second
+	// half of the operation still completes.
 	storeDir := filepath.Dir(svc.Projects.Path)
 	if err := os.Chmod(storeDir, 0o500); err != nil {
 		t.Fatalf("chmod store dir: %v", err)

@@ -80,3 +80,19 @@ func newSvcTB(t *testing.T) *Service {
 	t.Helper()
 	return newSvc(t.TempDir())
 }
+
+// newSvcSplitProjects places the projects store in projectsDir while the
+// registry and settings stores stay under root. All three stores now write
+// atomically (via a same-dir temp file), so denying writes to a shared
+// parent dir would also fail the load-time registry Touch. Splitting lets a
+// test deny writes to projectsDir alone and isolate a projects-store save
+// failure without breaking the profile load that precedes it.
+func newSvcSplitProjects(root, projectsDir string) *Service {
+	return NewWithStores(
+		registry.NewStore(filepath.Join(root, "registry.json")),
+		projectstore.NewStore(filepath.Join(projectsDir, "projects.json")),
+		settings.NewStore(filepath.Join(root, "settings.json")),
+		settings.Default(),
+		&fakeCommitter{},
+	)
+}
