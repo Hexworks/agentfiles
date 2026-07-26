@@ -2,10 +2,10 @@
   "profile_id": "addamsson",
   "project_id": "agentfiles",
   "generator_version": "2.0.0",
-  "last_applied_at": "2026-07-23T17:47:51.927704338Z",
+  "last_applied_at": "2026-07-26T13:16:24.432298726Z",
   "managed_files": {
     ".claude/skills/af.check-task/SKILL.md": {
-      "hash": "640eda0eb9f00da60aee520ac4f1c8038aef3af0ca770bcfc99a02b2984b93e7",
+      "hash": "55c073bdcc8017004343ccde9e670caedefce3a9047d2838f3818936a4dd1dff",
       "asset_id": "af.check-task",
       "source_rel": "SKILL.md"
     },
@@ -210,7 +210,7 @@
       "source_rel": "SKILL.md"
     },
     ".codex/skills/af.check-task/SKILL.md": {
-      "hash": "640eda0eb9f00da60aee520ac4f1c8038aef3af0ca770bcfc99a02b2984b93e7",
+      "hash": "55c073bdcc8017004343ccde9e670caedefce3a9047d2838f3818936a4dd1dff",
       "asset_id": "af.check-task",
       "source_rel": "SKILL.md"
     },
