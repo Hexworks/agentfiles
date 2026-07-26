@@ -292,22 +292,17 @@ func isTerminalSafeRune(r rune) bool {
 	case '\n', '\t':
 		return true
 	}
-	if r < 0x20 || r == 0x7f {
-		return false
-	}
-	// C1 controls (U+0080..U+009F).
-	if r >= 0x80 && r <= 0x9f {
-		return false
-	}
-	// Bidi overrides and isolates (U+202A..U+202E, U+2066..U+2069).
+	// Bidi overrides and isolates (U+202A..U+202E, U+2066..U+2069) — class
+	// Cf, not caught by unicode.IsControl.
 	if (r >= 0x202a && r <= 0x202e) || (r >= 0x2066 && r <= 0x2069) {
 		return false
 	}
-	// Zero-width formatters and BOM (U+200B..U+200D, U+FEFF).
+	// Zero-width formatters and BOM (U+200B..U+200D, U+FEFF) — also class Cf.
 	if r == 0xfeff || (r >= 0x200b && r <= 0x200d) {
 		return false
 	}
-	// Any remaining Unicode-class control rune (Cc).
+	// All C0 controls, DEL, and C1 controls are Unicode class Cc; \n and \t
+	// are already short-circuited above, so this single branch covers them.
 	if unicode.IsControl(r) {
 		return false
 	}

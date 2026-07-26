@@ -71,7 +71,15 @@ rendered path value in `styles.Safe`.
   is owned by huh's own render loop; pre-sanitising a bound editable value
   would mutate what the user is typing. The task description's "every huh
   field" is the *motivation* for why control runes matter, not a mandate
-  to rewrite editable fields.
+  to rewrite editable fields. This deferral also covers the **initial
+  display** of persisted seeds: `edit_project.go` seeds `pathInput` from
+  `initial.Path` (sourced from `~/.agentfiles/projects.json`, which is
+  hand-editable / Adopt-populated external data), and bubbles/textinput
+  echoes the seed verbatim, so a raw control rune persisted in a project
+  path would render into the Edit modal frame before any keystroke. This
+  is a known, deliberate limit — narrower than the `\t`/`\n` residual
+  below (it needs a hostile `projects.json`) and sanitising a bound
+  editable value is out of scope for the reasons above.
 - Any new bespoke handling of `\n` / `\t`. `styles.Safe` preserves both
   (they are in its allow-switch). A filesystem path may legally contain a
   newline, so a Note `Title` could render multiline and mildly shift the
@@ -94,3 +102,14 @@ rendered path value in `styles.Safe`.
       view contains the escaped literal `\x1b` (proving `styles.Safe`
       ran) and does not emit the raw injected control sequence.
 - [ ] `make build && make test && make lint` all green.
+
+## Verification
+
+- `go test ./internal/tui/styles -run TestSafe` — hostile-rune (raw ESC,
+  NUL, DEL, C1, bidi, zero-width), clean-path, tab/newline, and
+  empty-string cases all pass.
+- `go test ./internal/tui/modals -run TestPathDisplayNote` — wiring test
+  asserts the rendered `form.View()` contains the escaped literal `\x1b`
+  (proving `styles.Safe` ran) and never the raw `re\x1bpo` bytes; clean
+  path renders verbatim.
+- `make build && make test && make lint` all green.

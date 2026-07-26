@@ -481,6 +481,26 @@ about the kind of failure, not its rendering. Every typed domain error
 implements `Severity() errs.Severity`; the TUI consumes the result to
 pick icon and color.
 
+## Terminal-Safe Sanitiser
+
+`styles.Safe` (`internal/tui/styles/styles.go`) — the canonical sanitiser
+for any external string that reaches a lipgloss-rendered frame. It rejects
+a **hostile rune** (C0/DEL/C1 controls, bidi overrides and isolates,
+zero-width formatters, BOM) by quoting the whole string via `strconv.Quote`
+so the escaped literal is shown rather than a control sequence that could
+hijack terminal state or spoof a path. Distinct from
+[`SanitizeSubject`](#commit-subject-sanitiser), which strips-and-collapses
+for a different boundary; use `styles.Safe` whenever untrusted bytes are
+about to be drawn.
+
+## Commit Subject Sanitiser
+
+`appapi.SanitizeSubject` — the sanitiser for a git commit subject line. It
+strips and collapses rather than quoting (a commit subject must stay
+human-readable and single-line), so it is a different primitive from the
+frame-facing [Terminal-Safe Sanitiser](#terminal-safe-sanitiser); the two
+are not interchangeable.
+
 ## Acceptance Criteria
 
 The hybrid checklist that lives under `## Acceptance Criteria` in a task's

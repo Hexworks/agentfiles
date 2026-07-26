@@ -24,16 +24,18 @@ func TestPathDisplayNote_SanitisesControlRunes(t *testing.T) {
 	form.Init()
 	view := form.View()
 
-	if !strings.Contains(view, `\x1b`) {
-		t.Errorf("view missing escaped literal %q; styles.Safe did not run:\n%s", `\x1b`, view)
+	// Positive proof: the full sanitised path — `re\x1bpo` with a literal
+	// backslash-x-1-b — must appear, pinning that styles.Safe quoted the
+	// injected bytes rather than four stray chars coinciding elsewhere.
+	if !strings.Contains(view, `re\x1bpo`) {
+		t.Errorf("view missing escaped path %q; styles.Safe did not run:\n%s", `re\x1bpo`, view)
 	}
-	if strings.ContainsRune(view, '\x1b') {
-		// A lipgloss theme legitimately emits ESC-based SGR colour codes,
-		// so a bare ESC is expected; assert the *injected* sequence — the
-		// raw path bytes `re<ESC>po` — never appears verbatim.
-		if strings.Contains(view, "re\x1bpo") {
-			t.Errorf("view contains the raw injected control sequence %q:\n%q", "re\x1bpo", view)
-		}
+	// Negative proof runs unconditionally. A lipgloss theme legitimately
+	// emits ESC-based SGR colour codes, so a bare ESC in the frame is
+	// expected; what must never appear is the *injected* raw sequence — the
+	// path bytes `re<ESC>po` verbatim.
+	if strings.Contains(view, "re\x1bpo") {
+		t.Errorf("view contains the raw injected control sequence %q:\n%q", "re\x1bpo", view)
 	}
 }
 

@@ -43,6 +43,8 @@ func TestSafe_HostileRunesForceQuotedLiteral(t *testing.T) {
 		{"raw ESC", "~/re\x1bpo"},
 		{"NUL", "a\x00b"},
 		{"DEL", "a\x7fb"},
+		{"bidi isolate", "a\u2066b"},
+		{"BOM", "a\ufeffb"},
 		{"C1 control", "ab"},
 		{"bidi override", "a‮b"},
 		{"zero-width formatter", "a​b"},
