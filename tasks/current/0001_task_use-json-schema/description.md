@@ -1,7 +1,7 @@
 ---
 id: 0001
 type: task
-status: pending
+status: in-progress
 topics: research
 ---
 
