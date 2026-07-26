@@ -1,7 +1,7 @@
 ---
 id: 0041
 type: bug
-status: in-review
+status: done
 topics: tui, security
 depends_on: 0040
 ---
@@ -70,7 +70,7 @@ rendered path value in `styles.Safe`.
   path pre-filled in edit/register forms). Their `Value(*string)` binding
   is owned by huh's own render loop; pre-sanitising a bound editable value
   would mutate what the user is typing. The task description's "every huh
-  field" is the *motivation* for why control runes matter, not a mandate
+  field" is the _motivation_ for why control runes matter, not a mandate
   to rewrite editable fields. This deferral also covers the **initial
   display** of persisted seeds: `edit_project.go` seeds `pathInput` from
   `initial.Path` (sourced from `~/.agentfiles/projects.json`, which is
