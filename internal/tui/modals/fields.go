@@ -4,6 +4,7 @@ import (
 	"charm.land/huh/v2"
 
 	"github.com/hexworks/agentfiles/internal/asset"
+	"github.com/hexworks/agentfiles/internal/tui/styles"
 )
 
 // Shared field constructors for the modal forms. Centralising the labels and
@@ -45,9 +46,17 @@ func pathInput(value *string, description string) *huh.Input {
 // swap. The path is placed in Title(...) so it bypasses the mini-markdown
 // renderer that Description runs on (`*`, `_`, “ ` “, `\`) and stays
 // visually intact for common paths like `~/repos/my_repo`.
+//
+// The value is run through styles.Safe first (task 0041): a raw path is
+// still filesystem bytes, so C0/DEL/C1 controls, bidi overrides, or
+// zero-width formatters could otherwise reach the frame and hijack the
+// terminal. styles.Safe quotes the whole string on any hostile rune, so
+// the user sees the escaped literal instead. `\t` and `\n` are preserved
+// by design (Safe's allow-switch), an accepted residual — a legal
+// newline in a path may render a multiline title but is not a hijack.
 func pathDisplayNote(value string, description string) *huh.Note {
 	return huh.NewNote().
-		Title(value).
+		Title(styles.Safe(value)).
 		Description(description)
 }
 
