@@ -1,9 +1,17 @@
 ---
 id: 0012
 type: task
-status: Pending
+status: done
 topics: go, profile
 ---
+
+> [!NOTE]
+> **Obsolete — not implemented.** Archived 2026-07-26.
+> ADR 0017 moved projects out of profile folders into a single
+> `~/.agentfiles/projects.json` (`internal/projectstore`). `profile.scanProjects`
+> and the inlined `entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json")`
+> filter no longer exist, so there is nothing to extract into
+> `isProjectManifestFile`. Task premise is void.
 
 # Extract project-manifest file filter into named helper
 

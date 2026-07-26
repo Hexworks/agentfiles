@@ -1,7 +1,7 @@
 ---
 id: 0011
 type: task
-status: in-review
+status: done
 topics: go, render
 ---
 
@@ -156,7 +156,7 @@ also produced.
       (incl. a walked directory) reverse to source via `ReverseLookup`.
 - [ ] `TestAdopt_SkillDrift_EndToEnd`: real `sync.Apply` over a drifted
       managed skill file returns an `AdoptRequest` whose `(AssetID,
-      SourceRel)` equals `ReverseLookup`, and `app.Service.Apply` writes
+    SourceRel)` equals `ReverseLookup`, and `app.Service.Apply` writes
       the local body back to `assets/skill/<id>/<rel>` — asserted by
       reading the profile asset off disk after Apply.
 - [ ] `grep -n "switch" internal/render/render.go` shows no `a.Type`
