@@ -16,7 +16,8 @@ Two example task descriptions live next to this file
 
 - Tasks live under `tasks/` in three folders:
     - `tasks/backlog/` — not started yet. Frontmatter `status: pending`.
-    - `tasks/current/` — being worked on now. Frontmatter `status: active`.
+    - `tasks/current/` — being worked on now. Frontmatter `status: pending`
+      until `af.task.implement` starts and flips it to `in-progress`.
     - `tasks/done/` — finished (out of scope here).
 - Folder name pattern: `NNNN_<type>_<slug>` (e.g. `0029_feature_plan-project-screen`).
     - `NNNN` is a zero-padded 4-digit id.
@@ -61,30 +62,75 @@ Default is backlog + `pending`. Ask the user (selector, yes/no) whether this tas
 should be **active right away**:
 
 - **No (default)** → write to `tasks/backlog/<folder>/`, frontmatter `status: pending`.
-- **Yes** → write to `tasks/current/<folder>/`, frontmatter `status: active`.
+- **Yes** → write to `tasks/current/<folder>/`, frontmatter `status: pending`.
+  (`af.task.implement` flips it to `in-progress` when it starts; `active` is
+  **not** a valid status — `af.task.implement` / `af.task.review` only accept
+  `pending|in-progress|blocked|in-review|done`.)
 
 ## Step 7 — create the files
 
-Create the task folder in the chosen parent and write `description.md`:
+Create the task folder in the chosen parent and write `description.md`. The body
+**must** carry three required sections after the title: `## Acceptance Criteria`,
+`## Out of scope`, `## Verification`. They start as placeholders — Step 8
+(grilling) fills them.
 
-```markdown
+The acceptance-criteria checklist **is** the Definition of Done: a task is done
+when every box is `[x]` and `## Verification` passes. Keep criteria terse and
+**verifiable** — behavioral ones name a concrete `input → output` or a named
+test (e.g. `go test -run TestX`). No separate DoD section (that would just
+restate the criteria).
+
+`## Verification` is a **bullet list**, not a shell block. The first bullet is
+the baseline gate (`make build && make test && make lint`); at least one
+additional bullet must name behavior-specific evidence — a named test
+(`go test -run TestX`), a reproducible smoke input→output (`./bin/af → screen →
+action → expected result`), or a fixture invocation. A `## Verification` with
+only the baseline bullet does **not** count as filled at Step 8.
+
+````markdown
 ---
 id: NNNN
 type: <type>
-status: <pending|active>
+status: <pending|in-progress>
 topics: <comma-separated topics>
 depends_on: <comma-separated ids> # omit line if none
 notes: <freeform text> # omit line if none
 ---
 
 # <Title>
-```
+
+## Acceptance Criteria
+
+- [ ] <verifiable statement; behavioral → concrete input → output or named test>
+
+## Out of scope
+
+- <thing explicitly NOT being done>   # write "- none" if truly nothing
+
+## Verification
+
+- Baseline: `make build && make test && make lint` pass.
+- <behavior-specific check; e.g. `go test -run TestFoo`, or `./bin/af → <screen>
+  → <action> → <expected result>`>
+````
 
 ## Step 8 — hand off
 
 After the file exists:
 
 - If the `grilling` skill is available, invoke it to interview the user and flesh
-  out the task details in `description.md`. The example tasks can be used for inspiration.
-- Otherwise, tell the user the task was created (give the path) and open
+  out the task details in `description.md`. The example tasks can be used for
+  inspiration. The interview **must not finish** until **all three** required
+  sections defined in Step 7 are filled:
+    - `## Acceptance Criteria` has **≥1** checkbox, every criterion verifiable
+      (if you cannot state how you'd check it, rewrite it until you can),
+    - `## Out of scope` is filled (`- none` is allowed only when nothing is
+      genuinely excluded), and
+    - `## Verification` carries at least one behavior-specific bullet beyond
+      the baseline `make build && make test && make lint` gate (see Step 7).
+  These sections are the task's Definition of Done as defined in Step 7 —
+  `af.task.review` gates on them, so a vague or empty section blocks review
+  later.
+- Otherwise, tell the user the task was created (give the path), remind them the
+  three required sections must be filled before `af.task.implement`, and open
   `description.md` for editing if the environment supports it.

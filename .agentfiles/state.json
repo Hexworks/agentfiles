@@ -1,9 +1,15 @@
 {
+  "version": 1,
   "profile_id": "addamsson",
   "project_id": "agentfiles",
   "generator_version": "2.0.0",
-  "last_applied_at": "2026-07-26T13:16:24.432298726Z",
+  "last_applied_at": "2026-08-16T11:08:51.831159032Z",
   "managed_files": {
+    ".claude/skills/Adversarial Task Review [Agentfiles]/SKILL.md": {
+      "hash": "ab4a227512727ef43ca143352401e506f0047509ba6c1dc7ae8f4193cb68d820",
+      "asset_id": "Adversarial Task Review [Agentfiles]",
+      "source_rel": "SKILL.md"
+    },
     ".claude/skills/af.check-task/SKILL.md": {
       "hash": "55c073bdcc8017004343ccde9e670caedefce3a9047d2838f3818936a4dd1dff",
       "asset_id": "af.check-task",
@@ -25,17 +31,17 @@
       "source_rel": "SKILL.md"
     },
     ".claude/skills/af.create-task/SKILL.md": {
-      "hash": "ab2ebbca60f632f6d4e77e809a830fe74877a59d2e5c7bffa646383fb1269f06",
+      "hash": "d3ce58104491d2074837ffb3c7fc8d908aebc1c80a736a367530df6f4a0b01dd",
       "asset_id": "af.create-task",
       "source_rel": "SKILL.md"
     },
     ".claude/skills/af.create-task/example-1-description.md": {
-      "hash": "c90b97b86ac4eaf939ab45b1e23bc6e5db6cc7821e2f73e4557ae67071aeaf18",
+      "hash": "2bfaab2e4633ee726a6a204476682ede43dca8d82274de46223bcddcf2e4f49f",
       "asset_id": "af.create-task",
       "source_rel": "example-1-description.md"
     },
     ".claude/skills/af.create-task/example-2-description.md": {
-      "hash": "63b4ff4ba53eb4224b534ea5273dbdcfd10d9f4e2bab2821fb2d81fe9a847795",
+      "hash": "61bd8435a2e209c8f6afc7c3ddf5b90e25a746504275615b3cb4b6bd874f2e25",
       "asset_id": "af.create-task",
       "source_rel": "example-2-description.md"
     },
@@ -209,6 +215,11 @@
       "asset_id": "summarize",
       "source_rel": "SKILL.md"
     },
+    ".codex/skills/Adversarial Task Review [Agentfiles]/SKILL.md": {
+      "hash": "ab4a227512727ef43ca143352401e506f0047509ba6c1dc7ae8f4193cb68d820",
+      "asset_id": "Adversarial Task Review [Agentfiles]",
+      "source_rel": "SKILL.md"
+    },
     ".codex/skills/af.check-task/SKILL.md": {
       "hash": "55c073bdcc8017004343ccde9e670caedefce3a9047d2838f3818936a4dd1dff",
       "asset_id": "af.check-task",
@@ -230,17 +241,17 @@
       "source_rel": "SKILL.md"
     },
     ".codex/skills/af.create-task/SKILL.md": {
-      "hash": "ab2ebbca60f632f6d4e77e809a830fe74877a59d2e5c7bffa646383fb1269f06",
+      "hash": "d3ce58104491d2074837ffb3c7fc8d908aebc1c80a736a367530df6f4a0b01dd",
       "asset_id": "af.create-task",
       "source_rel": "SKILL.md"
     },
     ".codex/skills/af.create-task/example-1-description.md": {
-      "hash": "c90b97b86ac4eaf939ab45b1e23bc6e5db6cc7821e2f73e4557ae67071aeaf18",
+      "hash": "2bfaab2e4633ee726a6a204476682ede43dca8d82274de46223bcddcf2e4f49f",
       "asset_id": "af.create-task",
       "source_rel": "example-1-description.md"
     },
     ".codex/skills/af.create-task/example-2-description.md": {
-      "hash": "63b4ff4ba53eb4224b534ea5273dbdcfd10d9f4e2bab2821fb2d81fe9a847795",
+      "hash": "61bd8435a2e209c8f6afc7c3ddf5b90e25a746504275615b3cb4b6bd874f2e25",
       "asset_id": "af.create-task",
       "source_rel": "example-2-description.md"
     },

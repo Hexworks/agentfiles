@@ -95,16 +95,39 @@ Plus:
 - An `[Apply]` on a project with no drift/unknown rows produces an empty
   resolutions slice (auto behavior only).
 
+## Acceptance Criteria
+
+- [ ] Given a preview with rows of every `ChangeKind` plus one directory row,
+      rendering the treetable yields four columns (Name, Status, Current
+      Action, Actions) in that order; the directory row's Status and Current
+      Action cells are blank — `TestPlanProjectRendersColumns`.
+- [ ] For each row state in the button table, the rendered cell equals the
+      expected `label`+mnemonic pair (drift→`[Overwrite o]`/`[Keep k]`,
+      unknown→`[Delete d]`/`[Keep k]`, non-drift/unknown rows→empty) —
+      `TestPlanProjectActionButtonMatrix`.
+- [ ] Pressing the toggle mnemonic on a drift/unknown row flips its
+      `Current Action` in the state map; pressing again reverts it —
+      `TestPlanProjectToggleRoundTrip`.
+- [ ] `[Apply]` on a preview with two off-default rows emits a resolution
+      slice containing exactly those two paths; `[Apply]` on an all-default
+      preview emits an empty slice —
+      `TestPlanProjectApplyBuildsFileResolutions`.
+- [ ] Walking every cursor position across every row kind, no two labelled
+      buttons share a mnemonic from `{o,k,d,a,b}` —
+      `TestPlanProjectMnemonicUniqueness`.
+
 ## Out of scope
 
 - Apply behavior itself — covered in task 0017 (`sync.Apply` semantics).
 
 ## Verification
 
-```
-make build && make test && make lint
-./bin/af   # Select Project Assets → Plan → toggle drift/unknown rows → Apply
-```
+- Baseline: `make build && make test && make lint` pass.
+- `go test ./internal/tui/... -run 'TestPlanProjectRendersColumns|TestPlanProjectActionButtonMatrix|TestPlanProjectToggleRoundTrip|TestPlanProjectApplyBuildsFileResolutions|TestPlanProjectMnemonicUniqueness'`
+  green.
+- Smoke: `./bin/af` → Select Project Assets → Plan → toggle a drift row with
+  `o`, an unknown row with `d`, press `[Apply]` → screen pops back and a
+  `Project synced` toast appears.
 
 ## Plan
 
