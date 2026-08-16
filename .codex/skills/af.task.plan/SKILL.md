@@ -97,7 +97,8 @@ Before asking clarifying questions:
 1. Read `docs/architecture/` to understand current architecture.
 2. Read source files relevant to the task. **Important:** **You must** search for links to the task at hand in the source files. These links exist in documentation comments such as `// FIX: fix this thing @see task#0003`. The part you should look for is `@see {task-type}#{task-id}`, example: `@see feature#0017`.
 3. Note coding patterns relevant to the task.
-4. If context sufficient → record what was learned. If not → list specific gaps for Step 6.
+4. **Ground every external assumption.** Any literal string, id scheme, on-disk layout, schema key, path pattern, protocol constant, or wire format the plan will encode must be traced back to the function that defines it. Do not guess from documentation or from an existing similar-looking string elsewhere — open the source. Record the source `file:line` and the exact line for each assumption. This is the input to the mandatory `## Assumption grounding` table (Step 8).
+5. If context sufficient → record what was learned. If not → list specific gaps for Step 6.
 
 ## Step 6 — Clarifying Questions
 
@@ -150,8 +151,42 @@ The plan file must:
 - Note any ADRs that will be created/updated.
 - Note any documentation that will be updated.
 - Note any new/updated files in `docs/guidelines/`.
+- Include a `## Assumption grounding` section (see below).
+- Ensure every `## Acceptance Criteria` item that touches an external boundary is a real DoD checkbox — no manual smoke step lives outside `## Acceptance Criteria` (see below).
 
-In `description.md`, add a link to `plan.md` (e.g. under a `## Plan` section with `[plan.md](./plan.md)`).
+### `## Assumption grounding` (mandatory)
+
+Every literal the plan encodes as fact — path layout, id scheme, schema key, protocol constant, subprocess argument shape — appears in a table with its source in-repo. A plan with no external assumptions must say so explicitly (`_None: pure in-memory refactor._`); an empty section is a bug.
+
+```markdown
+## Assumption grounding
+
+| Assumption | Source `file:line` | Verified line |
+|---|---|---|
+| Asset folder layout is `assets/<type>/<id>/` | `internal/asset/asset.go:184` | `dir := filepath.Join(root, config.AssetsDirName, string(manifest.Type), manifest.ID)` |
+| `git rev-parse --show-toplevel` prints repo root, no trailing slash | `git` man page (external) — verified in repro shell | — |
+```
+
+The reader should be able to click a source line and confirm the assumption without re-reading the plan.
+
+### Acceptance criteria for boundary-crossing changes
+
+For any criterion whose subject crosses to an external system (filesystem, git, subprocess, network, other process), the criterion body must name the **real** components exercised end-to-end. A criterion that only asserts a fake-recorded-tuple does not satisfy the rule and must be paired with a real-stack sibling.
+
+Anti-pattern (single fake-only criterion — reject):
+
+```markdown
+- [ ] Fake committer records `(dir, pathspec, msg)` for asset save.
+```
+
+Fixed shape (fake + real-stack pair):
+
+```markdown
+- [ ] `TestUpdateAsset_CommitsManifestPathspec` uses real `svc.InitAsset` + real `git` binary + real repo (`t.TempDir()` + `git init`), calls `svc.UpdateAsset`, asserts `git log -1 --format=%s` matches `chore(agentfiles): update asset <id> manifest` and `git show --name-only HEAD` matches the on-disk asset dir.
+- [ ] Nested-repo variant: profile placed at `<repoRoot>/profiles/<name>/` (not repo root) — same assertions pass.
+```
+
+Any `## Verification` smoke step is moved into `## Acceptance Criteria` as a ticked checkbox so `af.task.implement` Step 5's DoD gate catches it. Verification-section-only smoke steps are not enforceable and get skipped in practice (this happened on task 0042; see `docs/changelog/2026-07-23_0042-git-aware-commits.md`).
 
 ## Step 9 — Request Approval, Iterate
 

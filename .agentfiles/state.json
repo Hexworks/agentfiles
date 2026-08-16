@@ -3,7 +3,7 @@
   "profile_id": "addamsson",
   "project_id": "agentfiles",
   "generator_version": "2.0.0",
-  "last_applied_at": "2026-08-16T11:08:51.831159032Z",
+  "last_applied_at": "2026-08-16T11:11:55.338761381Z",
   "managed_files": {
     ".claude/skills/Adversarial Task Review [Agentfiles]/SKILL.md": {
       "hash": "ab4a227512727ef43ca143352401e506f0047509ba6c1dc7ae8f4193cb68d820",
@@ -161,9 +161,14 @@
       "source_rel": "docs/changelog/2026-06-13_0029-plan-project-screen.md"
     },
     ".claude/skills/af.drift-cleanup/docs/glossary.md": {
-      "hash": "6fc0a3d7af8d12cf8141cb5fdf65ce91ade59f0a5435eae360add10a13dbd7dd",
+      "hash": "b2510b48abfb4b18f5997fbcb631c5c238cbbb85bedf2cbcab47d75099ba99ec",
       "asset_id": "af.drift-cleanup",
       "source_rel": "docs/glossary.md"
+    },
+    ".claude/skills/af.task.adversarial-review/SKILL.md": {
+      "hash": "ab4a227512727ef43ca143352401e506f0047509ba6c1dc7ae8f4193cb68d820",
+      "asset_id": "af.task.adversarial-review",
+      "source_rel": "SKILL.md"
     },
     ".claude/skills/af.task.implement/SKILL.md": {
       "hash": "93dab75003e90d947e7abc04317c976ce4c340fc332ee0a21b217a461e3b10eb",
@@ -176,7 +181,7 @@
       "source_rel": "changelog-template.md"
     },
     ".claude/skills/af.task.plan/SKILL.md": {
-      "hash": "84c7764f386d1eb9e7b647c0125c09a5d74eb73fda3d2daff955eab0e28a0d27",
+      "hash": "f4a059c5ce19856aaa47864e76df0e41bddfbe0071414e324249ccbd20918467",
       "asset_id": "af.task.plan",
       "source_rel": "SKILL.md"
     },
@@ -186,9 +191,59 @@
       "source_rel": "SKILL.md"
     },
     ".claude/skills/af.task.review/SKILL.md": {
-      "hash": "1c5ea432609063a2aaa6031296afad48b3c7f3a4936ed0e82c9b0bb09cea7c15",
+      "hash": "efbe1c3b85bf38e58cf08ea1aa4ec0a20f90c9479b8e289a70c728a7f06991d0",
       "asset_id": "af.task.review",
       "source_rel": "SKILL.md"
+    },
+    ".claude/skills/af.task.review/fixtures/README.md": {
+      "hash": "2d1dfb7cc31d25bd459bdffba5dcc6ce57ea645f241e338a518627f35febe9fc",
+      "asset_id": "af.task.review",
+      "source_rel": "fixtures/README.md"
+    },
+    ".claude/skills/af.task.review/fixtures/missing-ac/description.md": {
+      "hash": "c6d5b52fca1edb8a0260944abf13e2e80984b5da6e9d4d4382ccd54aa64b646a",
+      "asset_id": "af.task.review",
+      "source_rel": "fixtures/missing-ac/description.md"
+    },
+    ".claude/skills/af.task.review/fixtures/missing-ac/diff.patch": {
+      "hash": "49c4f0473c51d6ecca58901071ceb5fb7bb1971f92389ef839815c663004fb22",
+      "asset_id": "af.task.review",
+      "source_rel": "fixtures/missing-ac/diff.patch"
+    },
+    ".claude/skills/af.task.review/fixtures/missing-ac/plan.md": {
+      "hash": "e52ad20448dba5556cb66b5d705187613a3bfe9aa980f1633287a37fd3c3349b",
+      "asset_id": "af.task.review",
+      "source_rel": "fixtures/missing-ac/plan.md"
+    },
+    ".claude/skills/af.task.review/fixtures/passes/description.md": {
+      "hash": "c22596374f5daf787d3b27330360e28b99947ebe7f3791303ec98bcc6c7adc5d",
+      "asset_id": "af.task.review",
+      "source_rel": "fixtures/passes/description.md"
+    },
+    ".claude/skills/af.task.review/fixtures/passes/diff.patch": {
+      "hash": "c72c517a7df8903039e821b019fea47b481956daefd364dfa92b63fb4c9d3671",
+      "asset_id": "af.task.review",
+      "source_rel": "fixtures/passes/diff.patch"
+    },
+    ".claude/skills/af.task.review/fixtures/passes/plan.md": {
+      "hash": "a73ba33619dbb93027e8f2155f2e03b80db453009402d6a7a2b6a8a80615fe4f",
+      "asset_id": "af.task.review",
+      "source_rel": "fixtures/passes/plan.md"
+    },
+    ".claude/skills/af.task.review/fixtures/scope-creep/description.md": {
+      "hash": "559e822a92dc499106f41725fe01ef9b2d2dda737dad6be00ac96265f8d0170f",
+      "asset_id": "af.task.review",
+      "source_rel": "fixtures/scope-creep/description.md"
+    },
+    ".claude/skills/af.task.review/fixtures/scope-creep/diff.patch": {
+      "hash": "56085c80036e6d599218e8210570434cb688edc5f575bb742ba85cdbba793537",
+      "asset_id": "af.task.review",
+      "source_rel": "fixtures/scope-creep/diff.patch"
+    },
+    ".claude/skills/af.task.review/fixtures/scope-creep/plan.md": {
+      "hash": "e628ddc7ffedeff8c9240cdc36a6e9e75d51d023d27fbc58ff889fe87b4e2a3c",
+      "asset_id": "af.task.review",
+      "source_rel": "fixtures/scope-creep/plan.md"
     },
     ".claude/skills/af.task.review/review-template.md": {
       "hash": "3a93c69852cfe9449186a1db444acc7e6eb596d7dad92d500f55b6053c47fe22",
@@ -371,9 +426,14 @@
       "source_rel": "docs/changelog/2026-06-13_0029-plan-project-screen.md"
     },
     ".codex/skills/af.drift-cleanup/docs/glossary.md": {
-      "hash": "6fc0a3d7af8d12cf8141cb5fdf65ce91ade59f0a5435eae360add10a13dbd7dd",
+      "hash": "b2510b48abfb4b18f5997fbcb631c5c238cbbb85bedf2cbcab47d75099ba99ec",
       "asset_id": "af.drift-cleanup",
       "source_rel": "docs/glossary.md"
+    },
+    ".codex/skills/af.task.adversarial-review/SKILL.md": {
+      "hash": "ab4a227512727ef43ca143352401e506f0047509ba6c1dc7ae8f4193cb68d820",
+      "asset_id": "af.task.adversarial-review",
+      "source_rel": "SKILL.md"
     },
     ".codex/skills/af.task.implement/SKILL.md": {
       "hash": "93dab75003e90d947e7abc04317c976ce4c340fc332ee0a21b217a461e3b10eb",
@@ -386,7 +446,7 @@
       "source_rel": "changelog-template.md"
     },
     ".codex/skills/af.task.plan/SKILL.md": {
-      "hash": "84c7764f386d1eb9e7b647c0125c09a5d74eb73fda3d2daff955eab0e28a0d27",
+      "hash": "f4a059c5ce19856aaa47864e76df0e41bddfbe0071414e324249ccbd20918467",
       "asset_id": "af.task.plan",
       "source_rel": "SKILL.md"
     },
@@ -396,9 +456,59 @@
       "source_rel": "SKILL.md"
     },
     ".codex/skills/af.task.review/SKILL.md": {
-      "hash": "1c5ea432609063a2aaa6031296afad48b3c7f3a4936ed0e82c9b0bb09cea7c15",
+      "hash": "efbe1c3b85bf38e58cf08ea1aa4ec0a20f90c9479b8e289a70c728a7f06991d0",
       "asset_id": "af.task.review",
       "source_rel": "SKILL.md"
+    },
+    ".codex/skills/af.task.review/fixtures/README.md": {
+      "hash": "2d1dfb7cc31d25bd459bdffba5dcc6ce57ea645f241e338a518627f35febe9fc",
+      "asset_id": "af.task.review",
+      "source_rel": "fixtures/README.md"
+    },
+    ".codex/skills/af.task.review/fixtures/missing-ac/description.md": {
+      "hash": "c6d5b52fca1edb8a0260944abf13e2e80984b5da6e9d4d4382ccd54aa64b646a",
+      "asset_id": "af.task.review",
+      "source_rel": "fixtures/missing-ac/description.md"
+    },
+    ".codex/skills/af.task.review/fixtures/missing-ac/diff.patch": {
+      "hash": "49c4f0473c51d6ecca58901071ceb5fb7bb1971f92389ef839815c663004fb22",
+      "asset_id": "af.task.review",
+      "source_rel": "fixtures/missing-ac/diff.patch"
+    },
+    ".codex/skills/af.task.review/fixtures/missing-ac/plan.md": {
+      "hash": "e52ad20448dba5556cb66b5d705187613a3bfe9aa980f1633287a37fd3c3349b",
+      "asset_id": "af.task.review",
+      "source_rel": "fixtures/missing-ac/plan.md"
+    },
+    ".codex/skills/af.task.review/fixtures/passes/description.md": {
+      "hash": "c22596374f5daf787d3b27330360e28b99947ebe7f3791303ec98bcc6c7adc5d",
+      "asset_id": "af.task.review",
+      "source_rel": "fixtures/passes/description.md"
+    },
+    ".codex/skills/af.task.review/fixtures/passes/diff.patch": {
+      "hash": "c72c517a7df8903039e821b019fea47b481956daefd364dfa92b63fb4c9d3671",
+      "asset_id": "af.task.review",
+      "source_rel": "fixtures/passes/diff.patch"
+    },
+    ".codex/skills/af.task.review/fixtures/passes/plan.md": {
+      "hash": "a73ba33619dbb93027e8f2155f2e03b80db453009402d6a7a2b6a8a80615fe4f",
+      "asset_id": "af.task.review",
+      "source_rel": "fixtures/passes/plan.md"
+    },
+    ".codex/skills/af.task.review/fixtures/scope-creep/description.md": {
+      "hash": "559e822a92dc499106f41725fe01ef9b2d2dda737dad6be00ac96265f8d0170f",
+      "asset_id": "af.task.review",
+      "source_rel": "fixtures/scope-creep/description.md"
+    },
+    ".codex/skills/af.task.review/fixtures/scope-creep/diff.patch": {
+      "hash": "56085c80036e6d599218e8210570434cb688edc5f575bb742ba85cdbba793537",
+      "asset_id": "af.task.review",
+      "source_rel": "fixtures/scope-creep/diff.patch"
+    },
+    ".codex/skills/af.task.review/fixtures/scope-creep/plan.md": {
+      "hash": "e628ddc7ffedeff8c9240cdc36a6e9e75d51d023d27fbc58ff889fe87b4e2a3c",
+      "asset_id": "af.task.review",
+      "source_rel": "fixtures/scope-creep/plan.md"
     },
     ".codex/skills/af.task.review/review-template.md": {
       "hash": "3a93c69852cfe9449186a1db444acc7e6eb596d7dad92d500f55b6053c47fe22",

@@ -1,0 +1,41 @@
+diff --git a/internal/greet/greet.go b/internal/greet/greet.go
+new file mode 100644
+--- /dev/null
++++ b/internal/greet/greet.go
+@@ -0,0 +1,9 @@
++package greet
++
++type Greeter struct{}
++
++// Hello returns "hello, <name>".
++func (Greeter) Hello(name string) string {
++	return "hello, " + name
++}
++
+diff --git a/internal/greet/greet_test.go b/internal/greet/greet_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/greet/greet_test.go
+@@ -0,0 +1,12 @@
++package greet
++
++import "testing"
++
++func TestGreeterHello(t *testing.T) {
++	got := Greeter{}.Hello("world")
++	if got != "hello, world" {
++		t.Fatalf("Hello(\"world\") = %q, want %q", got, "hello, world")
++	}
++}
++
+diff --git a/internal/log/verbose.go b/internal/log/verbose.go
+new file mode 100644
+--- /dev/null
++++ b/internal/log/verbose.go
+@@ -0,0 +1,5 @@
++package log
++
++// SCOPE-CREEP: this file introduces a verbose logger that is nowhere in the
++// description's Acceptance Criteria, is not a refactor-allowed bullet, and
++// is not named as a mechanical follow-up in any changelog.
++var Verbose = false

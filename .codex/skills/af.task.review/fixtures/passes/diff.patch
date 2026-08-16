@@ -1,0 +1,45 @@
+diff --git a/internal/greet/greet.go b/internal/greet/greet.go
+new file mode 100644
+--- /dev/null
++++ b/internal/greet/greet.go
+@@ -0,0 +1,13 @@
++package greet
++
++type Greeter struct{}
++
++// Hello returns "hello, <name>" for a non-empty name, and the empty string
++// for an empty name. It never panics.
++func (Greeter) Hello(name string) string {
++	if name == "" {
++		return ""
++	}
++	return "hello, " + name
++}
++
+diff --git a/internal/greet/greet_test.go b/internal/greet/greet_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/greet/greet_test.go
+@@ -0,0 +1,22 @@
++package greet
++
++import "testing"
++
++func TestGreeterHello(t *testing.T) {
++	got := Greeter{}.Hello("world")
++	if got != "hello, world" {
++		t.Fatalf("Hello(\"world\") = %q, want %q", got, "hello, world")
++	}
++}
++
++func TestGreeterHelloEmpty(t *testing.T) {
++	defer func() {
++		if r := recover(); r != nil {
++			t.Fatalf("Hello(\"\") panicked: %v", r)
++		}
++	}()
++	if got := (Greeter{}.Hello("")); got != "" {
++		t.Fatalf("Hello(\"\") = %q, want empty string", got)
++	}
++}
++
