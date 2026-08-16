@@ -3,13 +3,8 @@
   "profile_id": "addamsson",
   "project_id": "agentfiles",
   "generator_version": "2.0.0",
-  "last_applied_at": "2026-08-16T11:11:55.338761381Z",
+  "last_applied_at": "2026-08-16T11:23:18.410703861Z",
   "managed_files": {
-    ".claude/skills/Adversarial Task Review [Agentfiles]/SKILL.md": {
-      "hash": "ab4a227512727ef43ca143352401e506f0047509ba6c1dc7ae8f4193cb68d820",
-      "asset_id": "Adversarial Task Review [Agentfiles]",
-      "source_rel": "SKILL.md"
-    },
     ".claude/skills/af.check-task/SKILL.md": {
       "hash": "55c073bdcc8017004343ccde9e670caedefce3a9047d2838f3818936a4dd1dff",
       "asset_id": "af.check-task",
@@ -268,11 +263,6 @@
     ".claude/skills/summarize/SKILL.md": {
       "hash": "863c0a2c393bb016ed1429608fa519da0dd423132f00eeba10f741b54f2ff966",
       "asset_id": "summarize",
-      "source_rel": "SKILL.md"
-    },
-    ".codex/skills/Adversarial Task Review [Agentfiles]/SKILL.md": {
-      "hash": "ab4a227512727ef43ca143352401e506f0047509ba6c1dc7ae8f4193cb68d820",
-      "asset_id": "Adversarial Task Review [Agentfiles]",
       "source_rel": "SKILL.md"
     },
     ".codex/skills/af.check-task/SKILL.md": {
