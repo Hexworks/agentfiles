@@ -1,11 +1,10 @@
 # Agentfiles
 
-A CLI tool that keeps your AI coding assistant configuration in one place and copies the right pieces into each of your projects.
+Agentfiles is a CLI tool that enables you to centrally manage your AI coding assistant configurations across multiple projects. By setting up a personal profile, yor agent configurations are propagated from a single source, minimzing agent management overhead and drift over time.
 
-(EDITORIAL NOTE: add routing to other parts?
-- quickstart
-- instructions
-+need to discuss reader journey/paths)
+- If you are new to Agentfiles, please read on to learn the basics.
+- Go to [Prerequisites and installation](#prerequisites-and-installation) for first-time setup.
+- Go to [Quickstart](#quickstart-your-first-end-to-end-run) for hands-on usage instructions.
 
 ---
 
@@ -18,49 +17,50 @@ Modern AI coding assistants like Claude Code, Codex, Cursor or opencode all requ
 - Cursor reads `.cursor/commands/` and `.cursor/config.json`.
 - opencode reads `.opencode/`.
 
-Across multiple repos, skill, setting, hook, and prompt artifacts get duplicated and drift out of sync. Updates and deletions become difficult because copied artifacts are hard to distinguish from hand-written ones.
+Across multiple repos, skill, setting, hook, and prompt assets get duplicated and eventually drift out of sync. Updates and deletions become complicated because copy-pasted or derivative assets are hard to distinguish from hand-written ones.
 
-`agentfiles` solves this by making your personal **profile folder** the single source of truth, as well as planning, previewing, and writing **generated assets** that you can propagate to each of your project repositories.
+`agentfiles` solves this by making your personal **profile folder** the single source of truth, as well as planning, previewing, and writing **base assets** that you can selectively propagate to each of your project repositories.
 
 You edit your skills, prompts, and settings (**base assets**) once, in the profile folder. Then you
-`apply` them to as many project repos as you like.
+`apply` them to as many project repos as you like, resulting in **propagated assets** placed in those projects.
 
 ---
 
 ## Workflow overview
 
 ```
-┌─────────────────────────────────────────┐
-│  ~/.agentprofiles.json   (registry)     │   Global index. Lists your profiles.
-└─────────────────────────────────────────┘
+┌─────────────────────────────────────────────────┐
+│ ~/.config/.agentfiles/.profiles.json (registry) │   Global index. Lists your profiles.
+│ ~/.config/.agentfiles/.projects.json (registry) │   Global index. Lists your projects.
+└─────────────────────────────────────────────────┘
                      │
                      │ points to
                      ▼
-┌─────────────────────────────────────────┐
-│  ~/profiles/personal/   (one profile)   │   The source of truth.
-│   ├── profile.json                      │   You edit your base assets here.
-│   ├── assets/                           │
-│   │   ├── skill/review/SKILL.md         │
-│   │   ├── settings/…                    │
-│   │   └── …                             │
-│   └── projects/                         │
-│       ├── app.json       (project spec) │
-│       └── website.json                  │
-└─────────────────────────────────────────┘
+┌─────────────────────────────────────────────────┐
+│  ~/profiles/personal/   (one profile)           │   The source of truth.
+│   ├── profile.json                              │   You edit your base assets here.
+│   ├── assets/                                   │
+│   │   ├── skill/review/SKILL.md                 │
+│   │   ├── settings/…                            │
+│   │   └── …                                     │
+│   └── projects/                                 │
+│       ├── app.json       (project spec)         │
+│       └── website.json                          │
+└─────────────────────────────────────────────────┘
                      │
                      │ render + apply
                      ▼
-┌─────────────────────────────────────────┐
-│  ~/src/app/   (a target repository)     │   Generated assets land here.
-│   ├── AGENTS.md                         │
-│   ├── .claude/skills/review/SKILL.md    │
-│   ├── .codex/skills/review/SKILL.md     │
-│   ├── .cursor/commands/review.md        │
-│   └── .agentfiles/state.json            │   Bookkeeping for drift detection.
-└─────────────────────────────────────────┘
+┌─────────────────────────────────────────────────┐
+│  ~/src/app/   (a target repository)             │   Propagated assets land here.
+│   ├── AGENTS.md                                 │
+│   ├── .claude/skills/review/SKILL.md            │
+│   ├── .codex/skills/review/SKILL.md             │
+│   ├── .cursor/commands/review.md                │
+│   └── .agentfiles/state.json                    │   Bookkeeping for drift detection.
+└─────────────────────────────────────────────────┘
 ```
 
-One profile can feed many target projects. Each project can declare which **assets** (skills, settings, prompts, etc.) it needs and for which **agents** (Claude Code, Codex, Cursor, opencode) it wants to render them.
+One profile can feed any number of target projects. Each project can declare which **assets** (skills, settings, prompts, etc.) it needs and for which **agents** (Claude Code, Codex, Cursor, opencode) it wants to render them.
 
 ---
 
@@ -70,23 +70,25 @@ Before you run any commands, it helps to know the vocabulary. These words mean s
 
 | Term                 | What it is                                                                                                                                                                          |
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Registry**         | A single file at `~/.agentprofiles.json` that lists every profile you have. Used purely for discovery.                                                                              |
+| **Registry**         | A single file at `~/.config/.agentfiles/profiles.json` that lists every profile you have. Used purely for discovery.                                                                              |
 | **Profile**          | A folder containing your reusable content. Holds `profile.json`, an `assets/` tree, and a `projects/` tree. This is the **source of truth**.                                        |
 | **Asset**            | One reusable unit of content — a skill, a settings file, a hook, etc. Lives inside a profile and has its own `asset.json` manifest.                                                 |
 | **Project**          | A target repository together with a list of enabled agents and selected assets. Defined by a JSON file inside the profile's `projects/` folder.                                     |
 | **Enabled agent**    | An AI tool the project renders for. One of: `codex`, `claude-code`, `cursor`, `opencode`.                                                                                           |
 | **Render plan**      | The set of files `agentfiles` wants to write into a project, computed from its selected assets.                                                                                     |
 | **Preview**          | A render plan compared against what's already in the project repo. Shows creates, updates, drift, and delete candidates.                                                            |
-| **Managed surfaces** | The only paths `agentfiles` is allowed to access inside a repo: `AGENTS.md`, `.claude/`, `.cursor/`, `.codex/`, `.opencode/`, `.mcp.json`. Anything outside this list is not read or written. (EDITORIAL NOTE: could use a better term, let's discuss some alternatives in line with the artifact terminology) |
+| **Managed paths** | The only paths `agentfiles` is allowed to access inside a repo: `AGENTS.md`, `.claude/`, `.cursor/`, `.codex/`, `.opencode/`, `.mcp.json`. Anything outside this list is not read or written. |
 | **Managed state**    | A bookkeeping file at `<repo>/.agentfiles/state.json` listing which files were written last time and what their hashes were. Used to detect drift.                                  |
-| **Drift**            | A managed file that was edited locally after the last `apply` command, so its hash no longer matches what `agentfiles` wrote. Shown in previews so you don't lose that edit by accident.           |
+| **Drift**            | A managed asset file that was edited locally after the last `apply` command, so its hash no longer matches what `agentfiles` wrote. Shown in previews so you don't lose that edit by accident.           |
 | **Delete candidate** | A file inside a managed surface that `agentfiles` recognizes but no longer wants. Never deleted automatically — `Project → Apply` asks you to confirm removal when candidates exist. See [Safe deletion](#safe-deletion) for details of this workflow.|
 
 A full glossary lives in [`docs/glossary.md`](./docs/glossary.md).
 
 ---
 
-## Requirements
+## Prerequisites and installation 
+
+### Requirements
 
 - **Go 1.26+** to build from source.
 - A POSIX shell (Linux or macOS). The project builds for both.
@@ -97,7 +99,7 @@ There is no database, no daemon, and no network service. Everything is plain JSO
 
 ---
 
-## Install / build
+### Install / build
 
 Clone the repo and build with `make`:
 
@@ -127,9 +129,11 @@ Other common `make` targets:
 
 ---
 
-## Quickstart: your first end-to-end run
+## Run Agentfiles
 
-`agentfiles` is fully TUI-driven. Run the `af` command and the top-level menu opens. From there you pick a category, then an action, and the matching form walks you through it.
+`agentfiles` is fully TUI-driven. Run the `af` command and the top-level menu opens. From there you pick a category, then an action, and the matching form walks you through it:
+
+[![demo](docs/demo.gif)](https://asciinema.org/a/61nrRvxqxMsCogpL)
 
 Press `Esc` at any prompt to back out one level. `Ctrl+C` does the same.
 
@@ -138,30 +142,27 @@ Press `Esc` at any prompt to back out one level. `Ctrl+C` does the same.
 > [!NOTE]
 > You can create a git repository inside the profile folder. This way you can share a profile with other people working on the same project. You can also register an existing profile (for example if you cloned someone else's profile) by using `register` to add it to your `agentfiles` instance.
 
-Pick `Profile → Create`. The form prompts for a display name and a path. After it completes, `~/{your-path}/{your-profile}/` exists with `profile.json` and empty `assets/` and `projects/` subfolders, and the profile is registered in `~/.agentprofiles.json`.
+Pick `Profile → Create`. The form prompts for a display name and a path. After it completes, `~/{your-path}/{your-profile}/` exists with `profile.json` and empty `assets/` and `projects/` subfolders, and the profile is registered in `~/.config/.agentfiles/profiles.json`.
 
 ### 2. Add a reusable skill
 
 A **skill** is one of the asset types. It is a markdown file (`SKILL.md`) plus optional supporting files that can be rendered for every agent.
 
-(EDITORIAL NOTE: maybe we can show this visually with some screenshots?)
-(EDITORIAL NOTE: Instead of asking the first-time user to write their own SKILL.md, we could create an example project that the user can register to get to know some skill alternatives, profile layout, etc. Maybe as an optional on-boarding path.)
+(EDITORIAL NOTE: Instead of asking the first-time user to write their own SKILL.md, we could create an example project that the user can register to get to know some skill alternatives, profile layout, etc. Maybe as an optional on-boarding path. -> checkout example)
 
-
-Pick `Asset → Init`. (EDITORIAL NOTE: As a first-time user I can't identify this workflow based on the TUI and hints. Did you modify this? I can only access assets from Edit profile/Create asset.) The form picks the owning profile from a list, presents the supported asset types as a Select, and asks for the id, name, and description.
-The new directory (e.g. `~/profiles/personal/assets/skill/review/`) is printed when the form completes. You can now open `SKILL.md` and write your actual content.
+From the main menu, select `Profiles → Edit → Create Asset`. The Create Asset form asks for the id, name, and description of the new asset, and presents the supported asset types. The new asset directory (e.g. `~/profiles/personal/assets/skill/review/`) is printed when the form completes. You can now open `SKILL.md` in this directory and write your actual content.
 
 ### 3. Register a target project
 
-Pick `Project → Add`. Tell `agentfiles` which repository this profile should feed, which AI agents it should render for, and which assets to include. The form picks the profile, asks for a name and absolute path, lets you multi-select the supported agents, and lets you multi-select assets from the
-ones already defined in the chosen profile.
+From the main menu, select `Profiles → Edit → Create Project`. Tell `agentfiles` which repository your profile should propagate with assets and which AI agents it should render for.
 
-(EDITORIAL NOTE: maybe we can show this visually with some screenshots?)
+The project manifest lands in the profile's `projects/` folder; nothing is written into the target repository yet.
 
-The project manifest lands in the profile's `projects/` folder; nothing is written into the target
-repository yet.
+### 4. Select assets to propagate
 
-### 4. Preview what will happen
+Once your project is created, it appears under `Profiles → Projects`. Select `Select Assets`. The form allows you to define which assets you want to propagate to the selected project. It should list the skill added in step 3. Select it. It shows up in the `Selected Assets` list.
+
+### 5. Preview changes
 
 Always run `Plan` before `Apply`. It is read-only and shows you exactly what files would be created, updated, or flagged.
 
@@ -173,7 +174,7 @@ Project: /home/you/src/app
 - [create] .codex/skills/review/SKILL.md: file missing
 ```
 
-### 5. Apply the changes
+### 6. Apply the changes
 
 Pick `Project → Apply`. The flow runs `Plan`, shows the same summary, and then asks you to confirm before writing. If the project contains assets removed from active management (delete candidates), the form also asks whether to remove them.
 
@@ -181,15 +182,13 @@ After apply succeeds, `~/src/app/.agentfiles/state.json` records what was writte
 
 ### 6. Iterate
 
-Edit the skill in your profile (`~/profiles/personal/assets/skill/review/SKILL.md`), run `af` again and pick `Project → Apply`, and the changes propagate. The profile is the source of truth; the project's `.claude/` and `.codex/` are outputs.
+Edit the skill in your profile (`~/profiles/personal/assets/skill/review/SKILL.md`), run `af` again and pick `Project → Apply`, and the changes propagate. The profile is the source of truth; the project's `.claude/` and `.codex/` are propagated assets.
 
 ---
 
 ## Menu reference
 
-`af` takes no positional arguments. Running it opens the main menu; everything else is a submenu pick followed by a form. The only flag the binary accepts is `--registry <path>`, which overrides the default `~/.agentprofiles.json` location (useful for tests or isolated environments).
-
-(EDITORIAL NOTE: if you already went full TUI, this could be moved to Settings as a separate workflow)
+`af` takes no positional arguments. Running it opens the main menu; everything else is a submenu pick followed by a form. The only flag the binary accepts is `--registry <path>`, which overrides the default `~/.config/.agentfiles/profiles.json` location (useful for tests or isolated environments).
 
 ### Profile
 
@@ -305,13 +304,11 @@ Each apply writes hashes of every managed file into `<repo>/.agentfiles/state.js
 
 ### Safe deletion
 
-If a file used to be managed but is no longer part of the render plan (for example you removed an asset from the project's selection) it shows up as a **delete candidate**. `Project → Apply` does _not_ remove these automatically. When unmanaged files exist in your project, the flow pops an extra confirm prompt ("Delete recognized unmanaged files?") before the final apply confirmation; answer yes to remove them, or clean them up by hand.
-
-(EDITORIAL NOTE: we use "delete candidate" and "unmanaged file" interchangibly, let's clean up the terminology all over - I think "delete candidate" as an umbrella term makes no sense out of context, while "unmanaged file" describes the concept up front)
+If a file was previously managed but is no longer part of the render plan (for example you removed an asset from the project's selection) it shows up as a **delete candidate**. `Project → Apply` does _not_ remove these automatically. When unmanaged files exist in your project, the flow pops an extra confirm prompt ("Delete recognized unmanaged files?") before the final apply confirmation; answer yes to remove them, or clean them up by hand.
 
 ---
 
-## File layout on disk
+## File layout on disk (TODO: review against current version)
 
 ### Profile folder
 
@@ -355,10 +352,10 @@ Only managed surfaces are modified:
     └── state.json                  # Managed-state bookkeeping.
 ```
 
-### Global registry
+### Global registry (TODO: review against current version)
 
 ```
-~/.agentprofiles.json
+~/.config/.agentfiles/profiles.json
 ```
 
 A single JSON file listing every registered profile with its id, name, path, creation time, and last-opened time. It stores **only pointers** — no assets live here.
