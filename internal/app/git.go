@@ -9,6 +9,9 @@ import (
 )
 
 // GitCommitter records a scoped commit inside a specific directory.
+// TODO: document that GitCommitter is a git adapter that translates
+// between raw errors and domain errors
+//
 // The port shape returns appapi.CommitOutcome directly so the
 // implementation owns the full anti-corruption translation from the
 // git wrapper's typed errors (NotARepoError, HookFailedError,
@@ -20,8 +23,10 @@ import (
 // the same seam as commit calls so the entire git dependency stays
 // injectable — no `internal/git` import in service.go, no test that
 // has to touch $PATH.
+// TODO: this name is not good, let's name it GitClient, that's the conventional name
 type GitCommitter interface {
 	Commit(dir string, pathspec []string, msg string, runHooks bool) appapi.CommitOutcome
+	// TODO: document what this does
 	BinaryAvailable() errs.DomainError
 }
 
@@ -45,6 +50,7 @@ func (gitBinaryCommitter) Commit(dir string, pathspec []string, msg string, runH
 	repo, err := git.Detect(dir)
 	if err != nil {
 		var notRepo git.NotARepoError
+		// FIX: fix according to the lint note
 		if errors.As(err, &notRepo) {
 			return appapi.Skipped{Reason: appapi.SkipNotARepo}
 		}

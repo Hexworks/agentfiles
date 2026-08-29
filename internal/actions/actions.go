@@ -12,6 +12,7 @@ import (
 // Actions is the thin forwarding layer between TUI screens and the
 // application service. It enforces the single-parameter rule by
 // accepting input structs for multi-input operations.
+// TODO: elaborete on the single-parmeter rule because it is not clear why we need Actions
 type Actions struct {
 	svc *app.Service
 }
@@ -30,6 +31,7 @@ func New(svc *app.Service) *Actions {
 // interface so callers' `if err != nil` checks still work — returning
 // a typed nil errs.Errors would yield a non-nil interface holding a
 // nil slice.
+// TODO: Why is this here? Seems unrelated to actions and more related to errors
 func collapse[T any](v T, es []errs.DomainError) (T, errs.DomainError) {
 	if len(es) == 0 {
 		return v, nil

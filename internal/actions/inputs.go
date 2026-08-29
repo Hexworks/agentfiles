@@ -15,7 +15,7 @@ type RegisterProfileInput struct {
 	Path string
 }
 
-// LoadProfileInput's ProfileRef follows registry resolver semantics —
+// LoadProfileInput 's ProfileRef follows registry resolver semantics —
 // id, name, or path all resolve to the same profile.
 type LoadProfileInput struct {
 	ProfileRef string
@@ -30,8 +30,9 @@ type DeleteProfileInput struct {
 }
 
 // AddProjectInput mirrors the fields the legacy huh form collected for
+// TODO: why past tense? What is it doing now?
 // "Add Project". EnabledAgents is the agent allow-list; AssetIDs is the
-// initial selection.
+// initial asset selection
 type AddProjectInput struct {
 	ProfileRef    string
 	Name          string
