@@ -149,7 +149,7 @@ func TestEditProfileScreen_AssetsFocusedMnemonicSet_HasExpectedMnemonicsInOrder(
 		t.Fatalf("initial focus = %d, want 0 (assets)", got)
 	}
 	got := mnemonicLabels(s.set)
-	want := []string{"Edit", "Delete", "Create Asset", "Register Project", "Back"}
+	want := []string{"Edit", "Delete", "Create Asset", "Adopt", "Register Project", "Back"}
 	if !labelsEqual(got, want) {
 		t.Errorf("set labels = %v, want %v", got, want)
 	}
@@ -166,7 +166,7 @@ func TestEditProfileScreen_ProjectsFocusedMnemonicSet_HasExpectedMnemonicsInOrde
 	s.rebuildSet()
 
 	got := mnemonicLabels(s.set)
-	want := []string{"Edit", "Select Assets", "Plan", "Delete", "Create Asset", "Register Project", "Back"}
+	want := []string{"Edit", "Select Assets", "Plan", "Delete", "Create Asset", "Adopt", "Register Project", "Back"}
 	if !labelsEqual(got, want) {
 		t.Errorf("set labels = %v, want %v", got, want)
 	}
@@ -178,7 +178,7 @@ func TestEditProfileScreen_EmptyAssetsListDropsRowMnemonics(t *testing.T) {
 	withProfile(s, fakeLoadedProfile(t, "/tmp/x", nil, nil))
 
 	got := mnemonicLabels(s.set)
-	want := []string{"Create Asset", "Register Project", "Back"}
+	want := []string{"Create Asset", "Adopt", "Register Project", "Back"}
 	if !labelsEqual(got, want) {
 		t.Errorf("set labels (assets empty, focused) = %v, want %v", got, want)
 	}
@@ -192,7 +192,7 @@ func TestEditProfileScreen_EmptyProjectsListDropsRowMnemonics(t *testing.T) {
 	s.rebuildSet()
 
 	got := mnemonicLabels(s.set)
-	want := []string{"Create Asset", "Register Project", "Back"}
+	want := []string{"Create Asset", "Adopt", "Register Project", "Back"}
 	if !labelsEqual(got, want) {
 		t.Errorf("set labels (projects empty, focused) = %v, want %v", got, want)
 	}
@@ -979,3 +979,129 @@ func TestEditProfileScreen_MutationErrorEmitsErrorNotification(t *testing.T) {
 }
 
 var _ Screen = (*editProfileScreen)(nil)
+
+// seedUnadoptedFolder drops a bare skill folder (no asset.json) into the
+// fixture profile so the next load lists it as adoptable.
+func (f *editProfileFixture) seedUnadoptedFolder(t *testing.T, name string) string {
+	t.Helper()
+	dir := filepath.Join(f.Profile.Path, config.AssetsDirName, string(asset.TypeSkill), name)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("# skill"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+func TestEditProfileScreen_LoadListsUnadoptedFoldersAndRendersHint(t *testing.T) {
+	f := newEditProfileFixture(t)
+	f.seedUnadoptedFolder(t, "copied")
+	s := newEditProfileScreen(f.Actions, f.Profile.ID)
+
+	msg := drainCmd(t, s.Init())
+	loaded, ok := msg.(editProfileLoadedMsg)
+	if !ok {
+		t.Fatalf("Init produced %T, want editProfileLoadedMsg", msg)
+	}
+	_, _ = s.Update(loaded)
+
+	if len(s.unadopted) != 1 || s.unadopted[0].Key != "skill/copied" {
+		t.Fatalf("unadopted = %+v, want [skill/copied]", s.unadopted)
+	}
+	if len(s.assets) != 0 {
+		t.Errorf("bare folder must not show as an asset, got %d assets", len(s.assets))
+	}
+	if body := s.Body(120); !strings.Contains(body, "1 unadopted folder") {
+		t.Errorf("body missing unadopted hint:\n%s", body)
+	}
+}
+
+func TestEditProfileScreen_OKeyWithNothingToAdoptNotifies(t *testing.T) {
+	f := newEditProfileFixture(t)
+	s := newEditProfileScreen(f.Actions, f.Profile.ID)
+	withProfile(s, fakeLoadedProfile(t, "/tmp/x", nil, nil))
+
+	_, cmd := s.Update(tea.KeyPressMsg{Code: 'o', Text: "o"})
+
+	if s.modal != nil {
+		t.Fatalf("modal opened with nothing to adopt")
+	}
+	n, ok := drainCmd(t, cmd).(notifications.NotificationMsg)
+	if !ok || n.Notification.Severity != errs.SeverityInfo {
+		t.Errorf("cmd produced %#v, want info notification", n)
+	}
+}
+
+func TestEditProfileScreen_OKeyOpensAdoptPicker(t *testing.T) {
+	f := newEditProfileFixture(t)
+	s := newEditProfileScreen(f.Actions, f.Profile.ID)
+	withProfile(s, fakeLoadedProfile(t, "/tmp/x", nil, nil))
+	s.unadopted = []profile.UnadoptedFolder{{Key: "skill/copied", Type: asset.TypeSkill, Name: "copied"}}
+
+	_, _ = s.Update(tea.KeyPressMsg{Code: 'o', Text: "o"})
+
+	if s.modal == nil {
+		t.Fatalf("modal nil after 'o'")
+	}
+	if got := s.modalKind; got != modalKindAdoptPick {
+		t.Errorf("modalKind = %v, want modalKindAdoptPick", got)
+	}
+	if got := s.modal.ID(); got != modals.AdoptAssetPickerID {
+		t.Errorf("modal id = %q, want %s", got, modals.AdoptAssetPickerID)
+	}
+}
+
+func TestEditProfileScreen_AdoptPickOpensSeededForm(t *testing.T) {
+	f := newEditProfileFixture(t)
+	dir := f.seedUnadoptedFolder(t, "copied")
+	s := newEditProfileScreen(f.Actions, f.Profile.ID)
+	withProfile(s, fakeLoadedProfile(t, f.Profile.Path, nil, nil))
+	s.unadopted = []profile.UnadoptedFolder{{Key: "skill/copied", Type: asset.TypeSkill, Name: "copied", Dir: dir}}
+
+	s.modalKind = modalKindAdoptPick
+	_, _ = s.Update(modal.ResolvedMsg{ID: modals.AdoptAssetPickerID, Confirmed: true, Value: "skill/copied"})
+
+	if s.modal == nil {
+		t.Fatalf("modal nil after pick")
+	}
+	if got := s.modalKind; got != modalKindAdoptForm {
+		t.Errorf("modalKind = %v, want modalKindAdoptForm", got)
+	}
+	if s.pendingAdoptKey != "skill/copied" {
+		t.Errorf("pendingAdoptKey = %q", s.pendingAdoptKey)
+	}
+}
+
+func TestEditProfileScreen_AdoptFormConfirmAdoptsFolder(t *testing.T) {
+	f := newEditProfileFixture(t)
+	f.seedUnadoptedFolder(t, "copied")
+	s := newEditProfileScreen(f.Actions, f.Profile.ID)
+	withProfile(s, fakeLoadedProfile(t, f.Profile.Path, nil, nil))
+
+	s.modalKind = modalKindAdoptForm
+	s.pendingAdoptKey = "skill/copied"
+	_, cmd := s.Update(modal.ResolvedMsg{
+		ID:        "create-asset",
+		Confirmed: true,
+		Value:     asset.Manifest{Name: "Copied", Type: asset.TypeSkill},
+	})
+
+	done, ok := drainCmd(t, cmd).(mutationDoneMsg)
+	if !ok {
+		t.Fatalf("cmd produced %T, want mutationDoneMsg", drainCmd(t, cmd))
+	}
+	if done.severity != errs.SeverityInfo {
+		t.Fatalf("adopt failed: %s", done.text)
+	}
+	if s.pendingAdoptKey != "" {
+		t.Errorf("pendingAdoptKey not cleared")
+	}
+	loaded, err := f.Service.LoadProfile(f.Profile.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Profile.Assets["copied"] == nil {
+		t.Errorf("adopted asset not loaded; assets = %v", loaded.Profile.Assets)
+	}
+}

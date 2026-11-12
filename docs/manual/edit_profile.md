@@ -26,5 +26,12 @@ the asset catalog or the per-project asset selection and metadata.
 ## Screen actions
 
 - **Create Asset** (`c`) — modal form to scaffold a new asset.
+- **Adopt** (`o`) — onboard a folder that was copied into `assets/<type>/` by
+  hand and has no `asset.json` yet (e.g. a skill dropped into `assets/skill/`).
+  Pick the folder, then fill in the regular Create Asset form (id, name, type,
+  description, tags, compatible agents, exclusive group). The manifest is
+  written in place; if the chosen id or type differs from the folder's current
+  location the folder is moved to `assets/<type>/<id>/`. When such folders
+  exist a hint under the **Assets** panel shows how many are waiting.
 - **Register Project** (`r`) — modal form to add a new project manifest.
 - **Back** (`b` / `esc`) — return to **Profiles**.

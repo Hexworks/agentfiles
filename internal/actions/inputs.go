@@ -115,6 +115,23 @@ type CreateAssetFromFolderInput struct {
 	DirKey     string
 }
 
+// ListUnadoptedAssetFoldersInput names the profile whose assets tree is
+// scanned for folders without asset.json.
+type ListUnadoptedAssetFoldersInput struct {
+	ProfileRef string
+}
+
+// AdoptAssetFolderInput carries the data for the Edit Profile "Adopt"
+// action: the manifest the user filled in plus the assets-root-relative,
+// forward-slash folder key (`<type>/<name>`) from
+// profile.UnadoptedFolder.Key. The service re-scans and re-asserts the key
+// — the TUI never hands over an absolute path.
+type AdoptAssetFolderInput struct {
+	ProfileRef string
+	Manifest   asset.Manifest
+	FolderKey  string
+}
+
 // UpdateAssetInput carries the profile reference plus the edited
 // manifest. The Service derives the on-disk directory; Dir is not part
 // of this input.

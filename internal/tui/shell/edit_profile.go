@@ -14,6 +14,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/appapi"
 	"github.com/hexworks/agentfiles/internal/asset"
 	"github.com/hexworks/agentfiles/internal/errs"
+	"github.com/hexworks/agentfiles/internal/profile"
 	"github.com/hexworks/agentfiles/internal/project"
 	"github.com/hexworks/agentfiles/internal/tui/components/focus"
 	"github.com/hexworks/agentfiles/internal/tui/components/help"
@@ -22,6 +23,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/tui/components/panel"
 	"github.com/hexworks/agentfiles/internal/tui/modals"
 	"github.com/hexworks/agentfiles/internal/tui/modals/pathselector"
+	"github.com/hexworks/agentfiles/internal/utils"
 )
 
 // editProfileOwnActions is the slice the Edit Profile screen invokes
@@ -31,6 +33,8 @@ import (
 type editProfileOwnActions interface {
 	LoadProfile(in actions.LoadProfileInput) (*appapi.LoadedProfile, errs.DomainError)
 	CreateAsset(in actions.CreateAssetInput) (string, errs.DomainError)
+	ListUnadoptedAssetFolders(in actions.ListUnadoptedAssetFoldersInput) ([]profile.UnadoptedFolder, errs.DomainError)
+	AdoptAssetFolder(in actions.AdoptAssetFolderInput) (string, errs.DomainError)
 	DeleteAsset(in actions.DeleteAssetInput) (struct{}, errs.DomainError)
 	AddProject(in actions.AddProjectInput) (*project.Manifest, errs.DomainError)
 	UpdateProject(in actions.UpdateProjectInput) (struct{}, errs.DomainError)
@@ -66,6 +70,11 @@ const (
 	// still tagged modalKindRegisterProject so the confirmation branch stays
 	// on the existing add-project path.
 	modalKindRegisterProjectPath
+	// modalKindAdoptPick tags the folder picker step of the two-step Adopt
+	// flow; modalKindAdoptForm tags the follow-on Create Asset form seeded
+	// from the picked folder.
+	modalKindAdoptPick
+	modalKindAdoptForm
 )
 
 // editProfileScreen is the Edit Profile management screen reached from
@@ -82,6 +91,11 @@ type editProfileScreen struct {
 
 	assets   []*asset.Asset
 	projects []*project.Manifest
+	// unadopted lists folders under assets/<type>/ with no asset.json,
+	// refreshed alongside the profile on every load. Non-empty drives the
+	// hint under the Assets panel; the Adopt button is always present and
+	// reports "nothing to adopt" when the list is empty.
+	unadopted []profile.UnadoptedFolder
 
 	handler       *focus.Handler
 	assetsTable   *table.Model
@@ -96,6 +110,7 @@ type editProfileScreen struct {
 	deleteProject *mnemonic.Button // d (projects)
 
 	createAsset *mnemonic.Button // c
+	adopt       *mnemonic.Button // o
 	register    *mnemonic.Button // r
 	back        *mnemonic.Button // b + esc
 
@@ -105,6 +120,9 @@ type editProfileScreen struct {
 	modalKind              modalKind
 	pendingDeleteAssetID   string
 	pendingDeleteProjectID string
+	// pendingAdoptKey carries the picked folder key from the Adopt picker to
+	// the follow-on form so the confirm handler can hand it to the service.
+	pendingAdoptKey string
 	// pendingRegisterProjectName + pendingRegisterProjectAgents carry the
 	// non-path inputs across a Register Project retry (task 0039). When the
 	// AddProject action fails, the pathselector re-opens seeded at the
@@ -119,8 +137,9 @@ type editProfileScreen struct {
 // editProfileLoadedMsg carries the loaded profile (or load error) that
 // Init's command produces.
 type editProfileLoadedMsg struct {
-	prof *appapi.LoadedProfile
-	err  errs.DomainError
+	prof      *appapi.LoadedProfile
+	unadopted []profile.UnadoptedFolder
+	err       errs.DomainError
 }
 
 // registerProjectFailedMsg is dispatched when AddProject fails inside the
@@ -189,6 +208,7 @@ func (s *editProfileScreen) buildButtons() {
 	s.deleteProject = mnemonic.New("Delete", 'd', func() tea.Cmd { return s.onDeleteProject() })
 
 	s.createAsset = mnemonic.New("Create Asset", 'c', func() tea.Cmd { return s.onCreateAsset() })
+	s.adopt = mnemonic.New("Adopt", 'o', func() tea.Cmd { return s.onAdopt() })
 	s.register = mnemonic.New("Register Project", 'r', func() tea.Cmd { return s.onRegisterProject() })
 	s.back = mnemonic.New(
 		"Back",
@@ -200,7 +220,7 @@ func (s *editProfileScreen) buildButtons() {
 
 // rebuildSet refreshes the mnemonic set so its registration-time
 // uniqueness check covers the current focus + data state. Assets focus
-// exposes e/d; Projects focus exposes e/a/p/d. Screen-level c/r/b are
+// exposes e/d; Projects focus exposes e/a/p/d. Screen-level c/o/r/b are
 // always present.
 func (s *editProfileScreen) rebuildSet() {
 	set := mnemonic.NewSet()
@@ -221,6 +241,7 @@ func (s *editProfileScreen) rebuildSet() {
 	}
 
 	set.Add(s.createAsset)
+	set.Add(s.adopt)
 	set.Add(s.register)
 	set.Add(s.back)
 	s.set = set
@@ -231,7 +252,11 @@ func (s *editProfileScreen) Init() tea.Cmd { return s.loadCmd() }
 func (s *editProfileScreen) loadCmd() tea.Cmd {
 	return func() tea.Msg {
 		prof, err := s.actions.LoadProfile(actions.LoadProfileInput{ProfileRef: s.profileID})
-		return editProfileLoadedMsg{prof: prof, err: err}
+		if err != nil {
+			return editProfileLoadedMsg{prof: prof, err: err}
+		}
+		unadopted, scanErr := s.actions.ListUnadoptedAssetFolders(actions.ListUnadoptedAssetFoldersInput{ProfileRef: s.profileID})
+		return editProfileLoadedMsg{prof: prof, unadopted: unadopted, err: scanErr}
 	}
 }
 
@@ -283,6 +308,7 @@ func (s *editProfileScreen) handleResize(m tea.WindowSizeMsg) (Screen, tea.Cmd) 
 
 func (s *editProfileScreen) handleLoaded(m editProfileLoadedMsg) (Screen, tea.Cmd) {
 	s.rebuildLists(m.prof)
+	s.unadopted = m.unadopted
 	s.rebuildAssetsTable()
 	s.rebuildProjectsTable()
 	focusCmd := s.handler.FocusIndex(0)
@@ -410,12 +436,17 @@ func (s *editProfileScreen) renderBody(_ int) string {
 	applyTable(s.assetsTable, assetCols, assetRows)
 	applyTable(s.projectsTable, projectCols, projectRows)
 
-	buttonRow := " " + s.createAsset.View() + "  " + s.register.View() + "  " + s.back.View()
+	buttonRow := " " + s.createAsset.View() + "  " + s.adopt.View() + "  " + s.register.View() + "  " + s.back.View()
 	st := focusAwarePanelStyles()
+
+	assetsPanel := panel.Render(focused == 0, "Assets", s.assetsTable.View(), st)
+	if hint := s.unadoptedHint(); hint != "" {
+		assetsPanel = lipgloss.JoinVertical(lipgloss.Left, assetsPanel, hint)
+	}
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
-		panel.Render(focused == 0, "Assets", s.assetsTable.View(), st),
+		assetsPanel,
 		"",
 		panel.Render(focused == 1, "Projects", s.projectsTable.View(), st),
 		"",
@@ -641,6 +672,33 @@ func (s *editProfileScreen) onCreateAsset() tea.Cmd {
 	return s.modal.Init()
 }
 
+// unadoptedHint renders the one-line notice under the Assets panel when
+// the profile holds folders that are not assets yet. Empty when there is
+// nothing to adopt so the layout stays unchanged for the common case.
+func (s *editProfileScreen) unadoptedHint() string {
+	n := len(s.unadopted)
+	if n == 0 {
+		return ""
+	}
+	noun := "folders"
+	if n == 1 {
+		noun = "folder"
+	}
+	return fmt.Sprintf(" %d unadopted %s under assets/ — press %s to onboard", n, noun, s.adopt.View())
+}
+
+// onAdopt starts the two-step Adopt flow: pick one of the unadopted folders,
+// then fill in the Create Asset form seeded from it. With nothing to adopt
+// it surfaces an info notification instead of an empty picker.
+func (s *editProfileScreen) onAdopt() tea.Cmd {
+	s.pendingAdoptKey = ""
+	if len(s.unadopted) == 0 {
+		return notificationCmd(errs.SeverityInfo, "Nothing to adopt: every folder under assets/ already has an asset.json")
+	}
+	s.openModal(modals.NewAdoptAssetPicker(s.unadopted), modalKindAdoptPick)
+	return s.modal.Init()
+}
+
 // onRegisterProject starts the two-step Register Project flow (task
 // 0039): open the pathselector first, then open the Register Project form
 // seeded with the picked path once "register-project-path" resolves. Any
@@ -689,8 +747,10 @@ func (s *editProfileScreen) handleResolved(msg modal.ResolvedMsg) tea.Cmd {
 	s.modalKind = modalKindNone
 	pendingAsset := s.pendingDeleteAssetID
 	pendingProject := s.pendingDeleteProjectID
+	pendingAdopt := s.pendingAdoptKey
 	s.pendingDeleteAssetID = ""
 	s.pendingDeleteProjectID = ""
+	s.pendingAdoptKey = ""
 	switch kind {
 	case modalKindDeleteAsset:
 		return s.afterDeleteAsset(msg, pendingAsset)
@@ -704,8 +764,66 @@ func (s *editProfileScreen) handleResolved(msg modal.ResolvedMsg) tea.Cmd {
 		return s.afterRegisterProjectPath(msg)
 	case modalKindEditProject:
 		return s.afterEditProject(msg)
+	case modalKindAdoptPick:
+		return s.afterAdoptPick(msg)
+	case modalKindAdoptForm:
+		return s.afterAdoptForm(msg, pendingAdopt)
 	}
 	return nil
+}
+
+// afterAdoptPick opens the Create Asset form for the picked folder. Name
+// and Type are seeded from the folder (basename / parent type dir) and the
+// type select is restricted to the folder-registerable types, exactly like
+// Plan Project's Register-as-Asset. The caption summarizes the folder so
+// the user sees what is being onboarded; the DirStats call is read-only
+// display data, not the trusted write path (the service re-resolves Key).
+func (s *editProfileScreen) afterAdoptPick(msg modal.ResolvedMsg) tea.Cmd {
+	if !msg.Confirmed {
+		return nil
+	}
+	key, ok := msg.Value.(string)
+	if !ok || key == "" {
+		return nil
+	}
+	var folder *profile.UnadoptedFolder
+	for i := range s.unadopted {
+		if s.unadopted[i].Key == key {
+			folder = &s.unadopted[i]
+			break
+		}
+	}
+	if folder == nil {
+		return notificationCmd(errs.SeverityWarning, fmt.Sprintf("Folder %q is no longer listed; reload and try again", key))
+	}
+	s.pendingAdoptKey = key
+	caption := fmt.Sprintf("Adopt %s", key)
+	if count, size, statErr := utils.DirStats(folder.Dir); statErr == nil {
+		caption = fmt.Sprintf("Adopt %s · %d files · %s", key, count, formatBytes(size))
+	}
+	s.openModal(modals.NewCreateAssetFromFolder(asset.Manifest{Name: folder.Name, Type: folder.Type}, caption), modalKindAdoptForm)
+	return s.modal.Init()
+}
+
+func (s *editProfileScreen) afterAdoptForm(msg modal.ResolvedMsg, key string) tea.Cmd {
+	if !msg.Confirmed || key == "" {
+		return nil
+	}
+	manifest, ok := msg.Value.(asset.Manifest)
+	if !ok {
+		return nil
+	}
+	return mutationCmd(
+		func() errs.DomainError {
+			_, err := s.actions.AdoptAssetFolder(actions.AdoptAssetFolderInput{
+				ProfileRef: s.profileID,
+				Manifest:   manifest,
+				FolderKey:  key,
+			})
+			return err
+		},
+		fmt.Sprintf("Asset %q adopted from %s", manifest.Name, key),
+	)
 }
 
 // afterRegisterProjectPath opens the Register Project form seeded with

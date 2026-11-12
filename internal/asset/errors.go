@@ -215,3 +215,39 @@ func (e FilePathError) Error() string {
 }
 
 func (FilePathError) Severity() errs.Severity { return errs.SeverityError }
+
+// AssetDirExistsError reports an AdoptFolder attempt whose derived target
+// directory (assets/<type>/<id>) already exists and is not the folder being
+// adopted. Moving the folder there would clobber whatever lives at the
+// target, so the adoption is rejected before any filesystem change.
+type AssetDirExistsError struct {
+	Dir string
+}
+
+func (e AssetDirExistsError) Error() string {
+	return fmt.Sprintf("asset directory already exists: %s", e.Dir)
+}
+
+func (AssetDirExistsError) Severity() errs.Severity {
+	return errs.SeverityError
+}
+
+// AssetMoveError reports a failed rename while AdoptFolder relocates an
+// unadopted folder to its id/type-derived home.
+type AssetMoveError struct {
+	From string
+	To   string
+	Err  error
+}
+
+func (e AssetMoveError) Error() string {
+	return fmt.Sprintf("move asset folder %s → %s: %s", e.From, e.To, e.Err.Error())
+}
+
+func (AssetMoveError) Severity() errs.Severity {
+	return errs.SeverityError
+}
+
+func (e AssetMoveError) Unwrap() error {
+	return e.Err
+}

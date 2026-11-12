@@ -4,6 +4,7 @@ import (
 	"github.com/hexworks/agentfiles/internal/appapi"
 	"github.com/hexworks/agentfiles/internal/asset"
 	"github.com/hexworks/agentfiles/internal/errs"
+	"github.com/hexworks/agentfiles/internal/profile"
 )
 
 func (a *Actions) LoadAsset(in LoadAssetInput) (*asset.Asset, errs.DomainError) {
@@ -20,6 +21,19 @@ func (a *Actions) CreateAsset(in CreateAssetInput) (string, errs.DomainError) {
 // and selects it for the project. Returns the new asset id.
 func (a *Actions) CreateAssetFromFolder(in CreateAssetFromFolderInput) (string, errs.DomainError) {
 	return a.svc.CreateAssetFromFolder(in.ProfileRef, in.ProjectID, in.Manifest, in.DirKey)
+}
+
+// ListUnadoptedAssetFolders lists folders in the profile's assets tree
+// that have no asset.json yet (candidates for Adopt).
+func (a *Actions) ListUnadoptedAssetFolders(in ListUnadoptedAssetFoldersInput) ([]profile.UnadoptedFolder, errs.DomainError) {
+	return a.svc.ListUnadoptedAssetFolders(in.ProfileRef)
+}
+
+// AdoptAssetFolder turns an unadopted folder inside the profile into a real
+// asset by writing its manifest (moving it when id/type differ). Returns the
+// new asset id.
+func (a *Actions) AdoptAssetFolder(in AdoptAssetFolderInput) (string, errs.DomainError) {
+	return a.svc.AdoptAssetFolder(in.ProfileRef, in.Manifest, in.FolderKey)
 }
 
 // UpdateAsset persists the manifest edit and, when git integration is

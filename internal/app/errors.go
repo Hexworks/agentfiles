@@ -81,6 +81,24 @@ func (FolderNotRegisterableError) Severity() errs.Severity {
 	return errs.SeverityError
 }
 
+// FolderNotAdoptableError reports an AdoptAssetFolder call whose folder key
+// is not in the profile's current list of unadopted folders (see
+// profile.ScanUnadopted): the folder gained an asset.json since the TUI
+// listed it, was removed, or the key was never valid. The service
+// re-scans rather than trusting the caller so only a bare folder inside
+// the assets tree can be adopted.
+type FolderNotAdoptableError struct {
+	FolderKey string
+}
+
+func (e FolderNotAdoptableError) Error() string {
+	return fmt.Sprintf("folder is not an unadopted asset folder: %s", e.FolderKey)
+}
+
+func (FolderNotAdoptableError) Severity() errs.Severity {
+	return errs.SeverityError
+}
+
 // ProjectNotFoundError reports a project id that does not exist inside the
 // loaded profile.
 type ProjectNotFoundError struct {

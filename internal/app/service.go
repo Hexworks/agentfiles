@@ -259,6 +259,50 @@ func (s *Service) CreateAssetFromFolder(profileRef, projectID string, manifest a
 	return manifest.ID, nil
 }
 
+// ListUnadoptedAssetFolders scans the profile's assets tree for folders
+// that sit in an asset type directory but carry no asset.json (typically
+// skills copied in by hand), so the TUI can offer to adopt them. Read-only.
+func (s *Service) ListUnadoptedAssetFolders(profileRef string) ([]profile.UnadoptedFolder, errs.DomainError) {
+	loaded, err := s.LoadProfile(profileRef)
+	if err != nil {
+		return nil, err
+	}
+	return profile.ScanUnadopted(loaded.Profile.Root)
+}
+
+// AdoptAssetFolder promotes the unadopted folder identified by folderKey
+// (`<type>/<name>`, relative to the profile's assets root — see
+// profile.UnadoptedFolder.Key) into a real asset described by manifest. The
+// folder is re-scanned and the key re-asserted against the live list rather
+// than trusting the caller, so a stale or tampered key cannot adopt an
+// arbitrary directory. The content stays in the profile: asset.AdoptFolder
+// writes the manifest in place, or renames the folder when the chosen id or
+// type puts its home elsewhere. Returns the new asset id.
+func (s *Service) AdoptAssetFolder(profileRef string, manifest asset.Manifest, folderKey string) (string, errs.DomainError) {
+	loaded, err := s.LoadProfile(profileRef)
+	if err != nil {
+		return "", err
+	}
+	folders, scanErr := profile.ScanUnadopted(loaded.Profile.Root)
+	if scanErr != nil {
+		return "", scanErr
+	}
+	idx := slices.IndexFunc(folders, func(f profile.UnadoptedFolder) bool { return f.Key == folderKey })
+	if idx < 0 {
+		return "", FolderNotAdoptableError{FolderKey: folderKey}
+	}
+	if manifest.ID == "" {
+		manifest.ID = utils.Slug(manifest.Name, config.DefaultAssetSlug)
+	}
+	if loaded.Profile.Assets[manifest.ID] != nil {
+		return "", AssetExistsError{AssetID: manifest.ID}
+	}
+	if _, adoptErr := asset.AdoptFolder(loaded.Profile.Root, manifest, folders[idx].Dir); adoptErr != nil {
+		return "", adoptErr
+	}
+	return manifest.ID, nil
+}
+
 // Plan builds a sync preview for one project. This is the read-only half of the
 // pipeline: load profile -> render desired files -> compare with the repo.
 func (s *Service) Plan(profileRef, projectID string) (*appapi.Preview, errs.DomainError) {

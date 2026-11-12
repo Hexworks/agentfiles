@@ -320,6 +320,19 @@ Keep / Overwrite / Adopt / Delete toggles. The two bodies are produced by
 for display; unlike [Adopt](#adopt) it never feeds repo content back into the
 profile (`CLAUDE.md` invariant #6 holds).
 
+## Unadopted Asset Folder
+
+A directory at `assets/<type>/<name>/` inside a profile that carries no
+`asset.json`, so `profile.Load` skips it and it never shows up as an
+asset. Typical origin: a skill folder copied into the profile by hand.
+`profile.ScanUnadopted` lists them (only for the folder-registerable types
+— skill, agents_doc, settings — and ignoring hidden directories); the Edit
+Profile screen's **Adopt** action onboards one through the regular Create
+Asset form, after which `asset.AdoptFolder` writes the manifest in place or
+renames the folder to its id/type-derived home. Distinct from the
+repo → profile [Adopt](#adopt) of ADR 0020: no repo content is involved,
+the folder is already inside the profile.
+
 ## Adopt
 
 The single sanctioned repo → profile write path. Promotes a local edit

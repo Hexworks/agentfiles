@@ -209,6 +209,39 @@ func InitFromFolder(root string, manifest Manifest, sourceDir string) (string, e
 	})
 }
 
+// AdoptFolder turns sourceDir — a folder already inside the profile's assets
+// tree but lacking asset.json — into a real asset. Unlike InitFromFolder it
+// never copies: when the id/type-derived home (assets/<type>/<id>/) equals
+// sourceDir only the manifest is written; otherwise the folder is renamed
+// there first. A pre-existing target that is not sourceDir is refused with
+// AssetDirExistsError so nothing is clobbered. The source must satisfy the
+// same render contract as a folder registration (validateFolderSource).
+// Returns the asset directory.
+func AdoptFolder(root string, manifest Manifest, sourceDir string) (string, errs.DomainError) {
+	if err := manifest.Validate(); err != nil {
+		return "", err
+	}
+	if err := validateFolderSource(manifest, sourceDir); err != nil {
+		return "", err
+	}
+	target := filepath.Join(root, config.AssetsDirName, string(manifest.Type), manifest.ID)
+	if filepath.Clean(target) != filepath.Clean(sourceDir) {
+		if utils.Exists(target) {
+			return "", AssetDirExistsError{Dir: target}
+		}
+		if err := utils.EnsureDir(filepath.Dir(target)); err != nil {
+			return "", err
+		}
+		if err := os.Rename(sourceDir, target); err != nil {
+			return "", AssetMoveError{From: sourceDir, To: target, Err: err}
+		}
+	}
+	if err := utils.WriteJSON(filepath.Join(target, config.AssetManifestFileName), manifest); err != nil {
+		return "", err
+	}
+	return target, nil
+}
+
 // scaffold owns the on-disk layout rule shared by Init and InitFromFolder:
 // validate the manifest, derive the asset directory (assets/<type>/<id>/),
 // create it, seed its content, and write asset.json last. Writing the
