@@ -1,22 +1,19 @@
+---
+# This guideline is specific to this project and should not be shared between projects.
+type: specific
+keywords: security, tooling, tui, ui, ux, clean-architecture
+related: ./security.md, ./tui.md, ./clean_architecture.md
+---
+
 # External Tools Guidelines
 
-Related: [Security](security.md), [TUI](tui.md), [Clean Architecture](clean_architecture.md).
+`agentfiles` occasionally needs to hand control to a tool that lives outside the process — most commonly the user's text editor. This guideline describes how those handoffs should be implemented so they stay safe, predictable, and easy to test, and so the TUI keeps owning the user experience around them.
 
-`agentfiles` occasionally needs to hand control to a tool that lives outside the
-process — most commonly the user's text editor. This guideline describes how
-those handoffs should be implemented so they stay safe, predictable, and easy to
-test, and so the TUI keeps owning the user experience around them.
-
-The reference implementation is `internal/tui/editor`, which opens the system
-editor from a Bubble Tea program. The decision to extract it into its own
-package is recorded in ADR [0009](../adr/0009-edit-files-via-system-editor.md).
+The reference implementation is `internal/tui/editor`, which opens the system editor from a Bubble Tea program. The decision to extract it into its own package is recorded in ADR [0009](../adr/0009-edit-files-via-system-editor.md).
 
 ## Core Rule
 
-Wrap each external tool in its own narrow package. The package owns process
-construction, environment lookup, argument quoting, and the message it sends
-back when the tool finishes. Callers should not reach for `os/exec`,
-`os.Getenv`, or shell parsing themselves.
+Wrap each external tool in its own narrow package. The package owns process construction, environment lookup, argument quoting, and the message it sends back when the tool finishes. Callers should not reach for `os/exec`, `os.Getenv`, or shell parsing themselves.
 
 ```text
 Do:
@@ -36,10 +33,7 @@ Don't:
 
 ## Suspending The TUI
 
-When the external tool needs the terminal — editors, pagers, interactive merge
-tools — use `tea.ExecProcess`. The Bubble Tea runtime releases and restores the
-terminal automatically, so the wrapper just produces the command and the
-finished message.
+When the external tool needs the terminal — editors, pagers, interactive merge tools — use `tea.ExecProcess`. The Bubble Tea runtime releases and restores the terminal automatically, so the wrapper just produces the command and the finished message.
 
 ```go
 // internal/tui/editor/editor.go
@@ -68,15 +62,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 ```
 
-Do not set `cmd.Stdin`, `cmd.Stdout`, or `cmd.Stderr` yourself. Bubble Tea
-wires the program's tty into the child process for `ExecProcess`; overriding
-those fields can swap the child onto a different file descriptor than the one
-that owns the terminal.
+Do not set `cmd.Stdin`, `cmd.Stdout`, or `cmd.Stderr` yourself. Bubble Tea wires the program's tty into the child process for `ExecProcess`; overriding those fields can swap the child onto a different file descriptor than the one that owns the terminal.
 
 ## Resolving The Tool
 
-Editor selection should follow standard Unix priority: `$VISUAL` first, then
-`$EDITOR`, then a hard fallback. Trim whitespace before deciding "set or not."
+Editor selection should follow standard Unix priority: `$VISUAL` first, then `$EDITOR`, then a hard fallback. Trim whitespace before deciding "set or not."
 
 ```go
 func Resolve() string {
@@ -90,25 +80,17 @@ func Resolve() string {
 }
 ```
 
-Apply the same shape to other tools: prefer the most specific environment
-variable the tool documents, fall back to a less specific one, then to a sane
-default.
+Apply the same shape to other tools: prefer the most specific environment variable the tool documents, fall back to a less specific one, then to a sane default.
 
 ## Quoting
 
-`$EDITOR` is a command line, not a binary name. Users frequently set values
-like `nvim --clean`, `code -w`, or even an `alias`-style wrapper. Three
-options exist:
+`$EDITOR` is a command line, not a binary name. Users frequently set values like `nvim --clean`, `code -w`, or even an `alias`-style wrapper. Three options exist:
 
 1. Run the command through `sh -c` and let the user's shell parse it.
-2. Split on whitespace with `strings.Fields` and call `exec.Command`
-   directly.
+2. Split on whitespace with `strings.Fields` and call `exec.Command` directly.
 3. Require the user to set a binary-only path.
 
-Prefer option 1. It defers parsing to the shell the user already configured
-and handles flag values with quoted spaces correctly. The cost is one shell
-process per invocation, which is negligible compared to the interactive
-session that follows.
+Prefer option 1. It defers parsing to the shell the user already configured and handles flag values with quoted spaces correctly. The cost is one shell process per invocation, which is negligible compared to the interactive session that follows.
 
 When option 1 is used, the file path must be quoted defensively:
 
@@ -118,31 +100,17 @@ func shellQuote(s string) string {
 }
 ```
 
-Wrapping in single quotes blocks every shell metacharacter, and the
-`'\''` idiom escapes embedded single quotes the standard POSIX way. Never
-interpolate a user-controlled value into a shell command line without this
-treatment — see also [Security](security.md) on unsafe execution paths.
+Wrapping in single quotes blocks every shell metacharacter, and the `'\''` idiom escapes embedded single quotes the standard POSIX way. Never interpolate a user-controlled value into a shell command line without this treatment — see also [Security](security.md) on unsafe execution paths.
 
 ## Resolving Paths Before Handoff
 
-Resolve user-facing paths to an absolute form before invoking the tool. The
-working directory may change between the moment the tool is configured and the
-moment it actually runs, and an editor that opens the wrong file because of a
-relative path produces silent data loss. `filepath.Abs` is enough; surfacing a
-resolution error is optional, since the editor will surface the problem too.
+Resolve user-facing paths to an absolute form before invoking the tool. The working directory may change between the moment the tool is configured and the moment it actually runs, and an editor that opens the wrong file because of a relative path produces silent data loss. `filepath.Abs` is enough; surfacing a resolution error is optional, since the editor will surface the problem too.
 
 ## Working With Forms In Bubble Tea Models
 
-The "type a name, then edit the file" flow is the most common shape that uses
-this pattern, and it has a known foot-gun that is not specific to external
-tools but that bites here in practice.
+The "type a name, then edit the file" flow is the most common shape that uses this pattern, and it has a known foot-gun that is not specific to external tools but that bites here in practice.
 
-Bubble Tea models written with **value receivers** (`func (m model) Update(...)`)
-copy the model on every `Update` cycle. Binding a `huh` form field with
-`Value(&m.field)` captures the address of `field` inside the *current copy*
-of the model. After the method returns, that address is dangling — the form
-keeps writing to the old stack frame and the model the runtime holds onto
-never receives the user's input.
+Bubble Tea models written with **value receivers** (`func (m model) Update(...)`) copy the model on every `Update` cycle. Binding a `huh` form field with `Value(&m.field)` captures the address of `field` inside the _current copy_ of the model. After the method returns, that address is dangling — the form keeps writing to the old stack frame and the model the runtime holds onto never receives the user's input.
 
 ```text
 Do:
@@ -159,25 +127,15 @@ Don't:
   sensitive and may produce empty strings only after specific keystrokes
 ```
 
-The TUI does not need to switch to pointer receivers to use forms safely;
-keying the fields and reading them on completion is the smaller change and
-keeps the rest of the model code unchanged.
+The TUI does not need to switch to pointer receivers to use forms safely; keying the fields and reading them on completion is the smaller change and keeps the rest of the model code unchanged.
 
 ## Errors From External Tools
 
-The wrapper package surfaces failure as `FinishedMsg{Err: error}`. Callers
-should treat `Err != nil` as "the user did not finish the edit cleanly":
-either re-run, abandon the change, or surface a TUI-level message. Do not
-wrap the error into an `errs.DomainError` inside the wrapper package — the
-asynchronous message boundary is the wrong place for the domain-error
-contract, and the TUI is the only consumer. If a domain operation needs to
-fail, that failure should be raised after the TUI re-enters the relevant
-flow, not inside the editor wrapper.
+The wrapper package surfaces failure as `FinishedMsg{Err: error}`. Callers should treat `Err != nil` as "the user did not finish the edit cleanly": either re-run, abandon the change, or surface a TUI-level message. Do not wrap the error into an `errs.DomainError` inside the wrapper package — the asynchronous message boundary is the wrong place for the domain-error contract, and the TUI is the only consumer. If a domain operation needs to fail, that failure should be raised after the TUI re-enters the relevant flow, not inside the editor wrapper.
 
 ## Testing
 
-External-tool wrappers are difficult to test end-to-end because they take
-over the terminal. Cover the parts that do not require a real tty:
+External-tool wrappers are difficult to test end-to-end because they take over the terminal. Cover the parts that do not require a real tty:
 
 ```text
 Do:

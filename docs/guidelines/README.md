@@ -2,7 +2,11 @@
 
 Guidelines define how the project should be developed and documented across multiple changes. They are not architecture decisions themselves; instead they describe the preferred way to work within the architecture that the ADRs and the current codebase establish.
 
-Use these files when you want to understand how to model the domain, how to author assets, how to evolve the Go code, and how to preserve the project's safety guarantees.
+Whenever you make a change in the codebase try to find the relevant file(s) based on what you want to change and use the guidelines written there.
+
+For example if you want to touch the domain model, and extend the current architecture you should look at [Clean Architecture](./clean_architecture.md) and [Domain Model](./domain_model.md).
+
+Each guideline file contains _frontmatter_ with a `keywords` that will help you find the right one. It also contains an optional `related` field that contains paths to related markdown files.
 
 ## Available Guidelines
 

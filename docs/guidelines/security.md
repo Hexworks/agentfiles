@@ -1,18 +1,19 @@
+---
+# This guideline is specific to this project and should not be shared between projects.
+type: specific
+keywords: go, security
+related: ./go.md
+---
+
 # Security Guidelines
 
-Security in `agentfiles` is mostly about protecting the user's repositories,
-profile content, local configuration, and credentials. The project should assume
-that manifests, profile files, project paths, and generated content can be
-mistyped, stale, or hostile until validated.
+Security in this project is mostly about protecting the user's repositories, profile content, local configuration, and credentials. The project should assume that manifests, profile files, project paths, and generated content can be mistyped, stale, or hostile until validated.
 
-The default posture is simple: validate inputs at boundaries, keep writes inside
-known roots, avoid exposing secrets, and make risky operations visible before
-they happen.
+The default posture is simple: validate inputs at boundaries, keep writes inside known roots, avoid exposing secrets, and make risky operations visible before they happen.
 
 ## Treat External Input As Untrusted
 
-Validate data loaded from manifests, state files, command arguments, environment
-variables, and filesystem paths before using it.
+Validate data loaded from manifests, state files, command arguments, environment variables, and filesystem paths before using it.
 
 ```text
 Do:
@@ -31,8 +32,7 @@ Don't:
 
 ## Keep File Access Inside Intended Roots
 
-All reads and writes should stay within the profile, registry, project, or
-managed-output root that the operation is responsible for.
+All reads and writes should stay within the profile, registry, project, or managed-output root that the operation is responsible for.
 
 ```text
 Do:
@@ -52,8 +52,7 @@ Don't:
 
 ## Protect Secrets And Local State
 
-The tool should not collect, persist, print, or render credentials unless a
-feature explicitly requires it and documents the handling rules.
+The tool should not collect, persist, print, or render credentials unless a feature explicitly requires it and documents the handling rules.
 
 ```text
 Do:
@@ -73,8 +72,7 @@ Don't:
 
 ## Avoid Unsafe Execution Paths
 
-Profile assets and generated files are content, not code to execute as part of
-normal rendering or synchronization.
+Profile assets and generated files are content, not code to execute as part of normal rendering or synchronization.
 
 ```text
 Do:
@@ -94,8 +92,7 @@ Don't:
 
 ## Keep Dependencies Boring
 
-Dependencies expand the trusted code surface. Add them only when the security and
-maintenance tradeoff is clear.
+Dependencies expand the trusted code surface. Add them only when the security and maintenance tradeoff is clear.
 
 ```text
 Do:
@@ -116,8 +113,7 @@ Don't:
 
 ## Test Security-Sensitive Behavior
 
-Security rules should be covered where mistakes would create unsafe writes,
-secret exposure, or unexpected execution.
+Security rules should be covered where mistakes would create unsafe writes, secret exposure, or unexpected execution.
 
 ```text
 Do:

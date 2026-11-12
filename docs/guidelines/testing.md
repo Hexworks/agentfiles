@@ -1,13 +1,14 @@
+---
+# This is a generic guidleine that can be shared accross projects
+type: generic
+keywords: testing
+---
+
 # Testing Guidelines
 
-Tests in `agentfiles` should make behavior easy to trust and failures easy to
-understand. Prefer small, direct tests that describe the domain rule being
-verified over broad tests that only prove that code ran.
+Tests in this project should make behavior easy to trust and failures easy to understand. Prefer small, direct tests that describe the domain rule being verified over broad tests that only prove that code ran.
 
-Use the [testing pyramid](https://martinfowler.com/articles/practical-test-pyramid.html)
-as the default ordering principle: write unit tests first, add service or
-integration tests when real collaboration between packages or filesystem state
-matters, and keep end-to-end tests rare and focused on critical workflows.
+Use the [testing pyramid](https://martinfowler.com/articles/practical-test-pyramid.html) as the default ordering principle: write unit tests first, add service or integration tests when real collaboration between packages or filesystem state matters, and keep end-to-end tests rare and focused on critical workflows.
 
 ## Start With The Smallest Useful Test
 
@@ -28,8 +29,7 @@ Don't:
 
 ## Test One Behavior At A Time
 
-Each test should make one promise about the system. If the test fails, the name
-and assertions should make the broken behavior obvious.
+Each test should make one promise about the system. If the test fails, the name and assertions should make the broken behavior obvious.
 
 ```text
 Do:
@@ -46,8 +46,7 @@ Don't:
 
 ## Separate Given, When, Then
 
-Make the test flow visible. Use blank lines or short comments when that improves
-readability.
+Make the test flow visible. Use blank lines or short comments when that improves readability.
 
 ```text
 Do:
@@ -64,9 +63,7 @@ Don't:
 
 ## Assert Behavior, Not Mock Mechanics
 
-Unit tests should control dependencies with simple stubs, fakes, or mocks when
-those dependencies are slow, stateful, external, or hard to make deterministic.
-The assertion should still be about the behavior implemented by the unit.
+Unit tests should control dependencies with simple stubs, fakes, or mocks when those dependencies are slow, stateful, external, or hard to make deterministic. The assertion should still be about the behavior implemented by the unit.
 
 ```text
 Do:
@@ -84,17 +81,14 @@ Don't:
 
 ## Cross-Boundary Integration
 
-Any change that mutates files, spawns processes, or crosses a package
-boundary that owns a layout, schema, or protocol must be covered by at
-least one **full-stack real** test — no fakes anywhere between the entry
-point and the effect.
+Any change that mutates files, spawns processes, or crosses a package boundary that owns a layout, schema, or protocol must be covered by at least one **full-stack real** test — no fakes anywhere between the entry point and the effect.
 
 ```text
 Do:
 - exercise real domain constructors (e.g. real Init/Load) rather than
   hand-seeded fixtures whose shape the test author chose
 - shell out to the real external tool (git, subprocess, the OS
-  filesystem) inside a t.TempDir() sandbox
+  filesystem) inside a temp dir sandbox
 - assert against ground truth: file contents on disk, `git log`
   output, the actual bytes written, HTTP response — not against the
   string constant the implementation also produced
@@ -118,26 +112,14 @@ Don't:
 
 Concrete triggers that require a real-stack test:
 
-- Any use of `os/exec`, `exec.Command`, subprocess handoff.
-- Any use of `filepath.Join`, `filepath.Rel`, `filepath.Abs`, path
-  glob or pathspec strings in production code.
+- Any use of OS or CLI command execution or subprocess handoff.
+- Any use of filepath operations, path glob or pathspec strings in production code.
 - Any code that computes a repo-relative or root-relative path.
-- Any code that reads or writes a serialization format the tool did
-  not author (git object database, external config file, third-party
-  API payload).
-
-Rationale: task 0042 shipped with every unit test green because the
-fake committer's expected pathspec was a copy of the implementation's
-own wrong constant, and the only real-git tests used a fixture whose
-layout matched the wrong constant. The bug surfaced on the first live
-run. See
-[`docs/changelog/2026-07-23_0042-git-aware-commits.md`](../changelog/2026-07-23_0042-git-aware-commits.md).
+- Any code that reads or writes a serialization format the tool did not author (git object database, external config file, third-party API payload).
 
 ## Keep Tests Isolated
 
-Tests must not depend on execution order or state left by another test. Prefer
-`t.TempDir()` for filesystem tests and stable, hard-coded identifiers for
-domain objects created by the test.
+Tests must not depend on execution order or state left by another test. Prefer temp dirs for filesystem tests and stable, hard-coded identifiers for domain objects created by the test.
 
 ```text
 Do:
@@ -156,8 +138,7 @@ Don't:
 
 ## Keep Test Code Simple
 
-Test code should be boring. A little duplication is better than abstractions
-that make each test harder to read.
+Test code should be boring. A little duplication is better than abstractions that make each test harder to read.
 
 ```text
 Do:

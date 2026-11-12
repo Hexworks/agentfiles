@@ -1,8 +1,11 @@
-# Charm Guidelines
+---
+# This guideline is specific to this project and should not be shared between projects.
+type: specific
+keywords: charm, tui, ui, ux
+related: ./tui.md, ./go.md, ./clean_code.md, ./domain_model.md
+---
 
-Related: [TUI](./tui.md), [Clean Architecture](./clean_architecture.md),
-[Clean Code](./clean_code.md), [Go](./go.md), [Domain Model](./domain_model.md),
-and [Errors](./errors.md).
+# Charm Guidelines
 
 [`tui.md`](./tui.md) defines the boundary between TUI and business code. This
 guideline defines the internal shape of the TUI layer itself: how to assemble
@@ -371,7 +374,7 @@ func (m root) Update(msg tea.Msg) (root, tea.Cmd) {
 ```
 
 Keep `tea.WindowSizeMsg`, `ctrl+c`, and the modal's resolution message at
-the very top of `Update`, *above* the focus-stealing branch. The background
+the very top of `Update`, _above_ the focus-stealing branch. The background
 dimensions still need to update under the modal (it re-centers on the next
 render) and the user must always be able to abort.
 
@@ -734,18 +737,18 @@ Don't:
 
 ## Choosing A Bubbles Component
 
-| Need                                                | Component               |
-| --------------------------------------------------- | ----------------------- |
-| Single-line input (name, search, command)           | `bubbles/textinput`     |
-| Multi-line input (notes, body, code)                | `bubbles/textarea`      |
-| Scrollable static content (rendered markdown, logs) | `bubbles/viewport`      |
-| Selectable list with filter and status              | `bubbles/list`          |
-| Tabular data, possibly with column sort             | `bubbles/table`         |
-| Pick a file or directory                            | `bubbles/filepicker`    |
-| Indicate indeterminate work                         | `bubbles/spinner`       |
-| Indicate measurable progress                        | `bubbles/progress`      |
-| Page through a fixed set of items                   | `bubbles/paginator`     |
-| Bind keys and render help                           | `bubbles/key`, `/help`  |
+| Need                                                | Component                            |
+| --------------------------------------------------- | ------------------------------------ |
+| Single-line input (name, search, command)           | `bubbles/textinput`                  |
+| Multi-line input (notes, body, code)                | `bubbles/textarea`                   |
+| Scrollable static content (rendered markdown, logs) | `bubbles/viewport`                   |
+| Selectable list with filter and status              | `bubbles/list`                       |
+| Tabular data, possibly with column sort             | `bubbles/table`                      |
+| Pick a file or directory                            | `bubbles/filepicker`                 |
+| Indicate indeterminate work                         | `bubbles/spinner`                    |
+| Indicate measurable progress                        | `bubbles/progress`                   |
+| Page through a fixed set of items                   | `bubbles/paginator`                  |
+| Bind keys and render help                           | `bubbles/key`, `/help`               |
 | Time elapsed / countdown                            | `bubbles/stopwatch`, `bubbles/timer` |
 
 Reuse a Bubbles component before reaching for a custom widget. Each component

@@ -1,3 +1,9 @@
+---
+# This guideline is specific to this project and should not be shared between projects.
+type: specific
+keywords: domain, assets, agents
+---
+
 # Asset Authoring Guidelines
 
 Assets are the reusable building blocks of a profile. They should be easy to
@@ -13,17 +19,17 @@ Every asset must have an `asset.json` with an id, name, and supported type.
 ```json
 // Do
 {
-  "id": "review",
-  "name": "review",
-  "type": "skill",
-  "description": "Review workflow instructions"
+    "id": "review",
+    "name": "review",
+    "type": "skill",
+    "description": "Review workflow instructions"
 }
 ```
 
 ```json
 // Don't
 {
-  "title": "Review"
+    "title": "Review"
 }
 ```
 
@@ -52,24 +58,24 @@ surfaces.
 ```json
 // Do
 {
-  "projections": [
-    {
-      "agent": "claude-code",
-      "source": "hook.sh",
-      "target": ".claude/hooks/hook.sh"
-    }
-  ]
+    "projections": [
+        {
+            "agent": "claude-code",
+            "source": "hook.sh",
+            "target": ".claude/hooks/hook.sh"
+        }
+    ]
 }
 ```
 
 ```json
 // Don't
 {
-  "projections": [
-    {
-      "source": "hook.sh"
-    }
-  ]
+    "projections": [
+        {
+            "source": "hook.sh"
+        }
+    ]
 }
 ```
 
@@ -96,15 +102,14 @@ Use manifest fields to model selection rules directly.
 ```json
 // Do
 {
-  "compatible_agents": ["codex"],
-  "exclusive_group": "main-agents-doc"
+    "compatible_agents": ["codex"],
+    "exclusive_group": "main-agents-doc"
 }
 ```
 
 ```json
 // Don't
 {
-  "description": "please don't combine this with the other default doc"
+    "description": "please don't combine this with the other default doc"
 }
 ```
-

@@ -1,20 +1,17 @@
+---
+# This guideline is specific to this project and should not be shared between projects.
+type: specific
+keywords: domain-model, clean-code, clean-architecture
+related: ./clean_code.md, ./domain_model.md, ./clean_architecture.md
+---
+
 # Domain Model Guidelines
 
-The `agentfiles` domain model should stay explicit and stable because it is the
-main source of safety in the project. The application is not a generic sync
-engine; it is a focused system for profile-based composition of LLM workspace
-files into target repositories.
+The domain model should stay explicit and stable because it is the main source of safety in the project.
 
-Use domain-driven design as a practical discipline: shape code, tests,
-documentation, and user flows around the problem the project actually solves.
-Domain modeling should make rules easier to see and change; it should not add
-layers, factories, or patterns that do not carry domain meaning.
+Use domain-driven design as a practical discipline: shape code, tests, documentation, and user flows around the problem the project actually solves. Domain modeling should make rules easier to see and change; it should not add layers, factories, or patterns that do not carry domain meaning.
 
-When the model grows, prefer adding well-named concepts instead of overloading
-existing ones. Registry, profile, asset, project, render, and sync should remain
-separable both in code and in documentation.
-
-Related: [Clean Architecture](./clean_architecture.md)
+When the model grows, prefer adding well-named concepts instead of overloading existing ones. Domain entities should remain separable both in code and in documentation.
 
 ## Use The Project Language
 
@@ -22,7 +19,7 @@ Prefer the canonical vocabulary from the glossary and existing packages.
 
 ```text
 Do:
-- use profile, project, asset, render plan, preview, drift, and managed state
+- use the names established in the glossary.
 - name functions and tests after domain behavior
 - update the glossary when a new durable domain term appears
 ```
@@ -36,9 +33,7 @@ Don't:
 
 ## Keep Boundaries Clear
 
-`agentfiles` has one focused bounded context: reusable AI-assistant
-configuration is selected from profiles and rendered into repositories. Inside
-that context, each domain concept should have one primary responsibility.
+Use bounded contexts when necessary, but don't add new ones if the project focuses on a single one. Inside that context, each domain concept should have one primary responsibility.
 
 ```text
 Do:
@@ -121,16 +116,16 @@ depend on them.
 ```json
 // Do
 {
-  "id": "review",
-  "name": "review",
-  "type": "skill"
+    "id": "review",
+    "name": "review",
+    "type": "skill"
 }
 ```
 
 ```json
 // Don't
 {
-  "name": "Review Skill"
+    "name": "Review Skill"
 }
 ```
 
@@ -142,15 +137,15 @@ command checks.
 ```json
 // Do
 {
-  "compatible_agents": ["codex", "claude-code"],
-  "exclusive_group": "primary-instructions"
+    "compatible_agents": ["codex", "claude-code"],
+    "exclusive_group": "primary-instructions"
 }
 ```
 
 ```json
 // Don't
 {
-  "notes": "only use this with codex unless another file says otherwise"
+    "notes": "only use this with codex unless another file says otherwise"
 }
 ```
 

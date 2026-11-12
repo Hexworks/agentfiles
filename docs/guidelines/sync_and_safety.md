@@ -1,11 +1,15 @@
+---
+# This guideline is specific to this project and should not be shared between projects.
+type: specific
+keywords: go, security
+related: ./go.md, ./security.md
+---
+
 # Sync And Safety Guidelines
 
-Synchronization is the highest-risk part of `agentfiles` because it writes into
-real repositories. The design should therefore prefer predictability and
-explanation over silent convenience.
+Synchronization is the highest-risk part of this project because it writes into real repositories. The design should therefore prefer predictability and explanation over silent convenience.
 
-The core safety model is simple: plan first, show the user what will happen,
-then apply only the desired changes inside known managed surfaces.
+The core safety model is simple: plan first, show the user what will happen, then apply only the desired changes inside known managed surfaces.
 
 ## Always Plan Before Apply
 
@@ -26,8 +30,7 @@ Don't:
 
 ## Distinguish Update From Drift
 
-The difference matters. An update means the desired output changed. Drift means
-a previously managed file was edited locally after apply.
+The difference matters. An update means the desired output changed. Drift means a previously managed file was edited locally after apply.
 
 ```text
 Do:
@@ -43,11 +46,7 @@ Don't:
 
 ## Require Explicit Deletion Opt-In
 
-Files inside managed surfaces split into two classifications. Recognized
-managed files (recorded in the previous `ManagedState` and missing from the
-new desired output) auto-delete on apply because the user already saw them
-in the preview. Unknown files (in a managed surface but never tracked)
-require a per-file `ResolveDelete` resolution; the default is keep.
+Files inside managed surfaces split into two classifications. Recognized managed files (recorded in the previous `ManagedState` and missing from the new desired output) auto-delete on apply because the user already saw them in the preview. Unknown files (in a managed surface but never tracked) require a per-file `ResolveDelete` resolution; the default is keep.
 
 ```text
 Do:
@@ -81,9 +80,7 @@ Don't:
 
 ## Enforce Single Project Ownership Globally
 
-One target-repo path may belong to at most one project across every
-registered profile. The rule protects the pipeline from two projects
-fighting over the same generated files and the same `state.json`.
+One target-repo path may belong to at most one project across every registered profile. The rule protects the pipeline from two projects fighting over the same generated files and the same `state.json`.
 
 ```text
 Do:
@@ -103,4 +100,3 @@ Don't:
   file is app-owned, so an orphan surfaces as a typed
   OrphanProfileIDError instead
 ```
-

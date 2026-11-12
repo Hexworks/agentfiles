@@ -1,17 +1,18 @@
+---
+# This is a generic guidleine that can be shared accross projects
+type: generic
+keywords: git, scm
+---
+
 # Git Guidelines
 
-Git history in `agentfiles` should make the purpose of each change easy to
-understand and easy to review. The project uses one long-lived `main` branch
-with short-lived topic branches that are rebased before they are merged back.
+Git history in this project should make the purpose of each change easy to understand and easy to review. The project uses one long-lived `main` branch with short-lived topic branches that are rebased before they are merged back.
 
-Commit messages should follow
-[Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/)
-so the history communicates intent consistently to humans and tooling.
+Commit messages should follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/) so the history communicates intent consistently to humans and tooling.
 
 ## Use Short-Lived Topic Branches
 
-Create a branch from the latest `main` for each focused change. Use a short,
-lowercase, hyphenated name with a prefix that describes the work.
+Create a branch from the latest `main` for each focused change. Use a short, lowercase, hyphenated name with a prefix that describes the work.
 
 ```text
 Do:
@@ -30,8 +31,7 @@ Don't:
 
 ## Rebase Before Merge
 
-Keep topic branches current by rebasing them onto `main`. Prefer rebasing over
-merging `main` into the branch so the commit log stays linear and readable.
+Keep topic branches current by rebasing them onto `main`. Prefer rebasing over merging `main` into the branch so the commit log stays linear and readable.
 
 ```text
 Do:
@@ -57,13 +57,9 @@ Use this commit message shape:
 <type>[optional scope]: <description>
 
 [optional body]
-
-[optional footer(s)]
 ```
 
-The type is required. Use `feat` for user-visible features and `fix` for bug
-fixes. Other useful types include `docs`, `test`, `refactor`, `perf`, `build`,
-`ci`, `chore`, `style`, and `revert`.
+The type is required. Use `feat` for user-visible features and `fix` for bug fixes. Other useful types include `docs`, `test`, `refactor`, `perf`, `build`, `ci`, `chore`, `style`, and `revert`.
 
 ```text
 Do:
@@ -76,6 +72,8 @@ Do:
 
 ```text
 Don't:
+- add AI attribution footers
+- add commit body unless absolutely necessary
 - use vague messages like update, fixes, or changes
 - hide unrelated work inside one broad commit
 - describe only the files changed instead of the behavior changed
@@ -84,8 +82,7 @@ Don't:
 
 ## Mark Breaking Changes Clearly
 
-Breaking changes must be visible in the commit header or footer. Add `!` before
-the colon or include a `BREAKING CHANGE:` footer with the required explanation.
+Breaking changes must be visible in the commit header or footer. Add `!` before the colon or include a `BREAKING CHANGE:` footer with the required explanation.
 
 ```text
 Do:
@@ -104,8 +101,7 @@ Don't:
 
 ## Split Commits By Intent
 
-If a change naturally needs more than one commit type, split it when possible.
-This keeps review focused and makes release notes more accurate.
+If a change naturally needs more than one commit type, split it when possible. This keeps review focused and makes release notes more accurate.
 
 ```text
 Do:
